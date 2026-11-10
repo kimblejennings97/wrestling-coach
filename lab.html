@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Match Lab</title>
+<link rel="stylesheet" href="css/style.css"></head>
+<body>
+<header><h1>Wrestling Coach</h1><span>Phase 1 · Match Lab (engine test bench)</span><a href="index.html" style="margin-left:auto;color:var(--muted)">Back to game</a> <a href="harness.html" style="color:var(--muted)">Balance harness</a></header>
+<main>
+  <p class="hint" id="leagueNote" style="margin:0 0 8px"></p>
+  <section class="card" id="cardA"></section>
+
+  <section class="card">
+    <div class="row">
+      <label>Weight <select id="weight"></select></label>
+      <label>Seed <input id="seed" type="number" style="width:110px"></label>
+      <button class="secondary" id="reroll">New matchup</button>
+      <button class="secondary" id="rematch" title="Same wrestlers, new seed">Re-simulate</button>
+    </div>
+    <div class="row">
+      <label>Speed <select id="speed"><option value="1800">Slow</option><option value="1000" selected>Normal</option><option value="450">Fast</option></select></label>
+      <button id="watch">▶ Watch match</button>
+      <button class="secondary" id="jump">⏭ Jump to result</button>
+    </div>
+    <div class="scoreboard">
+      <div class="A"><div class="pts" id="sA">0</div><div class="nm" id="nA"></div></div>
+      <div class="clock"><span id="clk">0:00</span><small id="per">Ready</small></div>
+      <div class="B"><div class="pts" id="sB">0</div><div class="nm" id="nB"></div></div>
+    </div>
+    <div id="feed"></div>
+    <div class="result" id="result" hidden></div>
+  </section>
+
+  <section class="card" id="cardB"></section>
+</main>
+<script type="module" src="js/ui/match.js"></script>
+</body></html>

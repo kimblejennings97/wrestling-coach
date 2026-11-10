@@ -1,0 +1,14 @@
+# build output (recreate with deploy.bat)
+dist/
+
+# scraped / saved third-party pages and caches (large, not yours to republish)
+WrestlerNames/
+tools/cache/
+tools/fetch.log
+
+# scratch test pages
+_*.html
+
+# OS / editor
+Thumbs.db
+.DS_Store

@@ -1,0 +1,24 @@
+<!doctype html><meta charset=utf8><pre id=o>running</pre>
+<script type=module>
+// Samples each school logo (assets/logos) for its dominant saturated colour -> JSON in the page. Used by tools/make_teamcolors.py (headless Edge).
+import { LOGO_IDS } from '../js/data/logos.js';
+const out = {}; window.addEventListener('unhandledrejection', e => { document.getElementById('o').textContent = 'ERR ' + e.reason; }); window.addEventListener('error', e => { document.getElementById('o').textContent = 'ERR ' + e.message; });
+const toHsl = (r, g, b) => { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; let h = 0, s = 0; if (mx !== mn) { const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn); h = mx === r ? ((g - b) / d + (g < b ? 6 : 0)) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; } return [h, s, l]; };
+const hsl2hex = (h, s, l) => { const a = s * Math.min(l, 1 - l), f = n => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); }; return '#' + [f(0), f(8), f(4)].map(x => x.toString(16).padStart(2, '0')).join(''); };
+const imgs = {}; await Promise.all([...LOGO_IDS].map(id => new Promise(res => { const im = new Image(); im.onload = res; im.onerror = res; im.src = `../assets/logos/${id}.png`; imgs[id] = im; })));
+for (const id of LOGO_IDS) {
+  const img = imgs[id];
+  const c = document.createElement('canvas'); c.width = c.height = 96; const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, 96, 96);
+  const px = ctx.getImageData(0, 0, 96, 96).data, bins = Array.from({ length: 24 }, () => ({ w: 0, r: 0, g: 0, b: 0 }));
+  for (let i = 0; i < px.length; i += 4) {
+    const a = px[i + 3]; if (a < 200) continue;
+    const [h, s, l] = toHsl(px[i], px[i + 1], px[i + 2]); if (l > 0.93 || l < 0.06 || s < 0.25) continue;
+    const w = s * (1 - Math.abs(l - 0.5) * 0.6), bi = Math.floor(h / 15) % 24, B = bins[bi]; B.w += w; B.r += px[i] * w; B.g += px[i + 1] * w; B.b += px[i + 2] * w;
+  }
+  const best = bins.reduce((m, b) => (b.w > m.w ? b : m), bins[0]);
+  if (best.w < 8) { out[id] = '#a8b3c4'; continue; }          // grayscale logo
+  let [h, s, l] = toHsl(best.r / best.w, best.g / best.w, best.b / best.w);
+  out[id] = hsl2hex(h, Math.max(0.5, Math.min(0.85, s)), Math.max(0.6, Math.min(0.7, l)));   // readable on the dark theme
+}
+document.getElementById('o').textContent = JSON.stringify(out);
+</script>

@@ -1,0 +1,61 @@
+<!doctype html><meta charset="utf-8"><title>Wrestler diagnostic</title><pre id=o>running</pre><script type=module>
+// Wrestler diagnostic.  ?name=Sergio%20Vega&live=1   (live=1 reads YOUR current game from this browser; otherwise a fresh game with &seed=5)
+//   - his real match log this season (duals + tournaments you coached)
+//   - sims against the starters at his weight per team plan, vs the OVR-implied win rate, vs a control group of similar-OVR wrestlers
+//   - sensitivity: how much win% he loses if each attribute drops by 4, next to how much the OVR formula says it is worth
+import { newGame, loadGame, useCalendar, overall, startEnergy, CLASS_NAMES } from './js/game/core.js';
+import { simulateBout, ATTR_KEYS, OVR_W } from './js/engine/bout.js';
+import { ELO_PER_OVR } from './js/game/stats.js';
+import { makeRng } from './js/engine/rng.js';
+const P = new URLSearchParams(location.search), NAME = P.get('name') || 'Sergio Vega', LIVE = P.get('live') === '1', SEED = +(P.get('seed') || 5), N = +(P.get('n') || 400), out = [];
+const f = (x, d = 1) => x.toFixed(d), pct = x => f(100 * x, 1) + '%', exp = gap => 1 / (1 + 10 ** (-(ELO_PER_OVR / 400) * gap));
+const OVR_SUM = Object.values(OVR_W).reduce((a, b) => a + b, 0);
+function sim(a, bs, plan, n, rng, energy) {
+  let w = 0, pts = 0, opp = 0, td = 0, tdo = 0, nf = 0, nfo = 0, fall = 0, fallAg = 0, esc = 0, esco = 0, ex = 0;
+  for (let i = 0; i < n; i++) {
+    const b = bs[i % bs.length], r = simulateBout({ ...a, weight: a.natural }, { ...b, weight: a.natural }, { seed: rng.int(1, 2e9), planA: plan, planB: 'balanced', energyA: energy });
+    if (r.winner === 'A') w++; if (r.method === 'Fall') { if (r.winner === 'A') fall++; else fallAg++; }
+    pts += r.score.A; opp += r.score.B; td += r.stats.A.takedowns; tdo += r.stats.B.takedowns; nf += r.stats.A.nearFalls; nfo += r.stats.B.nearFalls; esc += r.stats.A.escapes; esco += r.stats.B.escapes; ex += exp(overall(a) - overall(b));
+  }
+  return { win: w / n, expWin: ex / n, pts: pts / n, opp: opp / n, td: td / n, tdo: tdo / n, nf: nf / n, nfo: nfo / n, fall: fall / n, fallAg: fallAg / n, esc: esc / n, esco: esco / n };
+}
+const row = (label, s) => `${label.padEnd(24)} win ${pct(s.win)} (OVR-implied ${pct(s.expWin)}, ${s.win - s.expWin >= 0 ? '+' : ''}${f(100 * (s.win - s.expWin), 1)})  score ${f(s.pts)}-${f(s.opp)}  TD ${f(s.td, 2)}-${f(s.tdo, 2)}  esc ${f(s.esc, 2)}-${f(s.esco, 2)}  NF ${f(s.nf, 2)}-${f(s.nfo, 2)}  falls ${pct(s.fall)}/${pct(s.fallAg)} against`;
+try {
+  let G; if (LIVE) { G = loadGame(); if (!G) throw new Error('no saved game found in this browser (open the game, press Save, then reload this page)'); } else { G = newGame('oklahoma-state', 'T', SEED, { real: true }); useCalendar(G); }
+  const all = Object.values(G.wrestlers), v = all.find(w => w.name === NAME && w.team);
+  if (!v) throw new Error(NAME + ' not found');
+  const t = G.teams[v.team], wt = v.lw || v.natural, nat = v.natural;
+  out.push(`=== ${v.name} · ${CLASS_NAMES[v.cls]} · natural ${nat}${wt !== nat ? ` (last wrestled ${wt})` : ''} · ${t.name} · ${v.archetype || '?'} · OVR ${f(overall(v), 2)} · fatigue ${Math.round(v.fatigue || 0)}${v.injury ? ' · INJURED ' + v.injury.what : ''} · team plan: ${t.plan} · season ${G.season} week ${G.week}`);
+  out.push('attrs: ' + ATTR_KEYS.map(k => `${k} ${v.attrs[k]}`).join(' | '));
+  const lu = Object.entries(t.lineup).find(([, id]) => id === v.id); out.push(`current lineup slot: ${lu ? lu[0] : 'NOT IN LINEUP'}`);
+  // match log
+  const log = [];
+  const seen = new Map(), desc = o => { const str = o ? `${o.name} (${CLASS_NAMES[o.cls]}, OVR ${f(overall(o), 1)}, ${o.archetype || '?'})` : 'forfeit'; if (o) seen.set(str, o); return str; };
+  for (const d of G.schedule) { if (!d.done) continue; for (const b of d.result.bouts) { if (b.wa !== v.id && b.wb !== v.id) continue; if (b.m === 'Vacant') continue; const A = b.wa === v.id, oid = A ? b.wb : b.wa; log.push({ wk: d.week, ev: 'dual vs ' + G.teams[A ? d.b : d.a].name, wt: b.wt, win: b.w === (A ? 'A' : 'B'), res: b.d || b.m, o: desc(oid && G.wrestlers[oid]) }); } }
+  for (const tr of G.tournaments) { if (!tr.done || !tr.result) continue; for (const b of tr.result.userBouts || []) { if (b.a !== v.id && b.b !== v.id) continue; const A = b.a === v.id; log.push({ wk: tr.week, ev: tr.name + ' · ' + b.label, wt: b.wt, win: b.w === (A ? 'A' : 'B'), res: b.d, o: desc(G.wrestlers[A ? b.b : b.a]) }); } }
+  for (const tr of G.tournaments) for (const d of tr.duals || []) { if (!d.done) continue; for (const b of d.result.bouts) { if (b.wa !== v.id && b.wb !== v.id) continue; if (b.m === 'Vacant') continue; const A = b.wa === v.id; log.push({ wk: d.week, ev: tr.name + ' dual', wt: b.wt, win: b.w === (A ? 'A' : 'B'), res: b.d || b.m, o: desc(G.wrestlers[A ? b.wb : b.wa]) }); } }
+  log.sort((a, b) => a.wk - b.wk);
+  const wins = log.filter(x => x.win).length; out.push(`--- season log: ${wins}-${log.length - wins} in ${log.length} matches (${log.length ? pct(wins / log.length) : '-'})`);
+  for (const x of log) out.push(`wk ${String(x.wk).padStart(2)} ${x.win ? 'W' : 'L'} ${String(x.res).padEnd(18)} ${x.wt} lbs  ${x.ev}  vs ${x.o}`);
+  // expected record from the OVR gaps, and head-to-head sims against every opponent he has actually faced
+  const faced = log.filter(x => seen.get(x.o)); let expW = 0, varW = 0; for (const x of faced) { const p = exp(overall(v) - overall(seen.get(x.o))); expW += p; varW += p * (1 - p); }
+  if (faced.length) out.push(`--- by OVR gaps he was expected to win ${f(expW)} of ${faced.length} (he won ${faced.filter(x => x.win).length}); luck alone explains a gap of about +-${f(Math.sqrt(varW))} wins (1 sd)`);
+  const rngH = makeRng(777), uniq = [...new Map(faced.map(x => [seen.get(x.o).id, seen.get(x.o)])).values()];
+  for (const o of uniq) { const s = sim(v, [o], 'balanced', 300, rngH, startEnergy(v)); out.push(`head-to-head vs ${o.name.padEnd(20)} OVR ${f(overall(o), 1)} ${String(o.archetype || '').padEnd(12)} win ${pct(s.win)} (OVR-implied ${pct(s.expWin)})  TD ${f(s.td, 2)}-${f(s.tdo, 2)}  score ${f(s.pts)}-${f(s.opp)}   attrs ` + ATTR_KEYS.map(k => k + o.attrs[k]).join(' ')); }
+  // sims
+  const field = Object.values(G.teams).filter(x => x.id !== v.team).map(x => x.lineup[nat]).filter(Boolean).map(id => G.wrestlers[id]);
+  const top33 = field.slice().sort((a, b) => overall(b) - overall(a)).slice(0, 33), rng = makeRng(12345), en = startEnergy(v);
+  out.push(`--- ${N} simulated matches vs the ${field.length} starters now at ${nat} (mean OVR ${f(field.reduce((s, x) => s + overall(x), 0) / field.length, 2)}; top-33 mean ${f(top33.reduce((s, x) => s + overall(x), 0) / top33.length, 2)}), his current energy ${Math.round(en)}`);
+  for (const plan of ['aggressive', 'balanced', 'conservative']) out.push(row(plan + ' vs all', sim(v, field, plan, N, rng, en)));
+  out.push(row('balanced vs top-33', sim(v, top33, 'balanced', N, rng, en)));
+  const ctrl = all.filter(c => c.team && c.id !== v.id && Math.abs(overall(c) - overall(v)) <= 0.5).slice(0, 12);
+  const cs = ctrl.map(c => { const cf = Object.values(G.teams).filter(x => x.id !== c.team).map(x => x.lineup[c.natural]).filter(Boolean).map(id => G.wrestlers[id]); return { c, s: sim(c, cf, 'balanced', Math.round(N / 2), rng, 100) }; });
+  out.push(`control: ${cs.length} wrestlers within .5 OVR, mean win-vs-implied ${f(100 * cs.reduce((a, x) => a + x.s.win - x.s.expWin, 0) / Math.max(1, cs.length), 1)} pts: ` + cs.map(x => `${x.c.name.split(' ').slice(-1)[0]} ${f(overall(x.c), 1)} ${x.c.archetype || ''} ${pct(x.s.win)}`).join(', '));
+  // sensitivity
+  const base = sim(v, field, 'balanced', N * 3, makeRng(7), 100).win;
+  out.push(`--- sensitivity (win% lost if the attribute drops 4 points, vs the whole field; baseline ${pct(base)}). "per OVR pt" = what one OVR point coming from that attribute is really worth`);
+  const rows = ATTR_KEYS.map(k => { const a = { ...v, attrs: { ...v.attrs, [k]: Math.max(1, v.attrs[k] - 4) } }, lost = base - sim(a, field, 'balanced', N * 3, makeRng(7), 100).win, d = (v.attrs[k] - a.attrs[k]) * OVR_W[k] / OVR_SUM; return { k, v: v.attrs[k], lost, per: d ? lost / d : 0 }; }).sort((x, y) => y.per - x.per);
+  for (const r of rows) out.push(`${r.k.padEnd(7)} ${String(r.v).padStart(2)}  -4 costs ${f(100 * r.lost, 1).padStart(5)}%   OVR weight ${OVR_W[r.k]}   = ${f(100 * r.per, 1)}% per OVR pt`);
+} catch (e) { out.push('ERR ' + e.message); }
+document.getElementById('o').textContent = out.join('\n');
+</script>

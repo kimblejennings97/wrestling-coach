@@ -1,0 +1,181 @@
+:root {
+  --bg: #0f1419; --panel: #172029; --panel2: #1e2a36; --line: #2a3a4a; --text: #e6edf3; --muted: #8b9bab;
+  --accent: #3b82f6; --gold: #f5b942; --green: #3fb27f; --red: #e5534b; --a: #4ea1ff; --b: #ff8a5c;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+h1, h2, h3 { margin: 0 0 8px; font-weight: 600; }
+header { padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 14px; }
+header h1 { font-size: 18px; margin: 0; }
+header span { color: var(--muted); }
+main { display: grid; grid-template-columns: 340px 1fr 340px; gap: 14px; padding: 14px; align-items: start; }
+@media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.card h2 { font-size: 15px; }
+.row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+label { color: var(--muted); font-size: 12px; }
+select, input[type=number], input[type=range] { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; }
+button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-weight: 600; }
+button.secondary { background: var(--panel2); border: 1px solid var(--line); }
+button:disabled { opacity: .45; cursor: default; }
+.attr { display: grid; grid-template-columns: 118px 1fr 24px; align-items: center; gap: 6px; font-size: 12px; margin: 2px 0; }
+.bar { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+.bar i { display: block; height: 100%; }
+.t1 { background: #d95c54; } .t2 { background: #b8a14a; } .t3 { background: #6bb86b; } .t4 { background: var(--gold); }
+.attr b { text-align: right; }
+.name { font-size: 16px; font-weight: 600; }
+.sub { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+.scoreboard { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; text-align: center; align-items: center; margin-bottom: 10px; }
+.scoreboard .pts { font-size: 40px; font-weight: 700; line-height: 1; }
+.scoreboard .nm { font-size: 13px; color: var(--muted); }
+.scoreboard .A .pts { color: var(--a); } .scoreboard .B .pts { color: var(--b); }
+.clock { font-size: 18px; font-variant-numeric: tabular-nums; }
+.clock small { display: block; color: var(--muted); font-size: 11px; }
+#feed { height: 480px; overflow-y: auto; background: #0c1116; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.ev { padding: 3px 0; border-bottom: 1px solid #16202a; }
+.ev .t { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; display: inline-block; width: 58px; }
+.ev.score { color: #fff; font-weight: 600; } .ev.info { color: #b5c2cf; } .ev.period { color: var(--gold); margin-top: 6px; }
+.ev.fall { color: var(--red); font-weight: 700; } .ev.end { color: var(--green); font-weight: 700; padding: 8px 0; }
+table.stats { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.stats td, table.stats th { padding: 3px 6px; text-align: center; border-bottom: 1px solid var(--line); }
+table.stats td:first-child { text-align: left; color: var(--muted); }
+.result { margin-top: 10px; padding: 10px; background: var(--panel2); border-radius: 6px; }
+.result b { color: var(--gold); }
+.hint { color: var(--muted); font-size: 12px; }
+
+/* ---- game shell (phase 2) ---- */
+.top { display: flex; gap: 14px; align-items: center; padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+.layout { display: grid; grid-template-columns: 170px 1fr; min-height: calc(100vh - 52px); }
+nav { background: #121a22; border-right: 1px solid var(--line); padding: 10px 0; }
+nav a { display: block; padding: 8px 18px; color: var(--text); cursor: pointer; text-decoration: none; }
+nav a:hover { background: var(--panel2); } nav a.on { background: var(--panel2); border-left: 3px solid var(--accent); padding-left: 15px; font-weight: 600; }
+nav a.off { color: var(--muted); } nav a.off2 { color: var(--muted); font-size: 12px; } nav hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; } nav small { font-size: 10px; }
+.content { padding: 14px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.muted { color: var(--muted); } .pos { color: var(--green); } .neg { color: var(--red); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; } @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } .layout { grid-template-columns: 1fr; } }
+.tbl { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.tbl th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.tbl td { padding: 5px 8px; border-bottom: 1px solid #1c2733; }
+.tbl tr.me td { background: #1d3350; } .tbl td.win { font-weight: 700; color: var(--gold); }
+.tbl.dense td, .tbl.dense th { padding: 3px 5px; font-size: 12px; text-align: center; white-space: nowrap; } .tbl.dense td:first-child, .tbl.dense th:first-child { text-align: left; }
+td.ac { color: #0f1620; font-weight: 600; } td.ac.t4 { font-weight: 800; }   /* the cell background comes from .t1-.t4, so use dark text for contrast on every tier */
+.msg { padding: 6px 0; border-bottom: 1px solid var(--line); }
+a[data-act] { color: var(--accent); cursor: pointer; }
+.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; } @media (max-width: 700px) { .cols2 { grid-template-columns: 1fr; } }
+.start { max-width: 640px; margin: 30px auto; padding: 0 16px; display: flex; flex-direction: column; gap: 14px; }
+.start input, .tbl select { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; }
+
+/* school logos */
+.tn { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+.logo { object-fit: contain; flex: none; vertical-align: middle; }
+.logo.badge { display: inline-block; text-align: center; border-radius: 50%; color: #fff; font-weight: 700; letter-spacing: -0.5px; }
+.scoreboard .nm .tn { flex-direction: column; gap: 4px; }
+.logo:not(.badge) { background: #eef1f6; border-radius: 50%; padding: 2px; box-sizing: border-box; }
+
+.wlink { color: inherit; cursor: pointer; text-decoration: none; border-bottom: 1px dotted var(--muted); }
+.wlink:hover { color: var(--accent, #6ea8ff); border-bottom-color: currentColor; }
+.warn { color: #e0a43a; }
+
+/* dual results: winner green, loser red (links inherit so the wrestler names are coloured too) */
+.tbl td.win, .tbl td.win a { color: var(--green); font-weight: 700; }
+.tbl td.lose, .tbl td.lose a { color: var(--red); }
+.tbl td.win .wlink, .tbl td.lose .wlink { border-bottom-color: currentColor; }
+
+.modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal { max-width: 540px; width: calc(100% - 32px); box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+
+/* tournament brackets */
+.bkt { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
+.bcol { min-width: 210px; }
+.bhead { font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
+.bm { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; background: var(--panel2); font-size: 12.5px; }
+.bs { padding: 4px 8px; border-bottom: 1px solid var(--line); min-height: 24px; }
+.bs.w { font-weight: 700; color: var(--green); } .bs.l { color: var(--muted); } .bs.mine { background: #1d3350; } .bs.tbd { opacity: .6; }
+.bd { padding: 3px 8px; font-size: 11px; color: var(--muted); }
+
+/* wrestler names: calm light text with a dotted underline instead of loud link-blue; your wrestlers use YOUR team colour (--tc) */
+a.wlink[data-act] { color: inherit; border-bottom: 1px dotted rgba(200, 210, 225, .35); }
+a.wlink[data-act]:hover { color: #fff; border-bottom-color: currentColor; }
+.tcname, .tcname a.wlink[data-act] { color: var(--tc, var(--green)) !important; font-weight: 700; }
+.tbl tr.me td { background: color-mix(in srgb, var(--tc, #3b82f6) 15%, #101a2b); }
+.tbl tr.me td:first-child { box-shadow: inset 3px 0 0 var(--tc, var(--accent)); }
+/* bracket: only winners get a background: green, or YOUR team colour for your wrestlers; losers/pending stay plain */
+.bs.w { background: color-mix(in srgb, var(--green) 28%, transparent); }
+.bs.mine { background: transparent; box-shadow: none; }
+.bs.mine.w { background: color-mix(in srgb, var(--tc, #3b82f6) 35%, transparent); box-shadow: inset 3px 0 0 var(--tc, var(--accent)); }
+.bs.mine.w, .bs.mine.w a.wlink[data-act] { color: var(--tc, var(--green)); }
+/* winners on YOUR team use the team colour for their text instead of green */
+.tcwin { color: var(--tc, var(--green)); }
+.tbl td.win.mine, .tbl td.win.mine a { color: var(--tc, var(--green)); }
+
+/* NCAA selection show */
+.selgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 0 12px; }
+.bs.sel { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.bs.sel .sd { width: 24px; text-align: right; font-weight: 700; color: var(--gold); }
+.bs.sel .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs.sel .rt { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.bs.sel.empty { opacity: .45; }
+.bs.sel.mine { background: color-mix(in srgb, var(--tc, #3b82f6) 30%, transparent); box-shadow: inset 3px 0 0 var(--tc, var(--accent)); }
+.bs.sel.pop { animation: selpop .7s ease-out; }
+@keyframes selpop { 0% { transform: scale(.94); background: color-mix(in srgb, var(--gold) 55%, transparent); opacity: .3; } 100% { transform: scale(1); } }
+.tag { margin-left: 6px; font-size: 10px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
+.tag.al { color: #e0a64a; border-color: #6b5320; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; } .chip { padding: 3px 9px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; font-size: 12px; } .chip.on { background: var(--panel2); border-color: var(--accent); }
+.ann { margin: 6px 0 10px; padding: 6px 10px; background: var(--panel2); border-radius: 6px; }
+
+/* National Dual Tournament */
+.bs.dt { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bs.dt .sc { font-weight: 700; }
+.bm.upnext { box-shadow: 0 0 0 1px var(--gold); }
+
+.moves { margin: 0; padding-left: 18px; font-size: 13px; } .moves li { margin: 2px 0; }
+
+.tbl .fit { width: 1%; white-space: nowrap; padding-right: 14px; }
+
+.tbl.dense td.l, .tbl.dense th.l { text-align: left; }
+
+/* ---------- tablets and phones (2026-11-10) ---------- */
+html { -webkit-text-size-adjust: 100%; }
+[data-act] { cursor: pointer; }
+button, select, [data-act], .chip { touch-action: manipulation; }
+.content .card { overflow-x: auto; }                       /* wide tables scroll inside their card instead of widening the page */
+.top { padding-left: max(18px, env(safe-area-inset-left)); padding-right: max(18px, env(safe-area-inset-right)); padding-top: max(10px, env(safe-area-inset-top)); }   /* notch / home-screen app */
+nav::-webkit-scrollbar, .bkt::-webkit-scrollbar { height: 6px; }
+
+@media (pointer: coarse) {                                  /* touch screens: bigger targets, and 16px form text so iOS Safari does not zoom into a tapped dropdown */
+  button { min-height: 42px; padding: 9px 16px; }
+  select, input, textarea { font-size: 16px; min-height: 38px; }
+  nav a { padding: 12px 18px; }
+  .tbl td { padding-top: 8px; padding-bottom: 8px; }
+  .tbl.dense td, .tbl.dense th { padding: 6px 7px; }
+  .chip { padding: 7px 12px; }
+  a.wlink[data-act], a[data-act] { padding: 3px 0; display: inline-block; }
+}
+
+@media (max-width: 1100px) {                                /* iPad landscape / small laptops */
+  .layout { grid-template-columns: 150px 1fr; }
+  .content { padding: 10px; }
+  .modal { max-width: 92vw; }
+}
+
+@media (max-width: 900px) {                                 /* iPad portrait and phones: the left menu becomes a swipeable bar */
+  .layout { grid-template-columns: 1fr; }
+  nav { display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch; border-right: 0; border-bottom: 1px solid var(--line); padding: 0; }
+  nav a { white-space: nowrap; padding: 11px 15px; border-left: 0; border-bottom: 3px solid transparent; }
+  nav a.on { border-left: 0; border-bottom-color: var(--accent); padding-left: 15px; }
+  nav hr { display: none; }
+  nav a.off2 { display: none; }
+  .top { gap: 8px 12px; padding-top: 8px; padding-bottom: 8px; }
+  .scoreboard .pts { font-size: 34px; }
+  #feed { height: 42vh; min-height: 240px; }
+  .selgrid { grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); }
+}
+
+@media (max-width: 600px) {                                 /* phones */
+  .top > span.muted:nth-of-type(1) { display: none; }       /* "Coach name" */
+  .top button { padding: 7px 10px; font-size: 13px; }
+  .content { padding: 8px; gap: 10px; }
+  .card { padding: 10px; }
+  body { font-size: 13.5px; }
+  .attr { grid-template-columns: 96px 1fr 22px; }
+}

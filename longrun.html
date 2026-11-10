@@ -1,0 +1,33 @@
+<!doctype html><meta charset="utf-8"><pre id=o>running</pre><script type=module>
+import { newGame, finishWeek, useCalendar, overall, autoLineup, records, rankings, tournamentRankings, sanitizeLineup } from './js/game/core.js';
+import { beginOffseason, startNewSeason } from './js/game/offseason.js';
+import { ensurePolls } from './js/game/stats.js';
+import { WEIGHTS } from './js/data/gen.js';
+const P=new URLSearchParams(location.search),SEEDS=(P.get('seeds')||'1,2').split(',').map(Number),YEARS=+(P.get('years')||5),o=[],f=(x,d=1)=>x.toFixed(d);
+const probs=[];const chk=(c,m)=>{if(!c&&probs.length<25)probs.push(m);};
+try{
+ for(const seed of SEEDS){
+  const G=newGame('oklahoma-state','T',seed,{real:true});useCalendar(G);G.rec.mode='auto';
+  for(let y=0;y<YEARS;y++){
+   let g=0;while(G.phase==='season'&&g++<60){G.teams['oklahoma-state'].lineup=autoLineup(G,'oklahoma-state');finishWeek(G);}
+   const tag=`s${seed}y${y}`;
+   const H=G.history[G.history.length-1];chk(H&&H.season===G.season,tag+' history missing');
+   const nd=G.tournaments.find(t=>t.kind==='dual');chk(nd&&nd.done&&nd.result,tag+' dual tournament not done');
+   const nc=G.tournaments.find(t=>t.kind==='ncaa');chk(nc&&nc.done,tag+' ncaa not done');chk(G.ncaa&&G.ncaa.rv.done,tag+' selection not completed');
+   chk(nc&&nc.result&&nc.result.mow,tag+' no NCAA MOW');
+   const teamsOk=Object.values(G.teams).every(t=>Number.isFinite(t.drate));chk(teamsOk,tag+' NaN drate');
+   // lineup / roster invariants
+   const seen=new Set();for(const t of Object.values(G.teams)){for(const wt of WEIGHTS){const id=t.lineup[wt];if(!id)continue;const w=G.wrestlers[id];chk(w&&w.team===t.id,tag+' bad lineup entry '+t.id+' '+wt);if(seen.has(id))chk(false,tag+' wrestler in two lineups');seen.add(id);}}
+   const pol=ensurePolls(G);for(const wt of WEIGHTS){const ids=pol[wt];chk(ids.length<=25,tag+' poll too long');const teams=ids.map(i=>G.wrestlers[i]&&G.wrestlers[i].team);chk(new Set(teams).size===teams.length,tag+' duplicate school in poll '+wt);}
+   const rk=rankings(G),tr=tournamentRankings(G);chk(rk.length===78&&tr.length===78,tag+' rankings size '+rk.length+'/'+tr.length);chk(tr.every(x=>Number.isFinite(x.proj)),tag+' NaN proj');
+   const rec=records(G)['oklahoma-state'];
+   o.push(`${tag}: champ ${H.champion}, OSU finish #${H.userFinish||'-'} rec ${rec.w}-${rec.l}, dual-tourney champ ${nd.result.champion}, top dual rating ${rk[0].id} ${Math.round(rk[0].power)}, top tourney ${tr[0].id} ${f(tr[0].proj)}, MOW ${nc.result.mow.name}`);
+   o.push("   save size "+(JSON.stringify(G).length/1e6).toFixed(2)+" MB, wrestlers "+Object.keys(G.wrestlers).length+", orphans (no team, not in portal) "+Object.values(G.wrestlers).filter(w=>!w.team).length);
+   beginOffseason(G);startNewSeason(G);
+   for(const t of Object.values(G.teams)){if(t.id!=='oklahoma-state')chk(t.roster.length<=30,`s${seed}y${y} roster>30 ${t.id} ${t.roster.length}`);for(const wt of WEIGHTS)chk(t.roster.some(id=>G.wrestlers[id].natural===wt),`s${seed}y${y} no body at ${wt} ${t.id}`);}
+  }
+ }
+ o.push('PROBLEMS: '+(probs.length?probs.join(' | '):'none'));
+}catch(e){o.push('ERR '+e.stack);o.push('PROBLEMS so far: '+probs.join(' | '));}
+document.getElementById('o').textContent=o.join('\n');
+</script>

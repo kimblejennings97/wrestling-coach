@@ -1,0 +1,55 @@
+Cornell                 39 players  https://cornellbigred.com/sports/wrestling/roster?view=table
+Harvard                  0 players  https://gocrimson.com/sports/mwrestle/roster
+Lock Haven              39 players  https://lockhavenathletics.com/sports/wrestling/roster?view=table
+Chattanooga             33 players  https://gomocs.com/sports/wr/roster?view=table
+    Bellarmine /sports/wrestling/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bellarmine /sports/wrestling/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bellarmine /sports/wr/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bellarmine /sports/wr/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bellarmine /sports/mens-wrestling/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bellarmine /sports/mens-wrestling/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bellarmine /sports/mwrestle/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bellarmine /sports/mwrestle/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+Bellarmine               0 players  https://bellarmineknights.com/sports/mwrestle/roster
+    Bloomsburg /sports/wrestling/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bloomsburg /sports/wrestling/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bloomsburg /sports/wr/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bloomsburg /sports/wr/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bloomsburg /sports/mens-wrestling/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bloomsburg /sports/mens-wrestling/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bloomsburg /sports/mwrestle/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Bloomsburg /sports/mwrestle/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+Bloomsburg               0 players  https://bloomuhuskies.com/sports/mwrestle/roster
+CSU Bakersfield         28 players  https://gorunners.com/sports/wrestling/roster?view=table
+    Clarion /sports/wrestling/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Clarion /sports/wrestling/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Clarion /sports/wr/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Clarion /sports/wr/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Clarion /sports/mens-wrestling/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Clarion /sports/mens-wrestling/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Clarion /sports/mwrestle/roster?view=table ERR <urlopen error [Errno 11001] getaddrinfo failed>
+    Clarion /sports/mwrestle/roster ERR <urlopen error [Errno 11001] getaddrinfo failed>
+Clarion                  0 players  https://clarionathletics.com/sports/mwrestle/roster
+Davidson                29 players  https://davidsonwildcats.com/sports/wrestling/roster?view=table
+Edinboro                38 players  https://gofightingscots.com/sports/wrestling/roster?view=table
+    George Mason /sports/wr/roster?view=table ERR HTTP Error 404: Not Found
+    George Mason /sports/wr/roster ERR HTTP Error 404: Not Found
+    George Mason /sports/mens-wrestling/roster?view=table ERR HTTP Error 404: Not Found
+    George Mason /sports/mens-wrestling/roster ERR HTTP Error 404: Not Found
+    George Mason /sports/mwrestle/roster?view=table ERR HTTP Error 404: Not Found
+    George Mason /sports/mwrestle/roster ERR HTTP Error 404: Not Found
+George Mason             0 players  https://gomason.com/sports/mwrestle/roster
+    LIU /sports/wrestling/roster?view=table ERR HTTP Error 404: Not Found
+    LIU /sports/wrestling/roster ERR HTTP Error 404: Not Found
+    LIU /sports/wr/roster?view=table ERR HTTP Error 404: Not Found
+    LIU /sports/wr/roster ERR HTTP Error 404: Not Found
+    LIU /sports/mens-wrestling/roster?view=table ERR HTTP Error 404: Not Found
+    LIU /sports/mens-wrestling/roster ERR HTTP Error 404: Not Found
+    LIU /sports/mwrestle/roster?view=table ERR HTTP Error 404: Not Found
+    LIU /sports/mwrestle/roster ERR HTTP Error 404: Not Found
+LIU                      0 players  https://liuathletics.com/sports/mwrestle/roster
+Mercyhurst              54 players  https://hurstathletics.com/sports/wrestling/roster?view=table
+Morgan State            29 players  https://morganstatebears.com/sports/wrestling/roster?view=table
+Presbyterian            25 players  https://gobluehose.com/sports/wrestling/roster?view=table
+The Citadel             37 players  https://citadelsports.com/sports/wrestling/roster?view=table
+VMI                     34 players  https://vmikeydets.com/sports/wrestling/roster?view=table

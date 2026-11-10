@@ -1,0 +1,14 @@
+# Used when the project is deployed from git or with the Netlify CLI (drag-and-drop uses dist/_headers instead).
+[build]
+  command = "python tools/build_deploy.py"
+  publish = "dist"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
