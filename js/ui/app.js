@@ -18,7 +18,7 @@ const D_NAME = D.DUAL_NAME;
 import { seedOrder } from '../game/tourney.js';
 import * as S from '../game/sched.js';
 import { TEAM_COLORS } from '../data/teamcolors.js';
-import { stage, singletColors, flipAt } from './anim.js';
+import { stage, singletColors, orientAt } from './anim.js';
 import { seasonOf, careerOf, derived, KEYS, ensurePolls, flushStats, pendingStats } from '../game/stats.js';
 import * as LG from '../game/legacy.js';
 
@@ -1234,7 +1234,7 @@ function boutView() {
     <div class="clock"><span>${last ? last.clock : '3:00'}</span><small>${last ? last.period : ''}</small></div><div class="B"><div class="pts">${last ? last.b : 0}</div>${sbName(v, res, 'B')}${rtBox(last, 1)}</div></div>
     <div class="row">${done || v.asking ? '' : `<button data-act="viewpause">${v.paused ? '▶ Resume' : '⏸ Pause'}</button>`}<button class="secondary" data-act="viewjump" ${done ? 'disabled' : ''}>⏭ Jump to result</button><button class="secondary" data-act="viewclose">Close</button>
       <label class="spd">Speed <input type="range" min="0" max="2" step="1" value="${ui.speed}" data-chg="vspeed"> <b>${SPEEDS[ui.speed].n}</b></label></div>
-    ${stage(res, last, col, { band: { A: BAND[bd.A], B: BAND[bd.B] }, champ: !!v.title, flip: flipAt(res.log, v.shown - 1) })}
+    ${stage(res, last, col, { band: { A: BAND[bd.A], B: BAND[bd.B] }, champ: !!v.title, orient: orientAt(res.log, v.shown - 1) })}
     ${v.asking ? askPanel(v, res, last) : ''}
     <div id="feed">${feed}</div>
     ${done ? `<div class="result"><b>${res.detail}</b> · ${res.teamPoints} team points · Takedowns ${st.A.takedowns}-${st.B.takedowns} · Escapes ${st.A.escapes}-${st.B.escapes} · Near-fall pts ${st.A.nfPoints}-${st.B.nfPoints} · Ride ${fmtClock(st.A.ride)}-${fmtClock(st.B.ride)}</div>` : ''}</div>`;

@@ -32,6 +32,8 @@
       <div class="mv-ctrl">
         <label><input type="checkbox" id="sideB"> Move by the green wrestler (mirrored)</label>
         <label><input type="checkbox" id="flip"> Other side of the mat (after circling)</label>
+        <label>Cut the corner <select id="cut"><option value="0">no (straight line)</option><option value="1" selected>to the left</option><option value="-1">to the right</option></select></label>
+        <label>Start turned <input id="h" type="range" min="-90" max="90" step="15" value="0" style="width:120px"> <b id="hv"></b></label>
         <label><input type="checkbox" id="scrub"> Freeze frame</label>
         <label id="scrubl" style="display:none">at <input id="t" type="range" min="0" max="1.5" step="0.01" value="0" style="width:200px"> <b id="tv"></b></label>
       </div>
@@ -83,7 +85,8 @@ function show() {
   const side = $('sideB').checked ? 'B' : 'A', still = $('scrub').checked ? +$('t').value : undefined;
   res.winner = side;
   $('stage').style.setProperty('--spd', $('spd').value);
-  $('stage').innerHTML = stage(res, null, col, { clip: cur, a: side, band, flip: $('flip').checked, still });
+  $('stage').innerHTML = stage(res, null, col, { clip: cur, a: side, band, still, orient: { flip: $('flip').checked, h: +$('h').value, cut: +$('cut').value } });
+  $('hv').textContent = $('h').value + '°';
   $('ttl').textContent = NAME[cur] || cur; $('sub').textContent = `clip "${cur}" · ${side === 'A' ? 'red' : 'green'} wrestler makes the move`;
   $('note').textContent = NOTES[cur] || '';
   const s = store[cur] || {}; $('txt').value = s.t || '';
@@ -99,7 +102,7 @@ function auto() { if (timer) return stopAuto(); $('scrub').checked = false; $('s
 $('list').onclick = e => { const it = e.target.closest('.mv-item'); if (it) go(it.dataset.n); };
 $('replay').onclick = () => { $('stage').innerHTML = ''; requestAnimationFrame(show); };
 $('prev').onclick = () => step(-1); $('next').onclick = () => step(1); $('auto').onclick = auto;
-for (const id of ['spd', 'sideB', 'flip', 't']) $(id).oninput = show;
+for (const id of ['spd', 'sideB', 'flip', 't', 'h', 'cut']) $(id).oninput = show;
 $('scrub').onchange = () => { $('scrubl').style.display = $('scrub').checked ? '' : 'none'; show(); };
 const mark = v => { const s = (store[cur] ||= {}); s.v = s.v === v ? null : v; persist(); show(); };
 $('ok').onclick = () => mark('ok'); $('bad').onclick = () => mark('bad'); $('clr').onclick = () => { delete store[cur]; persist(); show(); };

@@ -539,7 +539,30 @@ function propAt(all, pr, cols, spin = 0) {
   return { p: mix3(at(pr[0]), at(pr[1]), pr[2]), c: (cols.band && cols.band.a) || '#e5534b', rot: spin };
 }
 const FIGS = ['a', 'o', 'r'];
-const still = (set, cam, cols) => { const all = solve(Object.fromEntries(FIGS.filter(f => set[f]).map(f => [f, lerpPose(set[f], set[f], 1)]))); return drawFrame(all, cam, cols, set._pr ? propAt(all, [set._pr, set._pr, 0], cols, 20) : null); };
+// ---- turning the whole pair (2026-11-12) ----
+// Clips are authored along a straight line; on top of that the pair can be turned about the vertical axis through a pivot. A move can 'cut the
+// corner' (TURN_DEG: degrees it turns while it finishes, in the window TURN_WIN), and the orientation it ends in carries into the next event
+// (orientAt), so the wrestlers move round the circle instead of always resetting to the same line. The rotation is applied to the SOLVED
+// joints, so it is exact and costs nothing in the authoring.
+export const TURN_DEG = { double: 70, single: 60, highc: 60, ankle: 55, trip: 50, scr: 50, lift: 40, sweep: 30, standup: 40, sitout: 40, granby: 30, letup: 30, sprawl: 35, whizzer: 35, hipout: 45, matret: 30, breakdown: 15 };
+const TURN_WIN = [0.42, 0.95];
+const MAT_END = { double: 1, single: 1, highc: 1, ankle: 1, trip: 1, scr: 1, lift: 1, sweep: 1, matret: 1, breakdown: 1 };   // moves that finish on the mat
+const DIRS = ['F', 'Z', 'u', 'fr', 'lat'];
+function rotAll(all, ang, cx, cz = 0) {
+  if (!ang) return all;
+  const a = ang * D, c = Math.cos(a), s = Math.sin(a);
+  for (const n in all) { const J = all[n]; for (const k in J) { const v = J[k]; if (!Array.isArray(v) || v.length !== 3) continue;
+    if (DIRS.includes(k)) J[k] = [v[0] * c - v[2] * s, v[1], v[0] * s + v[2] * c];
+    else { const x = v[0] - cx, z = v[2] - cz; J[k] = [cx + x * c - z * s, v[1], cz + x * s + z * c]; } } }
+  return all;
+}
+const ease = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+function pivotOf(c) {   // midpoint of the two hips in the clip's final pose
+  const L = c.kf.length ? c.kf[c.kf.length - 1] : c.loop && c.loop[0]; if (!L) return [0, 0];
+  const A = L.a2 || L.a, B = L.o2 || L.o; return A && B ? [(A.p[0] + B.p[0]) / 2, ((A.z || 0) + (B.z || 0)) / 2] : [0, 0];
+}
+const turnAt = (tn, t) => tn.h + tn.d * ease((t - TURN_WIN[0]) / (TURN_WIN[1] - TURN_WIN[0]));
+const still = (set, cam, cols, tn) => { const all = solve(Object.fromEntries(FIGS.filter(f => set[f]).map(f => [f, lerpPose(set[f], set[f], 1)]))); if (tn) rotAll(all, tn.h + tn.d, tn.px, tn.pz); return drawFrame(all, cam, cols, set._pr ? propAt(all, [set._pr, set._pr, 0], cols, 20) : null); };
 function loopSets(c) {   // the poses the clip settles into: given explicitly, or the last keyframe plus a slightly lower copy of it ("breathing"; a harder squeeze for pins)
   const L = c.kf[c.kf.length - 1];
   if (c.loop) return L && L.pr ? c.loop.map(s => ({ ...s, _pr: L.pr })) : c.loop;
@@ -548,10 +571,10 @@ function loopSets(c) {   // the poses the clip settles into: given explicitly, o
   if (L.pr) set._pr = set2._pr = L.pr;
   return [set, set2];
 }
-function frames(name, cols, camO) {
+function frames(name, cols, camO, tn) {   // tn = { h: orientation at the start, d: turn during the move, px, pz: pivot } in clip coordinates
   const c = getClip(name), out = [], n = c.kf.length ? c.n : 1, endCam = camO || c.cam || (c.kf.length ? c.kf[c.kf.length - 1].cam : N);
-  for (let i = 0; i < n - 1; i++) { const s = sample(c, i / (n - 1)), all = solve(s.figs); out.push(drawFrame(all, s.cam, cols, propAt(all, s.pr, cols, i * 47))); }
-  return { c, seq: out, loop: loopSets(c).map(set => still(set, endCam, cols)) };
+  for (let i = 0; i < n - 1; i++) { const t = i / (n - 1), s = sample(c, t), all = solve(s.figs); if (tn) rotAll(all, turnAt(tn, t), tn.px, tn.pz); out.push(drawFrame(all, s.cam, cols, propAt(all, s.pr, cols, i * 47))); }
+  return { c, seq: out, loop: loopSets(c).map(set => still(set, endCam, cols, tn)) };
 }
 
 // which clip an event plays, and which wrestler is its 'a' figure
@@ -561,7 +584,33 @@ const HAND = { club: 1, wrist: 1, elbow: 1, ties: 1, circle: 1 };
 const other = s => (s === 'A' ? 'B' : 'A');
 // Which side of the mat the pair is on when event i starts: every 'circle' clip ends with the two swapped, so from then on every clip
 // (takedowns, mat work, escapes) is shown mirrored until they circle back; a period break resets it (they walk back to the centre).
-export function flipAt(log, i) { let f = 0; for (let k = 0; k < i && k < log.length; k++) { const e = log[k]; if (e.fx === 'break') f = 0; else if (e.fx === 'hand' && e.mv === 'circle') f ^= 1; } return !!f; }
+export function flipAt(log, i) { return orientAt(log, i).flip; }
+// Orientation of the pair when event i starts, in screen terms: { flip (on the other side of the mat), h (degrees turned), cut (+1 / -1 / 0:
+// which way event i's move turns) }. A move cuts back toward the straight line once the pair is turned more than 15 deg, else alternates.
+// Beyond +-90 deg the turn is handed to the mirrored side (flip) so h stays within +-90. Period breaks reset everything; the hand raise is
+// always shown straight.
+const MIRROR = (side, c, f) => (((side === 'B') !== !!c.aBottom) !== !!f ? -1 : 1);
+export function orientAt(log, i) {
+  let h = 0, f = 0;
+  for (let k = 0; k < log.length; k++) {
+    const e = log[k];
+    if (e.fx === 'break' || e.type === 'end') { h = 0; f = 0; }
+    const [name, side] = clipFor({ winner: 'A' }, e), deg = TURN_DEG[name] || 0;
+    // pick the way the move cuts so it FINISHES at a readable angle: on the mat (camera already looking from the side) roughly -75..+25 deg in
+    // the clip's own frame, standing +-60; when both ways read fine, alternate
+    let cut = 0;
+    if (deg) {
+      const m = MIRROR(side, getClip(name), f), onMat = MAT_END[name], ctr = onMat ? -25 : 0, wid = onMat ? 50 : 60;
+      const end = cu => (h + cu * deg) * m, ok = cu => Math.abs(end(cu) - ctr) <= wid, pref = k % 2 ? 1 : -1;
+      cut = ok(pref) ? pref : ok(-pref) ? -pref : Math.abs(end(1) - ctr) < Math.abs(end(-1) - ctr) ? 1 : -1;
+    }
+    if (k === i) return { flip: !!f, h, cut };
+    if (e.fx === 'hand' && e.mv === 'circle') f ^= 1;
+    h += cut * deg;
+    if (h > 90) { h -= 180; f ^= 1; } else if (h < -90) { h += 180; f ^= 1; }
+  }
+  return { flip: !!f, h, cut: 0 };
+}
 export function clipFor(res, last) {
   if (!last) return ['idleN', 'A'];
   const { pos, fx, who, mv } = last, top = pos === 'topA' ? 'A' : pos === 'topB' ? 'B' : null;
@@ -592,13 +641,16 @@ export function stage(res, last, col, opt = {}) {
   if (champ) name = CHAMP[((res.seed >>> 0) % 7919) % CHAMP.length];
   if (!CLIPS[name]) name = 'idleN';
   const cols = { a: col[aSide], o: col[other(aSide)], r: '#1d2126', band: opt.band ? { a: opt.band[aSide], o: opt.band[other(aSide)] } : null };
-  if (getClip(name).noHg) cols.noHg = true;
-  const { c, seq, loop } = frames(name, cols, opt.cam);
-  const mirror = ((aSide === 'B') !== !!c.aBottom) !== !!opt.flip ? -1 : 1;   // opt.flip: the wrestlers have circled to the other side of the mat (flipAt)
+  const c0 = getClip(name); if (c0.noHg) cols.noHg = true;
+  // opt.orient = { flip, h, cut } (orientAt) or opt.flip alone: which side of the mat, how far the pair is turned, which way this move cuts
+  const ori = opt.orient || { flip: !!opt.flip, h: 0, cut: 0 }, mirror = MIRROR(aSide, c0, ori.flip);
+  const [px, pz] = pivotOf(c0), straight = end || c0.noHg;   // a mirrored clip turns the other way round in its own coordinates
+  const tn = straight ? null : { h: (ori.h || 0) * mirror, d: (ori.cut || 0) * (TURN_DEG[name] || 0) * mirror, px, pz };
+  const { c, seq, loop } = frames(name, cols, opt.cam, tn);
   let body;
   if (opt.still !== undefined) {
     const s = c.kf.length ? sample(c, opt.still) : null;
-    body = s && opt.still < 1 ? (all => drawFrame(all, opt.cam || s.cam, cols, propAt(all, s.pr, cols)))(solve(s.figs)) : loop[s ? (opt.still > 1 ? 1 : 0) : Math.min(loop.length - 1, Math.floor(opt.still * loop.length))];
+    body = s && opt.still < 1 ? (all => drawFrame(all, opt.cam || s.cam, cols, propAt(all, s.pr, cols)))(tn ? rotAll(solve(s.figs), turnAt(tn, opt.still), px, pz) : solve(s.figs)) : loop[s ? (opt.still > 1 ? 1 : 0) : Math.min(loop.length - 1, Math.floor(opt.still * loop.length))];
   } else {
     const n = seq.length, slot = n ? c.dur / n : 0, ld = c.loopDur || (c.pin ? 0.7 : 1.3), cs = x => `calc(${+x.toFixed(3)}s * var(--spd, 1))`;
     body = seq.map((f, i) => `<g class="fr" style="animation-delay:${cs(i * slot)};animation-duration:${cs(slot)}">${f}</g>`).join('')
