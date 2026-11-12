@@ -6,7 +6,7 @@ import { PRACTICE, INTENSITY, FOCUS_SHARES } from '../data/practice.js';
 import * as R from '../game/recruit.js';
 import { beginOffseason, startNewSeason, advanceOffseason, offStep, OFF_STEPS } from '../game/offseason.js';
 import {
-  newGame, autoLineup, canWrestle, overall, ovr, wrestlerAt, playDual, beginDual, stepDual, userSub, subOptions, skipToWeek, replayBout, userDual, userEvent, playEvent, teamEvents, teamTournaments, finishWeek,
+  newGame, autoLineup, canWrestle, overall, ovr, wrestlerAt, playDual, beginDual, stepDual, userSub, subOptions, skipToWeek, replayBout, watchSnapshot, redoBout, userDual, userEvent, playEvent, teamEvents, teamTournaments, finishWeek,
   records, rankings, tournamentRankings, teamStrength, fmtDate, startWeightMove, cancelWeightMove, canMove, CLASS_NAMES, potLabel, ethicLabel, coachFactor,
   INJURY_INFO, REHAB, AGGRAVATE, reinjuryMult, matchInjuryChance, durability,
 } from '../game/core.js';
@@ -18,6 +18,7 @@ const D_NAME = D.DUAL_NAME;
 import { seedOrder } from '../game/tourney.js';
 import * as S from '../game/sched.js';
 import { TEAM_COLORS } from '../data/teamcolors.js';
+import { stage, singletColors } from './anim.js';
 import { seasonOf, careerOf, derived, KEYS, ensurePolls, flushStats, pendingStats } from '../game/stats.js';
 
 import { initSaves, loadLast, loadSlot, saveGame, saveAs, copySlot, renameSlot, deleteSlot, listSaves, MAX_SLOTS } from '../game/saves.js';
@@ -75,6 +76,11 @@ function render() {
   <section class="content">${body}</section></div>${ui.modal ? modalHtml() : ''}`;
   bind();
   const feed = document.getElementById('feed'); if (feed) feed.scrollTop = feed.scrollHeight;
+  if (ui.view) {   // bring the viewer into sight when it opens (it sits below the dual table), and again for each choice prompt
+    const v = ui.view, card = document.getElementById('boutcard'), ask = document.querySelector('.ask');
+    if (card && !v.scrolled) { v.scrolled = true; card.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+    else if (ask && v.asking && v.askShown !== v.asking.key) { v.askShown = v.asking.key; ask.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  }
 }
 function bind() {
   $app.querySelectorAll('[data-act]').forEach(el => el.onclick = e => { e.stopPropagation(); act(el.dataset.act, el.dataset, e); });
@@ -162,7 +168,14 @@ function act(a, d) {
     playEvent(G, ev.ref, { keep: true }); L.initLive(ev.ref);   // simulated up front; revealed as you choose
     save(); ui.tid = ev.ref.id; ui.tview = 'team'; ui.live = true; ui.rwt = null; return go('tourney');
   }
-  if (a === 'tadv') { const t = G.tournaments.find(x => x.id === ui.tid); if (t && L.isLive(t)) { L.advanceLive(t, d.v, +ui.rwt || WEIGHTS[0]); save(); } return render(); }
+  if (a === 'twatch') {
+    const t = G.tournaments.find(x => x.id === ui.tid); if (!t || !L.isLive(t) || ui.view) return render();
+    const p = d.v === 'user' ? L.advanceToUser(t) : L.peekNext(t); if (!p) { save(); return render(); }
+    const b = p.m.u >= 0 ? t.result.userBouts[p.m.u] : p.m.bt;
+    if (!b) { L.advanceLive(t, 'match'); save(); return render(); }   // no replay data (older save): just reveal it
+    save(); ui.view = { idx: -1, res: replayBout(b), shown: 0, playing: true, tw: t.id }; return startFeed();
+  }
+  if (a === 'tadv') { stopTimers(); if (ui.view && ui.view.tw) ui.view = null; const t = G.tournaments.find(x => x.id === ui.tid); if (t && L.isLive(t)) { L.advanceLive(t, d.v, +ui.rwt || WEIGHTS[0]); save(); } return render(); }
   if (a === 'skipgo') {
     const sk = ui.skip, sum = skipToWeek(G, sk.wk, { recruit: sk.rec, pause: sk.pause }); save(); ui.dual = null; ui.live = false;
     if (sum.paused) { ui.tid = null; }
@@ -207,8 +220,9 @@ function act(a, d) {
   if (a === 'pwithdraw') { R.portalWithdraw(G, d.v); save(); return render(); }
   if (a === 'opendual') { ui.dual = { id: d.v, shown: 10, live: false }; return go('dual'); }
   if (a === 'next') { const du = findDual(ui.dual.id); simTo(du, ui.dual.shown + 1, false); ui.dual.shown = Math.min(10, ui.dual.shown + 1); save(); return render(); }
+  if (a === 'autopause') { stopTimers(); ui.dual.autoPaused = true; return render(); }
   if (a === 'auto') {
-    stopTimers(); ui.timer = setInterval(() => { const du = findDual(ui.dual.id); simTo(du, ui.dual.shown + 1, false); ui.dual.shown++; if (ui.dual.shown >= 10) { stopTimers(); save(); } render(); }, 1100); return;   // your lineup is honored while auto-running
+    ui.dual.autoPaused = false; stopTimers(); ui.timer = setInterval(() => { const du = findDual(ui.dual.id); simTo(du, ui.dual.shown + 1, false); ui.dual.shown++; if (ui.dual.shown >= 10) { stopTimers(); ui.dual.autoPaused = false; save(); } render(); }, 1100); return;   // your lineup is honored while auto-running
   }
   if (a === 'dualjump') { stopTimers(); simTo(findDual(ui.dual.id), 10, false); ui.dual.shown = 10; save(); return render(); }
   if (a === 'finishweek') return tryAdvance();
@@ -218,26 +232,39 @@ function act(a, d) {
     ui.view = { idx: +d.v, res: replayBout(b), shown: 0, playing: true }; return startFeed();
   }
   if (a === 'watchnext') {
-    stopTimers(); const du = findDual(ui.dual.id), i = ui.dual.shown; simTo(du, i + 1, false); const b = du.result.bouts[i];
+    stopTimers(); const du = findDual(ui.dual.id), i = ui.dual.shown, snap = du.done ? null : watchSnapshot(G, du); simTo(du, i + 1, false); const b = du.result.bouts[i];
     if (!b || !b.seed) { ui.dual.shown = Math.min(10, i + 1); return render(); }   // vacant/forfeit: nothing to watch
-    ui.view = { idx: i, res: replayBout(b), shown: 0, playing: true, reveal: i }; return startFeed();
+    const mySide = du.a === G.userTeam ? 'A' : du.b === G.userTeam ? 'B' : null;
+    ui.view = { idx: i, res: replayBout(b), shown: 0, playing: true, reveal: i, live: snap && mySide ? { du, i, snap, mySide, answers: {} } : null }; return startFeed();
   }
-  if (a === 'viewjump') { clearInterval(ui.vtimer); ui.view.shown = ui.view.res.log.length; ui.view.playing = false; revealWatched(); return render(); }
+  if (a === 'viewjump') { clearInterval(ui.vtimer); ui.view.asking = null; ui.view.shown = ui.view.res.log.length; ui.view.playing = false; ui.view.paused = false; revealWatched(); return render(); }
+  if (a === 'viewchoose') {
+    const v = ui.view, lv = v && v.live; if (!lv || !v.asking) return render();
+    lv.answers[v.asking.key] = d.v; v.asking = null;
+    const nb = redoBout(G, lv.du, lv.snap, lv.answers); v.res = replayBout(nb); v.playing = true; v.paused = false; save();
+    return startFeed();
+  }
+  if (a === 'viewpause') { const v = ui.view; if (v.asking) return render(); if (v.paused) { v.paused = false; v.playing = true; return startFeed(); } clearInterval(ui.vtimer); v.paused = true; return render(); }
   if (a === 'viewclose') { clearInterval(ui.vtimer); revealWatched(); ui.view = null; return render(); }
 }
 // a bout watched with "Watch next match" counts as revealed in the dual once the viewer finishes or closes
 const simTo = (du, n, assist) => { while (!du.done && du.result.bouts.length < n) stepDual(G, du, { assist }); };
-function revealWatched() { const v = ui.view; if (v && v.reveal != null && ui.dual) ui.dual.shown = Math.max(ui.dual.shown, Math.min(10, v.reveal + 1)); }
+function revealWatched() { const v = ui.view; if (v && v.tw) { const t = G.tournaments.find(x => x.id === v.tw); v.tw = null; if (t && L.isLive(t)) { L.advanceLive(t, 'match'); save(); } }
+   if (v && v.reveal != null && ui.dual) ui.dual.shown = Math.max(ui.dual.shown, Math.min(10, v.reveal + 1)); }
 // profile screens (wrestler, team, tournament) chain: Back returns to the previous profile or screen
 function openProf(screen, key, val) { (ui.stack ||= []).push({ screen: ui.screen, prof: ui.prof, tm: ui.tm, tp: ui.tp }); ui[key] = val; return go(screen); }
+const SPEEDS = [{ n: 'Slow', ms: 2600 }, { n: 'Normal', ms: 1700 }, { n: 'Fast', ms: 800 }];   // ms per play-by-play line; the animation scales with it (--spd = ms / 1000)
+if (ui.speed == null) { let raw = null; try { raw = localStorage.getItem('wc.speed'); } catch (e) {} ui.speed = raw != null && [0, 1, 2].includes(+raw) ? +raw : 1; }   // default Normal (a missing value must not read as 0 = Slow)
 function startFeed() {
   clearInterval(ui.vtimer); render();
   ui.vtimer = setInterval(() => {
     if (!ui.view) return clearInterval(ui.vtimer);
+    const v = ui.view, nx = v.res.log[v.shown];
+    if (v.live && nx && nx.ask && nx.ask.who === v.live.mySide && v.live.answers[nx.ask.key] === undefined) { clearInterval(ui.vtimer); v.asking = nx.ask; return render(); }   // your wrestler has a choice: wait for it
     ui.view.shown++;
     if (ui.view.shown >= ui.view.res.log.length) { clearInterval(ui.vtimer); ui.view.playing = false; revealWatched(); }
     render();
-  }, 1000);
+  }, SPEEDS[ui.speed].ms);
 }
 function chg(k, el) {
   if (k === 'coach') { ui.coach = el.value; return; }
@@ -257,6 +284,7 @@ function chg(k, el) {
   if (k === 'recstatus') { ui.rec.status = el.value; ui.rec.limit = 40; return render(); }
   if (k === 'sched') { const r = S.setWeek(G, +el.dataset.wk, el.value); if (!r.ok) alert(r.msg); save(); return render(); }
   if (k === 'twt') { ui.twt = +el.value; return render(); }
+  if (k === 'vspeed') { ui.speed = +el.value; try { localStorage.setItem('wc.speed', ui.speed); } catch (e) {} if (ui.view && ui.view.playing && !ui.view.paused) return startFeed(); return render(); }
   if (k === 'rwt') { ui.rwt = +el.value; return render(); }
   if (k === 'skipwk') { ui.skip.wk = +el.value; return; }
   if (k === 'skiprec') { ui.skip.rec = el.value; return; }
@@ -681,16 +709,29 @@ function dtourney() {
     const foot = done && d ? `<a data-act="opendtdual" data-v="${d.id}">View dual</a>${d.result.tiebreak ? ' <span class="muted">(tiebreaker)</span>' : ''}` : next ? '<b class="tcwin">Up next</b>' : ready ? '<span class="muted">Waiting</span>' : '<span class="muted">—</span>';
     return `<div class="bm ${next ? 'upnext' : ''}">${slot(r, m, 0)}${slot(r, m, 1)}<div class="bd">${foot}</div></div>`;
   };
-  const cols = R.map((rd, r) => `<div class="bcol"><div class="bhead">${D.roundName(t, r)}</div>${rd.map(m => box(r, m)).join('')}</div>`).join('');
+  // 3rd place dual: the two semifinal losers (derived from the semifinal feeders so a dual being watched stays hidden)
+  const th = t.br.third, semi = R[R.length - 2];
+  const lostTo = f => (f && f.w && f.d !== hid ? (f.w === f.a ? f.b : f.a) : null);
+  const slot3 = side => {
+    const id = lostTo(semi && semi[side]); if (!id) return '<div class="bs tbd"><span class="muted">TBD</span></div>';
+    const d = D.dualOf(t, th), done = shown(th), win = done && th.w === id, lose = done && th.w !== id, sc = done && d ? (id === d.a ? d.result.sa : d.result.sb) : '';
+    return `<div class="bs dt ${win ? 'w' : lose ? 'l' : ''} ${id === me ? 'mine' : ''}"><span class="tn"><small class="muted">${seed(id)}</small> ${tn(id, 14)}</span><span class="sc">${sc}</span></div>`;
+  };
+  const box3 = () => {
+    const d = D.dualOf(t, th), done = shown(th), next = nm && nm.m === th, ready = lostTo(semi[0]) && lostTo(semi[1]);
+    const foot = done && d ? `<a data-act="opendtdual" data-v="${d.id}">View dual</a>${d.result.tiebreak ? ' <span class="muted">(tiebreaker)</span>' : ''}` : next ? '<b class="tcwin">Up next</b>' : ready ? '<span class="muted">Waiting</span>' : '<span class="muted">—</span>';
+    return `<div class="bhead" style="margin-top:14px">3rd place dual</div><div class="bm ${next ? 'upnext' : ''}">${slot3(0)}${slot3(1)}<div class="bd">${foot}</div></div>`;
+  };
+  const cols = R.map((rd, r) => `<div class="bcol"><div class="bhead">${D.roundName(t, r)}</div>${rd.map(m => box(r, m)).join('')}${th && r === R.length - 1 ? box3() : ''}</div>`).join('');
   const last = R[R.length - 1][0], over = t.done;
   // where is the user?
   let status = '';
   if (t.teams.includes(me)) {
     const lost = R.some(rd => rd.some(m => shown(m) && (m.a === me || m.b === me) && m.w !== me));
-    status = over ? `Your team finished <b>${ordinal(t.result.teamScores.find(x => x.team === me).place)}</b>.` : lost ? 'Your team has been eliminated; the bracket plays on.' : nm && (nm.m.a === me || nm.m.b === me) ? 'Your dual is next.' : 'Your team is still alive.';
+    status = over ? `Your team finished <b>${ordinal(t.result.teamScores.find(x => x.team === me).place)}</b>.` : nm && nm.m.third && (nm.m.a === me || nm.m.b === me) ? 'Your team plays for third place next.' : lost ? 'Your team has been eliminated; the bracket plays on.' : nm && (nm.m.a === me || nm.m.b === me) ? (nm.m.third ? 'Your team plays for third place next.' : 'Your dual is next.') : 'Your team is still alive.';
   }
-  const curRound = nm ? D.roundName(t, nm.r) : 'Complete';
-  const played = t.duals.filter(d => d.done).length, total = R.reduce((s, rd) => s + rd.length, 0);
+  const curRound = nm ? (nm.m.third ? '3rd place dual' : D.roundName(t, nm.r)) : 'Complete';
+  const played = t.duals.filter(d => d.done).length, total = R.reduce((s, rd) => s + rd.length, 0) + (th ? 1 : 0);
   const nextLine = nm ? `Next dual: <b>${tn(nm.m.a, 16)}</b> (${seed(nm.m.a)}) vs <b>${tn(nm.m.b, 16)}</b> (${seed(nm.m.b)})${nm.m.a === me || nm.m.b === me ? ' · <b class="tcwin">your dual</b>' : ''}` : '';
   const ctrl = over ? `<b class="tcwin">Tournament complete.</b> Champion: ${tn(t.result.champion, 20)}. <button data-act="continue">Finish week ▶</button>`
     : `<button data-act="dtwatch">👁 Watch next dual</button><button data-act="dtsim">Sim next dual</button><button class="secondary" data-act="dtround">Sim round</button><button class="secondary" data-act="dtall">Skip to tournament end ▶▶</button>${t.teams.includes(me) ? '<button class="secondary" data-act="nav" data-v="lineup">Edit lineup</button>' : ''}`;
@@ -782,7 +823,8 @@ function tourney() {
     controls = `<div class="card"><h2>${tl(t.name)} <small class="muted">${t.dates} · ${t.loc}</small></h2>
       <p><b>${rname(t, cr)}</b> <span class="muted">(${cr > 0 ? `round ${cr} of ${mr}` : 'play-in round'})</span> · ${done} of ${total} matches revealed (${pct}%)<span class="muted"> — a round can't start anywhere until the previous round is finished at every weight.</span></p>
       <div class="bar" style="max-width:420px;margin-bottom:10px"><i class="t2" style="width:${pct}%"></i></div>
-      <div class="row"><button data-act="tadv" data-v="match">Next match ▶</button>
+      <div class="row"><button data-act="twatch" data-v="next" ${ui.view || !L.peekNext(t) ? 'disabled' : ''}>👁 Watch next match</button><button data-act="twatch" data-v="user" ${ui.view || !L.userMatchesAhead(t) ? 'disabled' : ''} title="Plays every match before your next one, then shows yours">👁 Watch next user match</button>
+        <button data-act="tadv" data-v="match">Next match ▶</button>
         <label>Weight <select data-chg="rwt">${WEIGHTS.map(w => `<option value="${w}" ${w === rwt ? 'selected' : ''} ${avail.includes(w) ? '' : 'disabled'}>${w}${avail.includes(w) ? '' : ' (round done)'}</option>`).join('')}</select></label>
         <button data-act="tadv" data-v="wround" ${avail.length ? '' : 'disabled'}>Finish round at ${rwt} ▶</button>
         <button data-act="tadv" data-v="round">Finish round ${cr} (all weights) ▶</button>
@@ -807,7 +849,7 @@ function tourney() {
       body = `<table class="tbl"><tr><th>Wt</th><th>Wrestler</th><th>Record</th><th>Status</th></tr>${rows || '<tr><td colspan="4" class="muted">No entries</td></tr>'}</table>
         <h3 style="margin-top:14px">Your matches so far</h3><table class="tbl"><tr><th>Wt</th><th>Round</th><th>Match</th><th>Result</th><th></th></tr>${bouts || '<tr><td colspan="5" class="muted">None yet.</td></tr>'}</table>`;
     }
-    return `${controls}<div class="card"><div class="row">${tabs}</div>${body}</div>${boutView()}`;
+    return `${controls}${boutView()}<div class="card"><div class="row">${tabs}</div>${body}</div>`;
   }
   // finished (or an older event opened from the schedule)
   const idx = r.teamScores.findIndex(x => x.team === G.userTeam);
@@ -1015,7 +1057,7 @@ function dual() {
       <td>${b.tp ? `${b.w === 'A' ? A.name : B.name} +${b.tp}` : ''} ${b.seed ? `<a data-act="watchbout" data-v="${i}">watch</a>` : ''}</td></tr>`;
   }).join('');
   let ctrl;
-  if (!final) ctrl = `<button class="secondary" data-act="auto" title="Plays the remaining bouts with the lineup you have set">${ui.timer ? 'Running…' : 'Auto-Run'}</button>${ui.dual.live ? '<button data-act="watchnext">👁 Watch Next Match</button>' : ''}<button data-act="next">Next Bout Result ▶</button><button class="secondary" data-act="dualjump" title="Plays the remaining bouts with the lineup you have set">⏭ Jump to Result</button>`;
+  if (!final) ctrl = `${ui.timer ? '<button data-act="autopause" title="Stop auto-run after the current bout">⏸ Pause auto-run</button>' : `<button class="secondary" data-act="auto" title="Plays the remaining bouts with the lineup you have set">${ui.dual.autoPaused ? '▶ Resume auto-run' : 'Auto-Run'}</button>`}${ui.dual.live ? '<button data-act="watchnext">👁 Watch Next Match</button>' : ''}<button data-act="next">Next Bout Result ▶</button><button class="secondary" data-act="dualjump" title="Plays the remaining bouts with the lineup you have set">⏭ Jump to Result</button>`;
   else ctrl = ui.dual.tid ? `<button data-act="backtourn">Back to tournament ▶</button>` : ui.dual.live ? `<button data-act="finishweek">Finish week ▶</button>` : `<button class="secondary" data-act="backsched">Back to schedule</button>`;
   const winName = r.winner === 'A' ? A.name : B.name;
   const nm = id => (id && G.wrestlers[id] ? G.wrestlers[id].name : 'no one');
@@ -1139,17 +1181,37 @@ function tournamentProfile() {
     ${field}</div>`;
 }
 
+// riding-time advantage (net seconds): shown on the side of the wrestler who is ahead; a minute of advantage is worth a point at the end of regulation
+function rtBox(last, side) {
+  const net = last && last.ride ? last.ride[0] - last.ride[1] : 0, mine = side === 0 ? net > 0 : net < 0, v = Math.abs(net);
+  return `<div class="rt ${mine ? (v >= 60 ? 'pt' : 'lead') : 'none'}" title="Riding-time advantage: a full minute ahead at the end of regulation earns a point">${mine ? `RT ${fmtClock(v)}${v >= 60 ? ' · +1' : ''}` : '&nbsp;'}</div>`;
+}
+// the user's wrestler has a start-of-period choice
+const CH_LABEL = { top: ['Top', 'start on top (offense)'], bottom: ['Bottom', 'start on bottom (defense)'], neutral: ['Neutral', 'start standing'], defer: ['Defer', 'let your opponent choose the 2nd period; you choose the 3rd'] };
+function askPanel(v, res, last) {
+  const a = v.asking, mine = res.wrestlers[v.live.mySide], opp = res.wrestlers[v.live.mySide === 'A' ? 'B' : 'A'];
+  const per = a.key === 'p3' ? 'third' : 'second', opts = a.canDefer ? ['top', 'bottom', 'neutral', 'defer'] : ['top', 'bottom', 'neutral'];
+  const my = last ? (v.live.mySide === 'A' ? last.a : last.b) : 0, th = last ? (v.live.mySide === 'A' ? last.b : last.a) : 0;
+  return `<div class="ask"><h3>${mine.name}: your choice for the ${per} period</h3>
+    <p class="muted">${mine.name} ${my}, ${opp.name} ${th}${a.key === 'p3' ? (my < th ? ' — you are trailing' : my > th ? ' — you are leading' : ' — tied') : ''}. Coach suggests: <b>${a.def}</b>.</p>
+    <div class="row">${opts.map(o => `<button class="${o === a.def ? '' : 'secondary'}" data-act="viewchoose" data-v="${o}"><b>${CH_LABEL[o][0]}</b><br><small>${CH_LABEL[o][1]}</small></button>`).join('')}</div></div>`;
+}
 function boutView() {
   const v = ui.view; if (!v) return '';
   const res = v.res, log = res.log.slice(0, v.shown), last = log[log.length - 1];
   const done = v.shown >= res.log.length;
   const feed = log.map(ev => `<div class="ev ${ev.type}"><span class="t">${ev.period} ${ev.clock}</span>${ev.text}</div>`).join('');
   const st = res.stats;
-  return `<div class="card"><div class="scoreboard"><div class="A"><div class="pts">${last ? last.a : 0}</div><div class="nm">${res.wrestlers.A.name}</div></div>
-    <div class="clock"><span>${last ? last.clock : '3:00'}</span><small>${last ? last.period : ''}</small></div><div class="B"><div class="pts">${last ? last.b : 0}</div><div class="nm">${res.wrestlers.B.name}</div></div></div>
-    <div class="row"><button class="secondary" data-act="viewjump" ${done ? 'disabled' : ''}>⏭ Jump to result</button><button class="secondary" data-act="viewclose">Close</button></div>
+  return `<div class="card${v.paused ? ' vpaused' : ''}" id="boutcard" style="--spd:${SPEEDS[ui.speed].ms / 1000}"><div class="scoreboard"><div class="A"><div class="pts">${last ? last.a : 0}</div><div class="nm">${res.wrestlers.A.name}</div>${rtBox(last, 0)}</div>
+    <div class="clock"><span>${last ? last.clock : '3:00'}</span><small>${last ? last.period : ''}</small></div><div class="B"><div class="pts">${last ? last.b : 0}</div><div class="nm">${res.wrestlers.B.name}</div>${rtBox(last, 1)}</div></div>
+    <div class="row">${done || v.asking ? '' : `<button data-act="viewpause">${v.paused ? '▶ Resume' : '⏸ Pause'}</button>`}<button class="secondary" data-act="viewjump" ${done ? 'disabled' : ''}>⏭ Jump to result</button><button class="secondary" data-act="viewclose">Close</button>
+      <label class="spd">Speed <input type="range" min="0" max="2" step="1" value="${ui.speed}" data-chg="vspeed"> <b>${SPEEDS[ui.speed].n}</b></label></div>
+    ${stage(res, last, singletColors(G, res, TEAM_COLORS))}
+    ${v.asking ? askPanel(v, res, last) : ''}
     <div id="feed">${feed}</div>
     ${done ? `<div class="result"><b>${res.detail}</b> · ${res.teamPoints} team points · Takedowns ${st.A.takedowns}-${st.B.takedowns} · Escapes ${st.A.escapes}-${st.B.escapes} · Near-fall pts ${st.A.nfPoints}-${st.B.nfPoints} · Ride ${fmtClock(st.A.ride)}-${fmtClock(st.B.ride)}</div>` : ''}</div>`;
 }
 
 render();
+
+

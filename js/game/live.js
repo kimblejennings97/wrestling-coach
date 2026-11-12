@@ -81,3 +81,20 @@ export function myStatus(G, t) {
   }
   return out;
 }
+
+// The match "Next match" would reveal, without revealing it ({wt, m} or null).
+export function peekNext(t) {
+  const L = currentRound(t); if (L == null) return null;
+  for (const w of WEIGHTS) { const n = nextMatch(t, w); if (n && n.l === L) return { wt: w, m: n }; }
+  return null;
+}
+export const userMatchesAhead = t => WEIGHTS.some(wt => orderOf(t, wt).slice(t.rv.cnt[wt]).some(m => m.u >= 0));
+// Reveal everything before the user's next match and return that match (still unrevealed), or null if he has none left.
+export function advanceToUser(t) {
+  for (let guard = 0; guard < 5000; guard++) {
+    const p = peekNext(t); if (!p) return null;
+    if (p.m.u >= 0) return p;
+    advanceLive(t, 'match');
+  }
+  return null;
+}

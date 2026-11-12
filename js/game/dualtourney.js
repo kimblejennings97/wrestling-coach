@@ -49,12 +49,14 @@ export function startDual(G, spec) {
   const r0 = []; for (let i = 0; i < P; i += 2) { const sa = order[i], sb = order[i + 1]; r0.push({ i: i / 2, a: sa <= n ? seeds[sa - 1] : null, b: sb <= n ? seeds[sb - 1] : null, d: null, w: null }); }
   rounds.push(r0);
   for (let sz = P / 4; sz >= 1; sz /= 2) rounds.push(Array.from({ length: sz }, (_, i) => ({ i, a: null, b: null, d: null, w: null })));
-  spec.br = { seeds, rounds }; spec.duals = [];
+  spec.br = { seeds, rounds, third: P >= 4 ? { i: 0, a: null, b: null, d: null, w: null, third: true } : null }; spec.duals = [];   // third = the 3rd/4th place dual between the semifinal losers
   for (const m of r0) if (m.a && !m.b) advance(spec, 0, m, m.a); else if (m.b && !m.a) advance(spec, 0, m, m.b);   // byes (never with 16)
 }
 const seedOf = (spec, id) => spec.br.seeds.indexOf(id) + 1;
 function advance(spec, r, m, winner) {
   m.w = winner;
+  const br = spec.br;
+  if (br.third && r === br.rounds.length - 2) { const loser = winner === m.a ? m.b : m.a; if (loser) { if (m.i % 2 === 0) br.third.a = loser; else br.third.b = loser; } }   // semifinal losers go straight to the 3rd place dual
   const nxt = spec.br.rounds[r + 1]; if (!nxt) return;
   const t = nxt[m.i >> 1]; if (m.i % 2 === 0) t.a = winner; else t.b = winner;
 }
@@ -63,11 +65,14 @@ function advance(spec, r, m, winner) {
 export function nextMatch(G, spec) {
   if (!spec.br) return null;
   for (let r = 0; r < spec.br.rounds.length; r++) {
-    const open = spec.br.rounds[r].filter(m => !m.w && m.a && m.b);
+    let open = spec.br.rounds[r].filter(m => !m.w && m.a && m.b);
+    const th = spec.br.third; if (r === spec.br.rounds.length - 1 && th && !th.w && th.a && th.b) open = [th, ...open];   // 3rd place dual is played with the final
     if (open.length) return { r, m: open.find(m => m.a === G.userTeam || m.b === G.userTeam) || open[0] };
   }
   return null;
 }
+// every match of the bracket including the 3rd place dual (played in the final's round)
+export const allRefs = spec => spec.br.rounds.flatMap((rd, r) => rd.map(m => ({ r, m }))).concat(spec.br.third ? [{ r: spec.br.rounds.length - 1, m: spec.br.third }] : []);
 export const dualOf = (spec, m) => (m.d ? spec.duals.find(x => x.id === m.d) : null);
 
 // create the dual for a match and start it (bout by bout, nothing simulated yet): used by "Watch next dual" so the user can coach it
@@ -92,20 +97,22 @@ export function completeMatch(G, spec, ref) {
       if (!w.injury && rng() < matchInjuryChance(w)) giveInjury(G, w, rng, tm === G.userTeam, 'at the ' + spec.name);
     }
   }
-  advance(spec, r, m, d.result.winner === 'A' ? d.a : d.b);
-  if (spec.br.rounds[spec.br.rounds.length - 1][0].w) finish(G, spec);
+  const win = d.result.winner === 'A' ? d.a : d.b;
+  if (m.third) m.w = win; else advance(spec, r, m, win);
+  const th = spec.br.third;
+  if (spec.br.rounds[spec.br.rounds.length - 1][0].w && (!th || th.w)) finish(G, spec);
   return d;
 }
 // bracket sync only: duals that finished (e.g. watched to the end) but whose result has not been applied yet
 export function settleDone(G, spec) {
   if (!spec.br) return;
-  spec.br.rounds.forEach((rd, r) => rd.forEach(m => { if (m.d && !m.w) { const d = dualOf(spec, m); if (d && d.done) completeMatch(G, spec, { r, m }); } }));
+  allRefs(spec).forEach(({ r, m }) => { if (m.d && !m.w) { const d = dualOf(spec, m); if (d && d.done) completeMatch(G, spec, { r, m }); } });
 }
 export function playMatch(G, spec, ref) { const d = beginMatch(G, spec, ref); playDual(G, d); completeMatch(G, spec, ref); return d; }
 // resolve duals that were started or watched but not yet settled in the bracket (a dual left half-way is finished by the assistant coaches)
 export function settle(G, spec) {
   if (!spec.br) return;
-  spec.br.rounds.forEach((rd, r) => rd.forEach(m => { if (m.d && !m.w) { const d = dualOf(spec, m); if (d) { playDual(G, d); completeMatch(G, spec, { r, m }); } } }));
+  allRefs(spec).forEach(({ r, m }) => { if (m.d && !m.w) { const d = dualOf(spec, m); if (d) { playDual(G, d); completeMatch(G, spec, { r, m }); } } });
 }
 
 export function simNext(G, spec) { settle(G, spec); const ref = nextMatch(G, spec); return ref ? playMatch(G, spec, ref) : null; }
@@ -116,12 +123,14 @@ function finish(G, spec) {
   const R = spec.br.rounds, place = {}, wins = {};
   const k = R.length;
   for (let r = 0; r < k; r++) for (const m of R[r]) { if (!m.a || !m.b || !m.w) continue; wins[m.w] = (wins[m.w] || 0) + 1; const loser = m.w === m.a ? m.b : m.a; place[loser] = r === k - 1 ? 2 : r === k - 2 ? 3 : r === k - 3 ? 5 : r === k - 4 ? 9 : 17; }
+  const th = spec.br.third;
+  if (th && th.w) { wins[th.w] = (wins[th.w] || 0) + 1; place[th.w] = 3; place[th.w === th.a ? th.b : th.a] = 4; }   // 3rd place dual decides 3rd and 4th
   place[R[k - 1][0].w] = 1;
   const teamScores = Object.keys(place).map(team => ({ team, pts: wins[team] || 0, place: place[team] })).sort((x, y) => x.place - y.place || seedOf(spec, x.team) - seedOf(spec, y.team));
   spec.result = { teamScores, userBouts: [], userPlaces: [], weights: {}, champion: teamScores[0].team };
   spec.done = true;
   if (spec.teams.includes(G.userTeam)) {
-    const mine = place[G.userTeam], w = wins[G.userTeam] || 0, lab = mine === 1 ? 'won the title' : mine === 2 ? 'finished second' : `finished ${mine === 3 ? 'in the semifinals' : mine === 5 ? 'in the quarterfinals' : 'in the first round'}`;
+    const mine = place[G.userTeam], w = wins[G.userTeam] || 0, lab = mine === 1 ? 'won the title' : mine === 2 ? 'finished second' : `finished ${mine === 3 ? 'third' : mine === 4 ? 'fourth' : mine === 5 ? 'in the quarterfinals' : 'in the first round'}`;
     G.inbox.unshift({ week: G.week, title: `${spec.name}: ${G.teams[G.userTeam].name} ${lab}`, body: `${w} dual win${w === 1 ? '' : 's'}. Champion: ${G.teams[teamScores[0].team].name}.` });
   }
 }

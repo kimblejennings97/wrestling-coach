@@ -1,0 +1,22 @@
+<!doctype html><meta charset="utf-8"><title>Animation sheet</title><link rel="stylesheet" href="css/style.css">
+<!-- Test tool: every bout-animation clip (js/ui/anim.js), playing in a loop. Click a clip to replay it. ?a=B puts the move on wrestler B (mirrored), ?c=headlock,cradle picks clips,
+     ?t=0.2,0.5,1 shows frozen moments instead (contact sheet for screenshots), ?w=300 sets the tile width. Not deployed. -->
+<style>body{background:#111;color:#ccc;font:12px ui-monospace,monospace;margin:8px}#o{display:flex;flex-wrap:wrap;gap:6px}.tile{width:var(--w,300px);cursor:pointer}.tile b{display:block;margin:2px 0}.row{display:flex;align-items:center;gap:4px}.row b{width:70px}.row .stage{width:var(--w,216px);margin:0}</style>
+<p>Speed <input id="spd" type="range" min="0.8" max="2.6" step="0.1" value="1.7"> &nbsp; <button id="all">Replay all</button> &nbsp; click a clip to replay it</p>
+<div id="o"></div>
+<script type="module">
+import { stage, CLIP_NAMES } from './js/ui/anim.js';
+const q = new URLSearchParams(location.search), names = (q.get('c') || CLIP_NAMES.join(',')).split(','), side = q.get('a') || 'A', o = document.getElementById('o');
+if (q.get('w')) document.documentElement.style.setProperty('--w', q.get('w') + 'px');
+const res = { winner: side, method: 'Dec', wrestlers: { A: { name: 'Al Red' }, B: { name: 'Bo Blue' } } }, col = { A: '#e0483c', B: '#3c8ae0' };
+const draw = n => `<b>${n}</b>${stage(res, null, col, { clip: n, a: side })}`;
+if (q.get('t')) { o.style.display = 'block'; o.innerHTML = names.map(n => `<div class="row"><b>${n}</b>${q.get('t').split(',').map(t => stage(res, null, col, { clip: n, a: side, still: +t })).join('')}</div>`).join(''); }
+else {
+  const setSpd = () => o.style.setProperty('--spd', document.getElementById('spd').value);
+  const all = () => { o.innerHTML = names.map(n => `<div class="tile" data-n="${n}">${draw(n)}</div>`).join(''); };
+  setSpd(); all();
+  document.getElementById('spd').oninput = () => { setSpd(); all(); };
+  document.getElementById('all').onclick = all;
+  o.onclick = e => { const t = e.target.closest('.tile'); if (t) t.innerHTML = draw(t.dataset.n); };
+}
+</script>

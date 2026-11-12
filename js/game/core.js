@@ -8,6 +8,7 @@ import { seasonCalendar, resolveTournaments } from '../data/tournaments.js';
 import { pickDualField, makeDualSpec, DUAL_WEEK } from './dualtourney.js';
 import { coachMoves } from './dualcoach.js';
 import { REAL_TOP, TIER_OVR, REAL_NAMES_ENABLED } from '../data/realtop.js';
+import { REAL_OVERRIDES } from '../data/overrides.js';
 import { REAL_TEAMS } from '../data/realteams.js';
 import { ncaaFloor } from '../data/ncaa2026.js';
 import { runEvent, makeConfTournaments, computeNcaaField, completeSelection, finalizeSeason, recordTHist } from './tourney.js';
@@ -76,10 +77,20 @@ function applyRealTeams(G, rng) {
     t.roster = [];
     const starters = {};
     for (const line of raw.split('\n')) {
-      const [name, wtS, clsS, ovrS, stS, hm] = line.split('|'), wt = +wtS, target = Math.max(+ovrS, ncaaFloor(name, +wtS));   // 2026 NCAA placers are rated at least as high as their finish implies
+      const [name, wtS, clsS, ovrS, stS, hm] = line.split('|'), wt = +wtS, ov = REAL_OVERRIDES[name], target = ov ? ov.ovr : Math.max(+ovrS, ncaaFloor(name, +wtS));   // 2026 NCAA placers are rated at least as high as their finish implies
       const w = generateWrestler(rng, { weight: wt, quality: target, archetype: rng.pick(archKeys), school: t.name, name });
       const delta = target - overallLegacy(w);                // pull the generated attributes onto the target rating (legacy formula: attributes unchanged)
       for (const k of ATTR_KEYS) w.attrs[k] = Math.max(1, Math.min(20, Math.round(w.attrs[k] + delta + rng.gauss() * 0.4)));
+      if (ov) {   // hand-set rating: pin the listed attributes, then move the free ones until the overall hits the target (no rng, so nothing else shifts)
+        const fixed = ov.set || {}; for (const k in fixed) w.attrs[k] = fixed[k];
+        const free = ATTR_KEYS.filter(k => !(k in fixed));
+        for (let it = 0; it < 400; it++) {
+          const diff = ov.ovr - overall(w); if (Math.abs(diff) < 0.06) break;
+          const cand = free.filter(k => (diff > 0 ? w.attrs[k] < 20 : w.attrs[k] > 1)); if (!cand.length) break;
+          const k = cand.sort((x, y) => (diff > 0 ? w.attrs[x] - w.attrs[y] : w.attrs[y] - w.attrs[x]) || OVR_W[y] - OVR_W[x])[0];   // lift the lowest / lower the highest
+          w.attrs[k] += diff > 0 ? 1 : -1;
+        }
+      }
       w.id = 'w' + G.nextId++; w.team = t.id; w.natural = wt; w.cls = +clsS; w.real = true; if (hm) w.hm = hm; delete w.plan;
       initDev(w, rng); G.wrestlers[w.id] = w; t.roster.push(w.id);
       if (stS === '1') starters[wt] = target;
@@ -294,10 +305,11 @@ export function stepDual(G, d, opts = {}) {
   if (ia && ib) {
     const wa = wrestlerAt(G, ia, wt), wb = wrestlerAt(G, ib, wt);
     const seed = (P.seedBase + k * 7919) % 2000000000 + 1, eA = startEnergy(wa), eB = startEnergy(wb);
-    const r = simulateBout(wa, wb, { seed, planA: A.plan, planB: B.plan, energyA: eA, energyB: eB });
+    const userSide = d.a === G.userTeam ? 'A' : d.b === G.userTeam ? 'B' : null, choices = opts.choices || null;   // choices = the user's start-of-period picks for his own wrestler (watched bouts)
+    const r = simulateBout(wa, wb, { seed, planA: A.plan, planB: B.plan, energyA: eA, energyB: eB, userSide, choices });
     recordBout(G, ia, ib, wt, r);
     Object.assign(bout, { w: r.winner, m: r.method, d: r.detail, tp: r.teamPoints, sA: r.score.A, sB: r.score.B, na: wa.name, nb: wb.name });
-    if (userInvolved) Object.assign(bout, { seed, eA, eB, planA: A.plan, planB: B.plan, snapA: { name: wa.name, school: wa.school, weight: wt, attrs: wa.attrs }, snapB: { name: wb.name, school: wb.school, weight: wt, attrs: wb.attrs } });
+    if (userInvolved) Object.assign(bout, { seed, eA, eB, planA: A.plan, planB: B.plan, snapA: { name: wa.name, school: wa.school, weight: wt, attrs: wa.attrs }, snapB: { name: wb.name, school: wb.school, weight: wt, attrs: wb.attrs }, userSide, choices });
   } else if (ia || ib) {
     const w = ia ? 'A' : 'B';
     Object.assign(bout, { w, m: 'Forfeit', d: 'Forfeit', tp: 6, sA: 0, sB: 0, na: ia ? G.wrestlers[ia].name : '—', nb: ib ? G.wrestlers[ib].name : '—' });
@@ -314,6 +326,15 @@ export function stepDual(G, d, opts = {}) {
     delete d.prog;
   }
   return d.result;
+}
+// ---- watching a bout of a live dual with a say in the start-of-period choices ----
+// The bout is simulated up front (so the dual always has a result), then re-run from the same seed with the user's picks as he makes them:
+// snapshot the dual before the bout, restore it, and step the bout again with `choices`. Choices use no rng, so everything before the choice repeats exactly.
+export function watchSnapshot(G, d) { beginDual(G, d); return { prog: JSON.stringify(d.prog), result: JSON.stringify(d.result), done: !!d.done, sq: (G.sq || []).length }; }
+export function redoBout(G, d, snap, choices) {
+  d.prog = JSON.parse(snap.prog); d.result = JSON.parse(snap.result); d.result.subs = d.prog.subs; d.done = snap.done; if (G.sq) G.sq.length = snap.sq;
+  const k = d.prog.k; stepDual(G, d, { assist: false, choices });
+  return d.result.bouts[k];
 }
 export function playDual(G, d) {
   if (d.done) return d.result;
@@ -349,7 +370,7 @@ export function subOptions(G, d, wt) {
 }
 
 export function replayBout(b) {
-  return simulateBout({ ...b.snapA, plan: b.planA }, { ...b.snapB, plan: b.planB }, { seed: b.seed, planA: b.planA, planB: b.planB, energyA: b.eA, energyB: b.eB });
+  return simulateBout({ ...b.snapA, plan: b.planA }, { ...b.snapB, plan: b.planB }, { seed: b.seed, planA: b.planA, planB: b.planB, energyA: b.eA, energyB: b.eB, userSide: b.userSide, choices: b.choices });
 }
 
 export const userDual = G => G.schedule.find(d => d.week === G.week && (d.a === G.userTeam || d.b === G.userTeam)) || null;

@@ -1,5 +1,5 @@
 <!doctype html><meta charset="utf-8"><pre id=o>running</pre><script type=module>
-import { newGame, finishWeek, useCalendar, overall, autoLineup, records, rankings, tournamentRankings, sanitizeLineup } from './js/game/core.js';
+import { newGame, finishWeek, useCalendar, overall, autoLineup, records, rankings, tournamentRankings, sanitizeLineup , userDual, playDual } from './js/game/core.js';
 import { beginOffseason, startNewSeason } from './js/game/offseason.js';
 import { ensurePolls } from './js/game/stats.js';
 import { WEIGHTS } from './js/data/gen.js';
@@ -9,7 +9,7 @@ try{
  for(const seed of SEEDS){
   const G=newGame('oklahoma-state','T',seed,{real:true});useCalendar(G);G.rec.mode='auto';
   for(let y=0;y<YEARS;y++){
-   let g=0;while(G.phase==='season'&&g++<60){G.teams['oklahoma-state'].lineup=autoLineup(G,'oklahoma-state');finishWeek(G);}
+   let g=0;while(G.phase==='season'&&g++<60){G.teams['oklahoma-state'].lineup=autoLineup(G,'oklahoma-state');{const ud=userDual(G);if(ud&&!ud.done)playDual(G,ud);}finishWeek(G);}
    const tag=`s${seed}y${y}`;
    const H=G.history[G.history.length-1];chk(H&&H.season===G.season,tag+' history missing');
    const nd=G.tournaments.find(t=>t.kind==='dual');chk(nd&&nd.done&&nd.result,tag+' dual tournament not done');

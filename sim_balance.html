@@ -1,5 +1,5 @@
 <!doctype html><pre id=o>running</pre><script type=module>
-import { newGame, finishWeek, overall, useCalendar, teamStrength, autoLineup } from './js/game/core.js';
+import { newGame, finishWeek, overall, useCalendar, teamStrength, autoLineup , userDual, playDual } from './js/game/core.js';
 import { beginOffseason, startNewSeason } from './js/game/offseason.js';
 const P = new URLSearchParams(location.search), SEEDS = (P.get('seeds') || '1,2').split(',').map(Number), YEARS = +(P.get('years') || 8), USER = P.get('user') || 'iowa';
 const out = [], log = s => out.push(s), mean = a => a.reduce((s, x) => s + x, 0) / Math.max(1, a.length), sd = a => { const m = mean(a); return Math.sqrt(mean(a.map(x => (x - m) ** 2))); }, f = (x, d = 2) => x.toFixed(d);
@@ -10,7 +10,7 @@ try {
     const G = newGame(USER, 'T', seed, { real: true }); useCalendar(G); G.rec.mode = 'auto';
     const champsThis = new Set(); const start = {}; for (const t of Object.values(G.teams)) start[t.id] = t.prestige;
     for (let yr = 0; yr < YEARS; yr++) {
-      let g = 0; while (G.phase === 'season' && g++ < 60) { if (P.get('ul') !== '0') G.teams[USER].lineup = autoLineup(G, USER); finishWeek(G); }
+      let g = 0; while (G.phase === 'season' && g++ < 60) { if (P.get('ul') !== '0') G.teams[USER].lineup = autoLineup(G, USER); { const ud = userDual(G); if (ud && !ud.done) playDual(G, ud); } finishWeek(G); }
       const H = G.history[G.history.length - 1];
       (agg.utraj ||= {})[seed] = (agg.utraj[seed] || []).concat([`${f(G.teams[USER].prestige, 1)}/#${H ? H.userFinish : '-'}/${f(mean(Object.values(G.teams[USER].lineup).filter(Boolean).map(i => overall(G.wrestlers[i]))), 1)}`]);
       if (H) {

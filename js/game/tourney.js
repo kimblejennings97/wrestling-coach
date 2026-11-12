@@ -126,7 +126,8 @@ export function runEvent(G, spec, opts = {}) {
       const uIdx = (a.team === G.userTeam || b.team === G.userTeam) ? res.userBouts.length : -1;
       // round = 1 + the latest round either wrestler just came from (so consolation rounds line up with the championship rounds)
       const lvl = Math.max(minR, (a.lvl ?? -1) + 1, (b.lvl ?? -1) + 1);   // explicit reveal level (roundPlan); dependency is only a safety net
-      if (keep) { const i = matches.length; matches.push({ i, l: lvl, rl, c: champ ? 1 : 0, lb: label, a: a.id, b: b.id, sa: a.seed, sb: b.seed, pa: a.lm ?? -1, pb: b.lm ?? -1, w: r.winner, m: r.method, d: r.detail, u: uIdx }); a.lm = b.lm = i; }
+      if (keep) { const i = matches.length; matches.push({ i, l: lvl, rl, c: champ ? 1 : 0, lb: label, a: a.id, b: b.id, sa: a.seed, sb: b.seed, pa: a.lm ?? -1, pb: b.lm ?? -1, w: r.winner, m: r.method, d: r.detail, u: uIdx,
+        bt: uIdx >= 0 ? undefined : { seed, eA, eB, planA: pa, planB: pb, snapA: { name: wa.name, school: wa.school, weight: wt, attrs: { ...wa.attrs } }, snapB: { name: wb.name, school: wb.school, weight: wt, attrs: { ...wb.attrs } } } }); a.lm = b.lm = i; }
       a.lvl = b.lvl = lvl;
       if (a.team === G.userTeam || b.team === G.userTeam) {
         res.userBouts.push({ wt, label, a: a.id, b: b.id, aTeam: a.team, bTeam: b.team, aName: wa.name, bName: wb.name, w: r.winner, d: r.detail, sA: r.score.A, sB: r.score.B, seed, eA, eB, planA: pa, planB: pb,

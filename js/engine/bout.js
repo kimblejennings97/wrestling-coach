@@ -12,6 +12,8 @@ export const ATTR_LABELS = {
 // Scoring values in one place. Takedown = 3: NCAA Division I adopted the 3-point takedown (confirmed via Mat Stats analysis of 2024-26 data).
 export const RULES = { takedown: 3, escape: 1, reversal: 2 };
 // Pin odds per near-fall exposure: clamp(base + adv*skillGap + (str-10)*strK, min, max) x (pts>=3 ? bigMult : 1)
+// start-of-period choice thresholds (attribute-difference units; see chooseStart)
+export const CHOICE = { top: 7, p2Neutral: 7, trailNeutral: 3, defer: 47 };   // defer = % of toss winners who pass the 2nd-period choice (McGarvey 2018: 47%)
 export const PIN = { base: 0.10, adv: 0.016, strK: 0.003, min: 0.015, max: 0.4, bigMult: 1.2 }; // retuned 2026-11-09 with the fewer-near-falls change (was base .035 / adv .008); before 2026-11-08: base .10 / adv .018 / bigMult 1.35 with ~1 near-fall per bout
 const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five'];
 const cap = w => w[0].toUpperCase() + w.slice(1);
@@ -69,7 +71,7 @@ export function simulateBout(wA, wB, opts = {}) {
   const log = [];
 
   const nm = s => lastName(W[s]);
-  const say = (type, text) => log.push({ type, period: S.periodLabel, clock: fmtClock(S.remaining), a: S.score.A, b: S.score.B, text });
+  const say = (type, text, fx, who, ask, mv) => log.push({ type, period: S.periodLabel, clock: fmtClock(S.remaining), a: S.score.A, b: S.score.B, text, ride: [Math.round(S.ride.A), Math.round(S.ride.B)], pos: S.pos, fx: fx || null, who: who || null, ask: ask || null, mv: mv || null });   // ask = a start-of-period choice the viewer may hand to the user   // pos/fx/who/mv (mv = which move, e.g. 'headlock', 'cradle', 'sprawl') only drive the viewer animation
   const pick = arr => rng.pick(arr);
 
   // ---------- rating helpers ----------
@@ -129,7 +131,7 @@ export function simulateBout(wA, wB, opts = {}) {
     const a = W[att].attrs;
     const opts = [
       ['a blast double', a.str * 1.2 + a.tdo * 0.5], ['a low single', a.speed + a.tdo * 0.6], ['a high-crotch', a.tdo + a.flex * 0.4],
-      ['an ankle pick', a.flex * 1.1 + a.speed * 0.4], ['a double leg', a.tdo + a.str * 0.3], ['a snap and go-behind', a.hand * 1.2 + a.iq * 0.3],
+      ['an ankle pick', a.flex * 1.1 + a.speed * 0.4], ['a double leg', a.tdo + a.str * 0.3], ['a snap and go-behind', a.hand * 1.2 + a.iq * 0.3], ['a duck-under', a.speed * 0.8 + a.hand * 0.7],
     ];
     return rng.weighted(opts, o => Math.pow(Math.max(1, o[1] - 5), 2))[0];
   };
@@ -137,10 +139,14 @@ export function simulateBout(wA, wB, opts = {}) {
     const a = W[t].attrs;
     const opts = [
       ['a half nelson', a.str + a.topt], ['a cradle', a.flex + a.topt], ['a tilt', a.iq + a.topt],
-      ['a leg ride and turk', a.topc + a.str * 0.5], ['an arm bar', a.str + a.topt * 0.5], ['a cross-face cradle', a.flex + a.topc * 0.5],
+      ['a leg ride and turk', a.topc + a.str * 0.5], ['an arm bar', a.str + a.topt * 0.5], ['a cross-face cradle', a.flex + a.topc * 0.5], ['a chicken wing', a.topc + a.iq * 0.5],   // one rng draw whatever the list length: results unchanged
     ];
     return rng.weighted(opts, o => Math.pow(Math.max(1, o[1] - 5), 2))[0];
   };
+  // move name -> animation key (viewer only)
+  const MV = { 'a blast double': 'double', 'a low single': 'single', 'a high-crotch': 'highc', 'an ankle pick': 'ankle', 'a double leg': 'double', 'a snap and go-behind': 'snap', 'a duck-under': 'duck', 'out of a wild scramble': 'scr',
+    'a huge arm throw': 'armthrow', 'a headlock': 'headlock', 'a lateral drop': 'lateral', "a fireman's carry": 'fireman', 'a high-amplitude lift': 'lift',
+    'a half nelson': 'half', 'a cradle': 'cradle', 'a tilt': 'tilt', 'a leg ride and turk': 'turk', 'an arm bar': 'armbar', 'a cross-face cradle': 'cradle', 'a chicken wing': 'wing' };
   const BIG = ['a huge arm throw', 'a headlock', 'a lateral drop', "a fireman's carry", 'a high-amplitude lift'];
   const fmtRT = sec => fmtClock(Math.abs(sec));
 
@@ -154,7 +160,7 @@ export function simulateBout(wA, wB, opts = {}) {
       `${nm(att)} drives through ${how} — takedown!`,
       `${nm(def)} can't stop ${how}. ${nm(att)} scores the takedown.`,
     ];
-    say('score', `${pick(T)} (${scoreLine()})`);
+    say('score', `${pick(T)} (${scoreLine()})`, 'td', att, null, MV[how]);
   }
 
   function exposure(t, b, src) {
@@ -175,16 +181,16 @@ export function simulateBout(wA, wB, opts = {}) {
     const guard = 0.65 * e(def, 'tdd') + 0.10 * e(def, 'hand') + 0.10 * e(def, 'speed') + 0.08 * e(def, 'flex') + 0.07 * e(def, 'iq');
     if (rng.chance(Math.min(pTakedown(power, guard) * 1.1, 0.95))) {   // throws get a small edge over shots, but an elite takedown defender still shuts them down
       ST[att].takedowns++; award(att, RULES.takedown); S.pos = 'top' + att;
-      if (S.over) { say('score', `${nm(att)} hits ${how}! (${scoreLine()})`); return; }
+      if (S.over) { say('score', `${nm(att)} hits ${how}! (${scoreLine()})`, 'td', att, null, MV[how]); return; }
       const x = exposure(att, def, 'throw');
-      if (x.pin) { say('fall', `${nm(att)} hits ${how} and lands ${nm(def)} right on his back — he's holding him there... FALL!`); doFall(att); return; }
-      say('score', `${nm(att)} hits ${how}! ${nm(def)} is in trouble — takedown plus ${x.pts} near-fall points. (${scoreLine()})`);
+      if (x.pin) { say('fall', `${nm(att)} hits ${how} and lands ${nm(def)} right on his back — he's holding him there... FALL!`, 'fall', att, null, MV[how]); doFall(att); return; }
+      say('score', `${nm(att)} hits ${how}! ${nm(def)} is in trouble — takedown plus ${x.pts} near-fall points. (${scoreLine()})`, 'nf', att, null, MV[how]);
     } else {
       if (rng.chance(0.4 * counterScale(def, att))) {   // a failed throw is only turned around by someone near the thrower's level
         ST[def].counters++; ST[def].takedowns++; award(def, RULES.takedown); S.pos = 'top' + def;
-        say('score', `${nm(att)} goes for ${how} but ${nm(def)} turns it around and scores! (${scoreLine()})`);
+        say('score', `${nm(att)} goes for ${how} but ${nm(def)} turns it around and scores! (${scoreLine()})`, 'td', def, null, 'counter');
       } else {
-        say('info', `${nm(att)} tries ${how}, but ${nm(def)} rides it out and they reset.`);
+        say('info', `${nm(att)} tries ${how}, but ${nm(def)} rides it out and they reset.`, 'stuff', att, null, 'throw');
       }
     }
   }
@@ -198,8 +204,8 @@ export function simulateBout(wA, wB, opts = {}) {
       const staller = S.mode === 'reg' && S.periodNo >= 2 ? ['A', 'B'].find(x => S.score[x] > S.score[other(x)] && plan[x] === 'conservative') : null;
       if (staller && rng.chance(0.16)) {
         stall[staller]++;
-        if (stall[staller] === 1) say('info', `${nm(staller)} is warned for stalling.`);
-        else { award(other(staller), 1); say('score', `Stalling on ${nm(staller)} — one point to ${nm(other(staller))}. (${scoreLine()})`); }
+        if (stall[staller] === 1) say('info', `${nm(staller)} is warned for stalling.`, 'stall', staller);
+        else { award(other(staller), 1); say('score', `Stalling on ${nm(staller)} — one point to ${nm(other(staller))}. (${scoreLine()})`, 'stall', staller); }
         tiredCheck(); return;
       }
       const hf = e('A', 'hand') - e('B', 'hand');
@@ -232,17 +238,18 @@ export function simulateBout(wA, wB, opts = {}) {
     const r = rng();
     if (r < pCounter) {
       ST[def].counters++; ST[def].takedowns++; award(def, RULES.takedown); S.pos = 'top' + def;
-      say('score', `${nm(att)} goes for ${how}, but ${nm(def)} counters and gets behind! ${cap(WORDS[RULES.takedown])} for ${nm(def)}. (${scoreLine()})`);
+      say('score', `${nm(att)} goes for ${how}, but ${nm(def)} counters and gets behind! ${cap(WORDS[RULES.takedown])} for ${nm(def)}. (${scoreLine()})`, 'td', def, null, 'counter');
     } else if (r < pCounter + 0.2) {
       if (rng.chance(sig(0.15 * (ss(att) - ss(def))) * 0.7 * Math.max(0.02, Math.min(1.3, pTD / 0.3)))) takedown(att, def, 'out of a wild scramble');   // a shot the defender shuts down rarely turns into a scramble takedown
-      else say('info', `Scramble! ${nm(att)} and ${nm(def)} spin around, but neither can finish — back to the feet.`);
+      else say('info', `Scramble! ${nm(att)} and ${nm(def)} spin around, but neither can finish — back to the feet.`, 'scramble', att);
     } else {
       const D = [
         `${nm(def)} sprawls and stuffs ${how} from ${nm(att)}.`, `${nm(att)} goes for ${how}; ${nm(def)} fights off the hands and stays on his feet.`,
         `${nm(def)} hips out of ${how} and circles away.`, `${nm(att)} gets in deep on ${how}, but ${nm(def)} whizzers and blocks it.`,
         `${nm(att)} goes for ${how} and they scramble out of bounds.`,
       ];
-      say('info', pick(D));
+      const dTxt = pick(D);
+      say('info', dTxt, 'stuff', att, null, ['sprawl', 'handfight', 'hipout', 'whizzer', 'oob'][D.indexOf(dTxt)]);
     }
     tiredCheck();
   }
@@ -259,7 +266,7 @@ export function simulateBout(wA, wB, opts = {}) {
       const lead = S.score[T] - S.score[Bt], gap = clamp((e(T, 'tdo') - e(Bt, 'tdd') - 2) / 6, 0, 1);
       if (lead >= FLOW.letLead && gap > 0 && rng.chance(FLOW.letUp * gap)) {
         ST[Bt].escapes++; award(Bt, RULES.escape); S.pos = 'neutral';
-        say('score', `${nm(T)} lets ${nm(Bt)} up, looking for the bonus. Escape, one point. (${scoreLine()})`);
+        say('score', `${nm(T)} lets ${nm(Bt)} up, looking for the bonus. Escape, one point. (${scoreLine()})`, 'esc', Bt, null, 'letup');
         tiredCheck(); return;
       }
     }
@@ -272,22 +279,26 @@ export function simulateBout(wA, wB, opts = {}) {
       S.ride[T] += dt * FLOW.rideK;
       const how = turnName(T);
       const x = exposure(T, Bt, 'turn');
-      if (x.pin) { say('fall', `${nm(T)} locks up ${how} and puts ${nm(Bt)} on his back... the referee is down — FALL!`); doFall(T); return; }
-      say('score', `${nm(T)} catches ${nm(Bt)} with ${how} — near fall, ${x.pts} points. (${scoreLine()})`);
+      if (x.pin) { say('fall', `${nm(T)} locks up ${how} and puts ${nm(Bt)} on his back... the referee is down — FALL!`, 'fall', T, null, MV[how]); doFall(T); return; }
+      say('score', `${nm(T)} catches ${nm(Bt)} with ${how} — near fall, ${x.pts} points. (${scoreLine()})`, 'nf', T, null, MV[how]);
     } else if (r < turnP + escP) {
       const pRev = clamp(FLOW.rev + 0.015 * (e(Bt, 'speed') + e(Bt, 'iq') - 20), 0.02, 0.5);
       if (rng.chance(pRev)) {
         ST[Bt].reversals++; award(Bt, RULES.reversal); S.pos = 'top' + Bt; S.ride[Bt] += 0;
-        say('score', `${nm(Bt)} sits out, turns the corner and reverses ${nm(T)}! ${cap(WORDS[RULES.reversal])} points. (${scoreLine()})`);
+        const sw = Math.round(S.elapsed) % 2 === 1;   // which reversal (no rng: results unchanged)
+        say('score', `${nm(Bt)} ${sw ? 'hits a switch and comes out on top of' : 'sits out, turns the corner and reverses'} ${nm(T)}! ${cap(WORDS[RULES.reversal])} points. (${scoreLine()})`, 'rev', Bt, null, sw ? 'switch' : 'sitout');
       } else {
         ST[Bt].escapes++; award(Bt, 1); S.pos = 'neutral';
-        say('score', pick([`${nm(Bt)} stands up and breaks free — escape, one point. (${scoreLine()})`, `${nm(Bt)} hand-fights out of the bottom position. Escape! (${scoreLine()})`]));
+        const E2 = [`${nm(Bt)} stands up and breaks free — escape, one point. (${scoreLine()})`, `${nm(Bt)} hand-fights out of the bottom position. Escape! (${scoreLine()})`,
+          `${nm(Bt)} hits a Granby roll and comes out the back door — escape, one point. (${scoreLine()})`], eTxt = pick(E2);
+        say('score', eTxt, 'esc', Bt, null, ['standup', 'sitout', 'granby'][E2.indexOf(eTxt)]);
       }
     } else {
       S.ride[T] += dt * FLOW.rideK;
       if (rng.chance(0.55)) {
-        say('info', pick([`${nm(T)} rides tight, breaking ${nm(Bt)} down to the mat.`, `${nm(Bt)} tries to stand, but ${nm(T)} cuts him back down.`,
-          `${nm(T)} keeps heavy hips on ${nm(Bt)}; the riding time clock is running.`, `${nm(Bt)} is flat to the mat as ${nm(T)} looks for a turn.`]));
+        const R2 = [`${nm(T)} rides tight, breaking ${nm(Bt)} down to the mat.`, `${nm(Bt)} tries to stand, but ${nm(T)} returns him to the mat.`,
+          `${nm(T)} keeps heavy hips on ${nm(Bt)}; the riding time clock is running.`, `${nm(Bt)} is flat to the mat as ${nm(T)} looks for a turn.`], rTxt = pick(R2);
+        say('info', rTxt, 'ride', T, null, ['breakdown', 'matret', 'hips', 'flat'][R2.indexOf(rTxt)]);
       }
     }
     tiredCheck();
@@ -301,15 +312,25 @@ export function simulateBout(wA, wB, opts = {}) {
     while (S.remaining > 0 && !S.over) tick();
   }
 
-  function chooseStart(c) {
-    if (opts.chooser) { const r = opts.chooser(c, S, W); if (r) return r; }
+  // The coach's (AI) choice for wrestler c. Returns { pick, def }: pick = what happens (a human-controlled side, opts.userSide, overrides it with
+  // opts.choices[key]: 'top' | 'bottom' | 'neutral' | 'defer'), def = what the coach would have done. Choices consume no rng, so re-running a bout
+  // from the same seed with different choices keeps everything before the choice identical.
+  function chooseStart(c, key, canDefer) {
     const o = other(c);
     const topVal = SKILL.amp * (0.5 * (W[c].attrs.topc + W[c].attrs.topt) - 0.5 * (W[o].attrs.botEsc + W[o].attrs.botRes));
     const botVal = SKILL.amp * (0.5 * (W[c].attrs.botEsc + W[c].attrs.botRes) - 0.5 * (W[o].attrs.topc + W[o].attrs.topt));
     const tdEdge = SKILL.amp * (W[c].attrs.tdo - W[o].attrs.tdd);
-    if (S.periodNo === 3 && S.score[c] < S.score[o] && tdEdge >= 3) return 'neutral';
-    if (topVal - botVal > 2.5) return 'top';
-    return 'bottom';
+    // Real NCAA choices (McGarvey 2018): the period-2 chooser took bottom ~89%, neutral ~7%, top ~4%. Top is only for wrestlers who are nearly sure to get a turn.
+    const trail = S.score[o] - S.score[c];
+    let def;
+    if (canDefer && (Math.imul(seed | 0, 2654435761) >>> 0) % 100 < CHOICE.defer) def = 'defer';   // toss winner passes the 2nd-period choice (real: ~47% of the time); hash of the seed, no rng
+    else if (S.periodNo === 3 && trail > 0 && (tdEdge >= CHOICE.trailNeutral || (trail >= 3 && tdEdge >= CHOICE.trailNeutral - 2))) def = 'neutral';
+    else if (topVal - botVal > CHOICE.top) def = 'top';
+    else if (S.periodNo < 3 && tdEdge >= CHOICE.p2Neutral) def = 'neutral';
+    else def = 'bottom';
+    if (opts.chooser) { const r = opts.chooser(c, S, W, key); if (r) def = r; }
+    const mine = opts.userSide === c && opts.choices && opts.choices[key];
+    return { pick: mine && (mine !== 'defer' || canDefer) ? mine : def, def };
   }
   const startPosFor = (c, choice) => (choice === 'top' ? 'top' + c : choice === 'bottom' ? 'top' + other(c) : 'neutral');
 
@@ -321,26 +342,33 @@ export function simulateBout(wA, wB, opts = {}) {
   runPeriod(1, 'neutral');
   let choiceP2 = rng.chance(0.5) ? 'A' : 'B';
   if (!S.over) {
-    say('period', `End of the first period. ${scoreLine()}.`);
+    say('period', `End of the first period. ${scoreLine()}.`, 'break');
     recover();
-    const c = choiceP2, ch = chooseStart(c);
-    S.periodNo = 2; S.periodLabel = '2nd'; S.remaining = PERIODS[1].len;
-    say('period', `Second period. ${nm(c)} has the choice and chooses ${ch === 'neutral' ? 'neutral' : ch === 'top' ? 'top' : 'bottom'}.`);
+    let c = choiceP2, r2 = chooseStart(c, 'p2', true);
+    const deferred = r2.pick === 'defer';
+    if (deferred) {   // the toss winner passes: his opponent picks the 2nd-period start and he picks the 3rd
+      say('period', `${nm(c)} wins the toss and defers: ${nm(other(c))} will choose the second-period start.`, 'break', null, { who: c, key: 'p2', def: r2.def, canDefer: true });
+      c = other(c); r2 = chooseStart(c, 'p2b', false);
+    }
+    choiceP2 = c;
+    const ch = r2.pick;
+    S.periodNo = 2; S.periodLabel = '2nd'; S.remaining = PERIODS[1].len; S.pos = startPosFor(c, ch);
+    say('period', deferred ? `Second period. ${nm(c)} chooses ${ch}.` : `Second period. ${nm(c)} has the choice and chooses ${ch}.`, null, null, { who: c, key: deferred ? 'p2b' : 'p2', def: r2.def, canDefer: !deferred });
     runPeriod(2, startPosFor(c, ch));
   }
   if (!S.over) {
-    say('period', `End of the second period. ${scoreLine()}.`);
+    say('period', `End of the second period. ${scoreLine()}.`, 'break');
     recover();
     const c = other(choiceP2);
     S.periodNo = 3; S.periodLabel = '3rd'; S.remaining = PERIODS[2].len;
-    const ch = chooseStart(c);
-    say('period', `Third period. ${nm(c)} chooses ${ch}.`);
+    const r3 = chooseStart(c, 'p3', false), ch = r3.pick; S.pos = startPosFor(c, ch);
+    say('period', `Third period. ${nm(c)} chooses ${ch}.`, null, null, { who: c, key: 'p3', def: r3.def, canDefer: false });
     runPeriod(3, startPosFor(c, ch));
   }
 
   if (!S.over) {
     S.remaining = 0;
-    say('period', `Regulation ends. ${scoreLine()}. Riding time: ${nm('A')} ${fmtClock(S.ride.A)}, ${nm('B')} ${fmtClock(S.ride.B)}.`);
+    say('period', `Regulation ends. ${scoreLine()}. Riding time: ${nm('A')} ${fmtClock(S.ride.A)}, ${nm('B')} ${fmtClock(S.ride.B)}.`, 'break');
     // Assumption: the riding-time point is only awarded when the match is not tied after regulation.
     if (S.score.A !== S.score.B) {
       const adv = S.ride.A - S.ride.B;
@@ -405,7 +433,7 @@ export function simulateBout(wA, wB, opts = {}) {
     detail = `${S.method === 'Dec' ? 'Dec' : S.method} ${S.score[w]}-${S.score[l]}`;
   }
   S.remaining = Math.max(0, S.remaining);
-  say('end', `${W[w].name} (${W[w].school || 'unattached'}) wins by ${method.toLowerCase()}${S.method === 'Fall' || S.method === 'TF' ? ` at ${fmtClock(S.elapsed)}` : ` ${S.score[w]}-${S.score[l]}`}. ${teamPoints} team points.`);
+  say('end', `${W[w].name} (${W[w].school || 'unattached'}) wins by ${method.toLowerCase()}${S.method === 'Fall' || S.method === 'TF' ? ` at ${fmtClock(S.elapsed)}` : ` ${S.score[w]}-${S.score[l]}`}. ${teamPoints} team points.`, 'end', w);
 
   return {
     seed, winner: w, loser: l, method, detail, teamPoints, score: { ...S.score }, elapsed: S.elapsed,
