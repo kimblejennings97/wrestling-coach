@@ -16,7 +16,7 @@ for name in os.listdir(DIST):
         shutil.rmtree(path) if os.path.isdir(path) else os.remove(path)
     except OSError as e:
         print('could not remove', path, '-', e)
-for f in ['index.html'] + (['lab.html'] if with_lab else []):
+for f in ['index.html', 'moves.html'] + (['lab.html'] if with_lab else []):
     shutil.copy2(os.path.join(ROOT, f), os.path.join(DIST, f))
 shutil.copytree(os.path.join(ROOT, 'css'), os.path.join(DIST, 'css'), dirs_exist_ok=True)
 shutil.copytree(os.path.join(ROOT, 'js'), os.path.join(DIST, 'js'), ignore=shutil.ignore_patterns('harness.js'), dirs_exist_ok=True)

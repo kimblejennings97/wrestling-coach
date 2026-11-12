@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Move Viewer</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  body { margin: 0; }
+  .mv-wrap { display: grid; grid-template-columns: 280px 1fr; gap: 14px; padding: 14px; max-width: 1300px; margin: 0 auto; }
+  .mv-list { max-height: calc(100vh - 40px); overflow-y: auto; position: sticky; top: 14px; }
+  .mv-list h4 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .mv-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  .mv-item:hover { background: rgba(255,255,255,.05); } .mv-item.on { background: rgba(59,130,246,.18); }
+  .mv-item .st { margin-left: auto; font-size: 11px; font-weight: 700; } .st.ok { color: var(--green); } .st.bad { color: var(--red); }
+  .mv-stage { background: #0b1118; border-radius: 10px; padding: 6px; } .mv-stage svg.stage { width: 100% !important; max-width: none !important; height: auto; max-height: 62vh; margin: 0; display: block; }
+  .mv-title a { color: var(--muted); }
+  .mv-ctrl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+  .mv-ctrl label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .mv-rate textarea { width: 100%; min-height: 56px; box-sizing: border-box; background: #0b1118; color: var(--text); border: 1px solid #2a3440; border-radius: 6px; padding: 8px; font: inherit; }
+  .mv-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; } .mv-title h2 { margin: 0; }
+  @media (max-width: 760px) { .mv-wrap { grid-template-columns: 1fr; } .mv-list { position: static; max-height: 260px; } }
+</style></head>
+<body>
+<div class="mv-wrap">
+  <div class="card mv-list" id="list"></div>
+  <div>
+    <div class="card">
+      <div class="mv-title"><h2 id="ttl">Move viewer</h2><span class="muted" id="sub"></span><span style="margin-left:auto"><a href="index.html">◀ Back to the game</a></span></div>
+      <div class="mv-ctrl">
+        <button id="replay">↻ Replay</button><button class="secondary" id="prev">◀ Prev</button><button class="secondary" id="next">Next ▶</button>
+        <button class="secondary" id="auto">▶ Play all</button>
+        <label>Speed <input id="spd" type="range" min="0.6" max="3" step="0.1" value="1.7"> <b id="spdv"></b></label>
+      </div>
+      <div class="mv-ctrl">
+        <label><input type="checkbox" id="sideB"> Move by the green wrestler (mirrored)</label>
+        <label><input type="checkbox" id="flip"> Other side of the mat (after circling)</label>
+        <label><input type="checkbox" id="scrub"> Freeze frame</label>
+        <label id="scrubl" style="display:none">at <input id="t" type="range" min="0" max="1.5" step="0.01" value="0" style="width:200px"> <b id="tv"></b></label>
+      </div>
+      <div class="mv-stage" id="stage"></div>
+      <p class="hint" id="note"></p>
+    </div>
+    <div class="card mv-rate">
+      <h3 style="margin-top:0">Your verdict on this move</h3>
+      <div class="mv-ctrl"><button class="secondary" id="ok">✓ Works</button><button class="secondary" id="bad">✗ Needs work</button><button class="secondary" id="clr">Clear</button>
+        <span class="muted" id="cnt"></span><span style="margin-left:auto"><button id="copy">Copy report</button></span></div>
+      <textarea id="txt" placeholder="What looks wrong? (e.g. 'legs go through the mat at the end', 'can't see the leg being lifted')"></textarea>
+      <p class="hint">Marks and notes stay in this browser. "Copy report" puts every marked move and note on the clipboard so you can paste it into a message.</p>
+    </div>
+  </div>
+</div>
+<script type="module">
+import { stage, CLIP_NAMES } from './js/ui/anim.js';
+// Move viewer: every bout-animation clip from js/ui/anim.js, playable one at a time. Test/QA tool (also deployed so it works on the iPad).
+const GROUPS = [
+  ['Hand fighting (neutral)', { idleN: 'Stance / feeling out', ties: 'Collar ties', club: 'Head club', wrist: 'Wrist control (2-on-1)', elbow: 'Elbow pass / slide-by', circle: 'Circling (swaps sides)', handfight: 'Hand fight after a shot', stall: 'Stalling (backing out)', brk: 'Between periods' }],
+  ['Takedowns', { double: 'Double leg', single: 'Single leg (also high-crotch)', sweep: 'Sweep single', trip: 'High single + trip', ankle: 'Ankle pick', snap: 'Snap and go-behind', duck: 'Duck-under', counter: 'Counter (sprawl, spin behind)', scr: 'Scramble takedown' }],
+  ['Throws', { headlock: 'Headlock', armthrow: 'Arm throw', lateral: 'Lateral drop', fireman: "Fireman's carry", lift: 'High-amplitude lift' }],
+  ['Shot defence', { sprawl: 'Sprawl', whizzer: 'Whizzer', hipout: 'Hip out', oob: 'Out of bounds', throw: 'Blocked throw', scramble: 'Scramble, no score' }],
+  ['Top / riding', { idleT: 'Referee position', breakdown: 'Breakdown', matret: 'Mat return', hips: 'Heavy hips', flat: 'Flattened out' }],
+  ['Turns and pins', { half: 'Half nelson', cradle: 'Cradle', tilt: 'Tilt', turk: 'Leg ride / turk', wing: 'Chicken wing (also arm bar)' }],
+  ['Escapes and reversals', { standup: 'Stand-up', sitout: 'Sit-out', granby: 'Granby roll', letup: 'Let up (cut)', rev: 'Reversal / switch' }],
+  ['Match end', { end: 'Hand raised', champJump: 'NCAA title: jumping', champCart: 'NCAA title: cartwheel', champToss: 'NCAA title: band toss' }],
+];
+const NAME = {}; GROUPS.forEach(([, m]) => Object.assign(NAME, m));
+const other = CLIP_NAMES.filter(n => !NAME[n] && !['highc', 'armbar'].includes(n));
+if (other.length) GROUPS.push(['Other', Object.fromEntries(other.map(n => [n, n]))]);
+const ORDER = GROUPS.flatMap(([, m]) => Object.keys(m)).filter(n => CLIP_NAMES.includes(n));
+const NOTES = { circle: 'Ends with the two on the opposite sides; the viewer then mirrors every following move until the next period.', aBottom: 'Bottom wrestler makes the move.' };
+
+const store = (() => { try { return JSON.parse(localStorage.getItem('wc.moves') || '{}'); } catch (e) { return {}; } })();
+const persist = () => { try { localStorage.setItem('wc.moves', JSON.stringify(store)); } catch (e) { /* private mode */ } };
+const $ = id => document.getElementById(id);
+let cur = (() => { try { return localStorage.getItem('wc.moves.cur'); } catch (e) { return null; } })() || ORDER[0], timer = null;
+if (!ORDER.includes(cur)) cur = ORDER[0];
+
+const res = { winner: 'A', method: 'Dec', seed: 1, wrestlers: { A: { name: 'Al Red' }, B: { name: 'Gus Green' } } };
+const col = { A: '#d9443a', B: '#2f7fd8' }, band = { A: '#e5534b', B: '#3fb27f' };
+function list() {
+  $('list').innerHTML = `<h3 style="margin:0 0 4px">Moves <small class="muted">${ORDER.length}</small></h3>` + GROUPS.map(([g, m]) => `<h4>${g}</h4>` + Object.keys(m).filter(n => CLIP_NAMES.includes(n)).map(n => {
+    const s = store[n] || {}; return `<div class="mv-item ${n === cur ? 'on' : ''}" data-n="${n}">${m[n]}${s.v ? `<span class="st ${s.v}">${s.v === 'ok' ? '✓' : '✗'}</span>` : s.t ? '<span class="st">✎</span>' : ''}</div>`; }).join('')).join('');
+  const n = Object.values(store).filter(s => s.v).length; $('cnt').textContent = `${n} of ${ORDER.length} marked`;
+}
+function show() {
+  const side = $('sideB').checked ? 'B' : 'A', still = $('scrub').checked ? +$('t').value : undefined;
+  res.winner = side;
+  $('stage').style.setProperty('--spd', $('spd').value);
+  $('stage').innerHTML = stage(res, null, col, { clip: cur, a: side, band, flip: $('flip').checked, still });
+  $('ttl').textContent = NAME[cur] || cur; $('sub').textContent = `clip "${cur}" · ${side === 'A' ? 'red' : 'green'} wrestler makes the move`;
+  $('note').textContent = NOTES[cur] || '';
+  const s = store[cur] || {}; $('txt').value = s.t || '';
+  $('ok').className = s.v === 'ok' ? '' : 'secondary'; $('bad').className = s.v === 'bad' ? '' : 'secondary';
+  $('spdv').textContent = (+$('spd').value).toFixed(1) + '×'; $('tv').textContent = (+$('t').value).toFixed(2);
+  try { localStorage.setItem('wc.moves.cur', cur); } catch (e) { /* ignore */ }
+  list();
+}
+const go = n => { cur = n; stopAuto(); show(); };
+const step = d => go(ORDER[(ORDER.indexOf(cur) + d + ORDER.length) % ORDER.length]);
+function stopAuto() { clearTimeout(timer); timer = null; $('auto').textContent = '▶ Play all'; }
+function auto() { if (timer) return stopAuto(); $('scrub').checked = false; $('scrubl').style.display = 'none'; const tick = () => { show(); timer = setTimeout(() => { cur = ORDER[(ORDER.indexOf(cur) + 1) % ORDER.length]; tick(); }, 2600 * +$('spd').value / 1.7 + 900); }; $('auto').textContent = '⏸ Stop'; tick(); }
+$('list').onclick = e => { const it = e.target.closest('.mv-item'); if (it) go(it.dataset.n); };
+$('replay').onclick = () => { $('stage').innerHTML = ''; requestAnimationFrame(show); };
+$('prev').onclick = () => step(-1); $('next').onclick = () => step(1); $('auto').onclick = auto;
+for (const id of ['spd', 'sideB', 'flip', 't']) $(id).oninput = show;
+$('scrub').onchange = () => { $('scrubl').style.display = $('scrub').checked ? '' : 'none'; show(); };
+const mark = v => { const s = (store[cur] ||= {}); s.v = s.v === v ? null : v; persist(); show(); };
+$('ok').onclick = () => mark('ok'); $('bad').onclick = () => mark('bad'); $('clr').onclick = () => { delete store[cur]; persist(); show(); };
+$('txt').oninput = () => { (store[cur] ||= {}).t = $('txt').value; persist(); list(); };
+$('copy').onclick = async () => {
+  const rows = ORDER.filter(n => store[n] && (store[n].v || store[n].t)).map(n => `${store[n].v === 'ok' ? '✓' : store[n].v === 'bad' ? '✗' : '•'} ${NAME[n] || n} (${n})${store[n].t ? ': ' + store[n].t : ''}`);
+  const txt = rows.length ? 'Move viewer report\n' + rows.join('\n') : 'No moves marked yet.';
+  try { await navigator.clipboard.writeText(txt); $('copy').textContent = 'Copied ✓'; } catch (e) { prompt('Copy this:', txt); }
+  setTimeout(() => { $('copy').textContent = 'Copy report'; }, 1500);
+};
+document.addEventListener('keydown', e => { if (e.target.tagName === 'TEXTAREA') return; if (e.key === 'ArrowRight') step(1); else if (e.key === 'ArrowLeft') step(-1); else if (e.key === ' ') { e.preventDefault(); $('replay').click(); } });
+show();
+</script>
+</body></html>

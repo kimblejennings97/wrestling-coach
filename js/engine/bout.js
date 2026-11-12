@@ -211,8 +211,13 @@ export function simulateBout(wA, wB, opts = {}) {
       }
       const hf = e('A', 'hand') - e('B', 'hand');
       if (rng.chance(0.65)) {
-        if (Math.abs(hf) > 3) { const w = hf > 0 ? 'A' : 'B'; say('info', `${nm(w)} is winning the hand fight, controlling ties in the center.`); }
-        else say('info', pick([`${nm('A')} and ${nm('B')} trade ties in the center.`, `Both wrestlers feel each other out — no one commits.`, `${nm(pick(['A', 'B']))} snaps and circles, looking for an opening.`]));
+        if (Math.abs(hf) > 3) {   // which tie-up wins it is picked from the clock, not the rng (viewer only: results unchanged)
+          const w = hf > 0 ? 'A' : 'B', k = Math.round(S.elapsed) % 3, o2 = nm(other(w));
+          say('info', [`${nm(w)} clubs ${o2}'s head and is winning the hand fight.`, `${nm(w)} gets wrist control on ${o2}, dominating the hand fight.`, `${nm(w)} slides by ${o2}'s elbow, controlling the ties in the center.`][k], 'hand', w, null, ['club', 'wrist', 'elbow'][k]);
+        } else {   // same two draws in the same order as before (the circler, then the line)
+          const sc = pick(['A', 'B']), T = [`${nm('A')} and ${nm('B')} trade ties in the center.`, `Both wrestlers feel each other out — no one commits.`, `${nm(sc)} snaps and circles, looking for an opening.`], t = pick(T), j = T.indexOf(t);
+          say('info', t, 'hand', j === 2 ? sc : 'A', null, ['ties', 'circle', 'circle'][j]);
+        }
       }
       tiredCheck(); return;
     }

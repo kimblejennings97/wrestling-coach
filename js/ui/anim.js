@@ -91,17 +91,23 @@ function drawFrame(all, cam, cols, prop) {
     // ankle band (red or green) on the left ankle, unless he has taken it off
     if (!ref && cols.band && cols.band[n] && !J.P.nb) {   // sorted just above its own shin (a shorter segment's average depth would slip under it)
       const k0 = parts.length, sd = (pr(J.knL)[2] + pr(J.ftL)[2]) / 2;
-      seg(mix3(J.knL, J.ftL, 0.74), mix3(J.knL, J.ftL, 0.92), 5.6, cols.band[n]);
+      seg(mix3(J.knL, J.ftL, 0.79), mix3(J.knL, J.ftL, 0.9), 4.3, cols.band[n]);
       parts[k0].d = sd + fb + 0.015;
     }
     // head: a plain grey circle
     const h = pr(J.head);
     parts.push({ d: h[2] + 0.4 + fb, raw: `<circle cx="${n1(h[0])}" cy="${n1(h[1])}" r="5.2" fill="${SKIN}" stroke="${INK}" stroke-width="1"/>` });
-    if (!ref && HEADGEAR) {   // headgear: an ear guard on each side (the far one hides behind the head) and a strap over the crown
+    if (!ref && HEADGEAR && !cols.noHg) {   // headgear: an ear guard on each side (the far one hides behind the head) and a strap over the crown
       const hg = shade(c, 0.62), E = k => pr(add(J.head, mul(J.lat, k * 1.45))), top = pr(add(J.head, mul(J.u, 1.6))), eL = E(-1), eR = E(1);
       const cx = 2 * top[0] - (eL[0] + eR[0]) / 2, cy = 2 * top[1] - (eL[1] + eR[1]) / 2;
       parts.push({ d: h[2] + 0.41 + fb, raw: `<path d="M${n1(eL[0])} ${n1(eL[1])}Q${n1(cx)} ${n1(cy)} ${n1(eR[0])} ${n1(eR[1])}" stroke="${INK}" stroke-width="3.2"/><path d="M${n1(eL[0])} ${n1(eL[1])}Q${n1(cx)} ${n1(cy)} ${n1(eR[0])} ${n1(eR[1])}" stroke="${hg}" stroke-width="1.6"/>` });
       for (const e of [eL, eR]) parts.push({ d: e[2] + 0.42 + fb, raw: `<ellipse cx="${n1(e[0])}" cy="${n1(e[1])}" rx="2.5" ry="2.9" fill="${hg}" stroke="${INK}" stroke-width="0.9"/>` });
+    }
+    if (!ref && HEADGEAR && cols.noHg) {   // match over: headgear off, carried in the right hand (two ear guards hanging by the strap)
+      const hg = shade(c, 0.62), q = pr(J.haR), x = n1(q[0]), y = n1(q[1]);
+      parts.push({ d: q[2] + 0.06 + fb, raw: `<path d="M${n1(q[0] - 2.2)} ${n1(q[1] + 2.4)}Q${x} ${n1(q[1] - 2.6)} ${n1(q[0] + 2.2)} ${n1(q[1] + 2.4)}" stroke="${INK}" stroke-width="2.6"/><path d="M${n1(q[0] - 2.2)} ${n1(q[1] + 2.4)}Q${x} ${n1(q[1] - 2.6)} ${n1(q[0] + 2.2)} ${n1(q[1] + 2.4)}" stroke="${hg}" stroke-width="1.2"/>`
+        + [-2.2, 2.2].map(dx => `<ellipse cx="${n1(q[0] + dx)}" cy="${n1(q[1] + 3.6)}" rx="2" ry="2.4" fill="${hg}" stroke="${INK}" stroke-width="0.9"/>`).join('') });
+      void y;
     }
   }
   if (prop) {   // the ankle band in flight / on the mat
@@ -171,7 +177,7 @@ const CLIPS = {
     { a: S(-5.2, 1, { hR: { r: [3.2, -3] } }), o: S(5.6, -1, { hL: { o: 'neck', d: [-0.4, 0.2, 0] } }) }] }),
   idleT: () => ({ n: 1, cam: M, loopDur: 1.8, loop: [{ a: RT(), o: RB() }, { a: RT({ p: [2.4, 4.1], lean: 63 }), o: RB({ p: [4.6, 3.9], lean: 75 }) }] }),
   brk: () => ({ n: 1, loop: [{ a: UP(-8, 1), o: UP(8, -1) }, { a: UP(-8, 1, { p: [-8, 7.1] }), o: UP(8, -1) }], loopDur: 1.6 }),
-  end: () => ({ n: 1, loopDur: 0.9, cam: [0, 14], loop: [0, 0.5].map(j => ({
+  end: () => ({ n: 1, noHg: true, loopDur: 0.9, cam: [0, 14], loop: [0, 0.5].map(j => ({
     a: UP(-5.2, 1, { yaw: 78, p: [-5.2, 7.25 + j], fL: [-5.9, j * 0.8], fR: [-4.5, j * 0.8], hL: { r: [0.4, 6.2, -1.6] }, pL: [0, 0, -1] }),
     o: UP(5.6, -1, { yaw: 100, lean: 8, p: [5.6, 7.1] }),
     r: UP(0, 1, { yaw: 90, z: -1.4, fL: [0.7, 0], fR: [-0.7, 0], hR: { o: 'haL', of: 'a', d: [0.5, -0.4, 0] }, pR: [0, 0, -1], hL: { o: 'haR', of: 'o', d: [0, 0.2, 0] } }) })) }),
@@ -391,6 +397,49 @@ CLIPS.trip = () => ({ n: 16, dur: 1.1, kf: [
     { p: [9, 1.4], f: -1, lean: -86, fL: { b: [-5.4, 3.4, 0] }, fR: { b: [-6.6, 1.4, 0] }, hL: [13.6, 0.5], hR: [13.2, 2.4] }, [-10, 20]),
   ...tail(0.86, SEAT({ p: [8.8, 1.5], lean: -80 }), COVER())] });
 
+// ----- hand fighting (2026-11-12): 'a' = the wrestler winning the exchange -----
+// head club: an overhand club to the back of the neck snaps his head down; he recovers into his stance
+CLIPS.club = () => ({ n: 12, dur: 0.9, kf: [
+  K(0, S(XA, 1), S(XO, -1), N),
+  K(0.24, S(-5, 1, { hR: { r: [1.4, 2.6, 0.4] }, hL: { o: 'elL', d: [0, 0.2, 0] } }), S(5.2, -1, { hL: { r: [2.8, -0.6] } })),
+  K(0.42, S(-4.2, 1, { lean: 34, hR: { o: 'neck', d: [0.4, 0.4, 0] }, hL: { o: 'elL' } }), S(5, -1, { p: [5, 5.2], lean: 50, hL: { r: [2.4, -2.6] }, hR: { r: [2, -3.2] } })),
+  K(0.6, S(-4.4, 1, { lean: 32, hR: { o: 'neck', d: [0.2, 0.6, 0] }, hL: { o: 'haL' } }), S(5.2, -1, { p: [5.2, 5.5], lean: 42, hL: { o: 'elR' } })),
+  K(0.8, S(-5.2, 1, { hL: { o: 'elL', d: [0, 0.2, 0] } }), S(5.8, -1, { hR: { o: 'haR' } })),
+  K(1, S(XA, 1), S(XO, -1), N)] });
+// two-on-one wrist control: both hands on his wrist, drags him forward off balance
+CLIPS.wrist = () => ({ n: 12, dur: 0.95, kf: [
+  K(0, S(XA, 1), S(XO, -1), N),
+  K(0.25, S(-5, 1, { hL: { o: 'haR', d: [-0.3, 0.2, 0] }, hR: { o: 'haR', d: [-0.9, -0.2, 0] } }), S(5.2, -1, { hR: { r: [4.2, -1.4] } })),
+  K(0.5, S(-6.4, 1, { lean: 18, p: [-6.4, 6.3], hL: { o: 'haR', d: [-0.3, 0.2, 0] }, hR: { o: 'haR', d: [-0.9, -0.2, 0] } }), S(3.6, -1, { lean: 42, p: [3.6, 5.6], hR: { r: [5, -1.6] }, fL: [1.4, 0] })),
+  K(0.72, S(-6.8, 1, { lean: 18, hL: { o: 'haR', d: [-0.3, 0.2, 0] }, hR: { o: 'elR' } }), S(3.2, -1, { lean: 46, p: [3.2, 5.4], hR: { r: [5, -1.8] }, fL: [1, 0] })),
+  K(1, S(XA, 1), S(XO, -1), N)] });
+// elbow pass: lifts his elbow, slides by to the side to take an angle, he spins to face up again
+CLIPS.elbow = () => ({ n: 13, dur: 1.0, kf: [
+  K(0, S(XA, 1), S(XO, -1), N),
+  K(0.22, S(-4.6, 1, { hL: { o: 'elR', d: [0, -0.3, 0] }, hR: { o: 'haR' } }), S(4.8, -1, { hR: { r: [2, -0.6] } })),
+  K(0.42, S(-3.2, 1, { lean: 30, hL: { o: 'elR', d: [0, 0.4, 0] }, hR: { o: 'belly' } }), S(5, -1, { lean: 20, hR: { r: [0.6, 2.6, 0] } })),
+  K(0.6, { p: [2.2, 5.4], z: 2.6, yaw: -35, lean: 36, fL: [4, 0, 2.8], fR: [0.4, 0, 3.4], hL: { o: 'hip', d: [0, 0.4, 0] }, hR: { o: 'chest' } }, S(5.4, -1, { yaw: 160, hR: { r: [0.4, 2.4, 0] } }), [-10, 17]),
+  K(0.78, { p: [1, 5.8], z: 1.4, yaw: -20, lean: 28, fL: [2.6, 0, 1.8], fR: [-1.2, 0, 1.6], hL: { r: [3, -1.2] }, hR: { r: [2.5, -2.4] } }, S(5.6, -1, { yaw: 195 }), [-6, 16]),
+  K(1, S(XA, 1), S(XO, -1), N)] });
+// collar ties: head to head, pushing and pulling
+CLIPS.ties = () => ({ n: 12, dur: 1.0, kf: [
+  K(0, S(XA, 1), S(XO, -1), N),
+  K(0.25, S(-4.6, 1, { lean: 34, hL: { o: 'neck', d: [0.3, 0.3, 0] }, hR: { o: 'elL' } }), S(4.6, -1, { lean: 34, hR: { o: 'neck', d: [-0.3, 0.3, 0] }, hL: { o: 'elR' } })),
+  K(0.5, S(-5.6, 1, { lean: 36, hL: { o: 'neck', d: [0.3, 0.1, 0] }, hR: { o: 'elL' } }), S(3.6, -1, { lean: 40, p: [3.6, 5.8], hR: { o: 'neck', d: [-0.3, 0.3, 0] }, hL: { o: 'elR' } })),
+  K(0.75, S(-3.6, 1, { lean: 40, p: [-3.6, 5.8], hL: { o: 'neck', d: [0.3, 0.3, 0] }, hR: { o: 'elL' } }), S(5.6, -1, { lean: 34, hR: { o: 'neck', d: [-0.3, 0.2, 0] }, hL: { o: 'elR' } })),
+  K(1, S(XA, 1), S(XO, -1), N)] });
+// circling: the pair turns half way round the centre, stepping and feinting, and ends on the other sides of the mat (see flipAt)
+CLIPS.circle = () => {
+  const st = (x, z, yaw, lift, reach) => ({ p: [x, 6.1], z, yaw, lean: 26, fL: { r: [2.3, -6.1 + lift, 0.2] }, fR: { r: [-1.7, -6.1, -0.2] },
+    hL: reach ? { o: 'haR', d: [0, 0.4, 0] } : { r: [3.1, -1.2] }, hR: { r: [2.5, -2.4] } });
+  const kf = [];
+  for (let i = 0; i <= 6; i++) {
+    const th = i * 30, r = th * D, lift = i % 2 ? 0.9 : 0;
+    kf.push(K(i / 6, st(-6.5 * Math.cos(r), 6.5 * Math.sin(r), -th, lift, i === 2), st(6.5 * Math.cos(r), -6.5 * Math.sin(r), 180 - th, 0.9 - lift, i === 4), [-12 * Math.sin(r), 16 + 30 * Math.sin(r)]));   // camera rises mid-circle so the far man shows above the near one
+  }
+  return { n: 14, dur: 1.3, kf };
+};
+
 // ----- NCAA title celebrations ('a' = the champion, 'o' = beaten finalist, 'r' = referee); they start from the hand-raise pose -----
 const KNEEL = (x, f, k) => ({ p: [x, 3.7], f, lean: 24, fL: [x - f * 3.4, 0.3, 0.6], fR: [x - f * 3.2, 0.3, -0.8], hL: { s: 'knL', d: [0, 0.9, 0] }, hR: { s: 'knR', d: [0, 0.9, 0] }, ...k });   // beaten, on his knees
 const RAISED = () => UP(-5.2, 1, { yaw: 78, fL: [-5.9, 0], fR: [-4.5, 0], hL: { r: [0.4, 6.2, -1.6] }, pL: [0, 0, -1] });   // the 'end' clip's raised-hand pose
@@ -403,7 +452,7 @@ CLIPS.champJump = () => {
   const lo = x => VUP(x, 6.2, { fL: [x + 1, 0], fR: [x - 1, 0] }), hi = x => VUP(x, 9.4, { fL: [x + 1, 2.2], fR: [x - 1, 2.2], hL: { b: [4.6, 0.8, -1.8] }, hR: { b: [4.6, 0.8, 1.8] } });
   const kf = [...champStart(), K(0.14, lo(-4.6), KNEEL(7, -1), [0, 14], { r: REF1() })];
   [0.26, 0.38, 0.5, 0.62, 0.74, 0.86, 1].forEach((t, i) => kf.push(K(t, i % 2 ? lo(-4.4 + i * 0.3) : hi(-4.4 + i * 0.3))));
-  return { n: 26, dur: 2.2, cam: [0, 14], kf, loopDur: 0.8, loop: [{ a: hi(-2.6), o: KNEEL(7, -1), r: REF1() }, { a: lo(-2.6), o: KNEEL(7, -1), r: REF1() }] };
+  return { n: 26, dur: 2.2, noHg: true, cam: [0, 14], kf, loopDur: 0.8, loop: [{ a: hi(-2.6), o: KNEEL(7, -1), r: REF1() }, { a: lo(-2.6), o: KNEEL(7, -1), r: REF1() }] };
 };
 // a cartwheel across the mat. Body in the screen plane: heading +x with roll -90 (chest to the crowd), lean = rotation in that plane; arms and legs are
 // spokes of a wheel, so the hip height is set by whichever hand or foot is lowest.
@@ -417,7 +466,7 @@ CLIPS.champCart = () => {
   // (yaw 0, roll -90) faces the crowd exactly like (yaw 90, roll 0), so the finish stays in the wheel's representation (no spin when blending)
   const up = (y, k) => VUP(2.4, y, { yaw: 0, roll: -90, lean: 360, fL: [3.4, 0], fR: [1.4, 0], ...k });
   kf.push(K(1, up(7.25)));
-  return { n: 30, dur: 2.4, cam: [0, 14], kf, loopDur: 0.9, loop: [{ a: up(7.25), o: KNEEL(9.5, -1), r: REF1() }, { a: up(7.6, { hL: { b: [4.7, 0.9, -1.6] }, hR: { b: [4.7, 0.9, 1.6] } }), o: KNEEL(9.5, -1), r: REF1() }] };
+  return { n: 30, dur: 2.4, noHg: true, cam: [0, 14], kf, loopDur: 0.9, loop: [{ a: up(7.25), o: KNEEL(9.5, -1), r: REF1() }, { a: up(7.6, { hL: { b: [4.7, 0.9, -1.6] }, hR: { b: [4.7, 0.9, 1.6] } }), o: KNEEL(9.5, -1), r: REF1() }] };
 };
 // pulls off his ankle band and throws it high in the air
 CLIPS.champToss = () => {
@@ -432,7 +481,7 @@ CLIPS.champToss = () => {
     K(0.8, VUP(x, 7.6, { lean: -10, hL: { b: [4.7, 0.9, -1.6] }, hR: { b: [4.7, 0.9, 1.6] }, ...nb }), null, null, { pr: [x + 2.4, 25, 1] }),
     K(0.9, VUP(x, 7.25, { lean: -6, ...nb }), null, null, { pr: [x + 3.2, 13, 1.4] }),
     K(1, VUP(x, 7.25, nb), null, null, { pr: [x + 3.8, 0.4, 1.8] })];
-  return { n: 30, dur: 2.4, cam: [0, 14], kf, loopDur: 0.9, loop: [{ a: VUP(x, 7.25, nb), o: KNEEL(7, -1), r: REF1() }, { a: VUP(x, 7.6, { ...nb, hL: { b: [4.7, 0.9, -1.6] }, hR: { b: [4.7, 0.9, 1.6] } }), o: KNEEL(7, -1), r: REF1() }] };
+  return { n: 30, dur: 2.4, noHg: true, cam: [0, 14], kf, loopDur: 0.9, loop: [{ a: VUP(x, 7.25, nb), o: KNEEL(7, -1), r: REF1() }, { a: VUP(x, 7.6, { ...nb, hL: { b: [4.7, 0.9, -1.6] }, hR: { b: [4.7, 0.9, 1.6] } }), o: KNEEL(7, -1), r: REF1() }] };
 };
 
 // hip throw (headlock / arm throw / lateral drop / fireman's carry): step in, turn the back, load him on the hip, over he goes, legs above the thrower's head
@@ -508,7 +557,11 @@ function frames(name, cols, camO) {
 // which clip an event plays, and which wrestler is its 'a' figure
 const TD = { double: 1, single: 1, highc: 1, ankle: 1, snap: 1, duck: 1, scr: 1, counter: 1, sweep: 1, trip: 1 }, THROW = { headlock: 1, armthrow: 1, lateral: 1, fireman: 1, lift: 1 };
 const TURN = { half: 1, cradle: 1, tilt: 1, turk: 1, armbar: 1, wing: 1 }, STUFF = { sprawl: 1, handfight: 1, hipout: 1, whizzer: 1, oob: 1, throw: 1 }, RIDE = { breakdown: 1, matret: 1, hips: 1, flat: 1 };
+const HAND = { club: 1, wrist: 1, elbow: 1, ties: 1, circle: 1 };
 const other = s => (s === 'A' ? 'B' : 'A');
+// Which side of the mat the pair is on when event i starts: every 'circle' clip ends with the two swapped, so from then on every clip
+// (takedowns, mat work, escapes) is shown mirrored until they circle back; a period break resets it (they walk back to the centre).
+export function flipAt(log, i) { let f = 0; for (let k = 0; k < i && k < log.length; k++) { const e = log[k]; if (e.fx === 'break') f = 0; else if (e.fx === 'hand' && e.mv === 'circle') f ^= 1; } return !!f; }
 export function clipFor(res, last) {
   if (!last) return ['idleN', 'A'];
   const { pos, fx, who, mv } = last, top = pos === 'topA' ? 'A' : pos === 'topB' ? 'B' : null;
@@ -520,6 +573,7 @@ export function clipFor(res, last) {
   if (fx === 'rev' && who) return ['rev', who];
   if (fx === 'stuff' && who) return [STUFF[mv] ? mv : 'sprawl', who];
   if (fx === 'scramble' && who) return ['scramble', who];
+  if (fx === 'hand' && !top) return [HAND[mv] ? mv : 'idleN', who || 'A'];
   if (fx === 'stall' && who && !top) return ['stall', who];
   if (fx === 'ride' && top) return [RIDE[mv] ? mv : 'idleT', top];
   return top ? ['idleT', top] : ['idleN', 'A'];
@@ -527,7 +581,7 @@ export function clipFor(res, last) {
 
 const LABEL = { td: 'TAKEDOWN!', esc: 'ESCAPE', rev: 'REVERSAL!', nf: 'NEAR FALL!', fall: 'FALL!', stall: 'STALLING', scramble: 'SCRAMBLE' };
 const MOVE = { headlock: 'HEADLOCK', armthrow: 'ARM THROW', lateral: 'LATERAL DROP', fireman: "FIREMAN'S CARRY", lift: 'BIG LIFT', cradle: 'CRADLE', tilt: 'TILT', wing: 'CHICKEN WING', armbar: 'ARM BAR', half: 'HALF NELSON', turk: 'TURK',
-  matret: 'MAT RETURN', counter: 'COUNTER', duck: 'DUCK-UNDER', granby: 'GRANBY ROLL', switch: 'SWITCH', ankle: 'ANKLE PICK', snap: 'GO-BEHIND', scr: 'SCRAMBLE', sweep: 'SWEEP SINGLE', trip: 'SINGLE LEG TRIP' };
+  club: 'HEAD CLUB', wrist: 'WRIST CONTROL', elbow: 'ELBOW PASS', ties: 'COLLAR TIES', matret: 'MAT RETURN', counter: 'COUNTER', duck: 'DUCK-UNDER', granby: 'GRANBY ROLL', switch: 'SWITCH', ankle: 'ANKLE PICK', snap: 'GO-BEHIND', scr: 'SCRAMBLE', sweep: 'SWEEP SINGLE', trip: 'SINGLE LEG TRIP' };
 const CHAMP = ['champJump', 'champCart', 'champToss'];
 
 // opt.still (0..1): draw one frozen moment of the clip (used by test pages); opt.clip / opt.a: force a clip
@@ -538,8 +592,9 @@ export function stage(res, last, col, opt = {}) {
   if (champ) name = CHAMP[((res.seed >>> 0) % 7919) % CHAMP.length];
   if (!CLIPS[name]) name = 'idleN';
   const cols = { a: col[aSide], o: col[other(aSide)], r: '#1d2126', band: opt.band ? { a: opt.band[aSide], o: opt.band[other(aSide)] } : null };
+  if (getClip(name).noHg) cols.noHg = true;
   const { c, seq, loop } = frames(name, cols, opt.cam);
-  const mirror = (aSide === 'B') !== !!c.aBottom ? -1 : 1;
+  const mirror = ((aSide === 'B') !== !!c.aBottom) !== !!opt.flip ? -1 : 1;   // opt.flip: the wrestlers have circled to the other side of the mat (flipAt)
   let body;
   if (opt.still !== undefined) {
     const s = c.kf.length ? sample(c, opt.still) : null;
