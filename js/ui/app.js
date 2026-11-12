@@ -20,6 +20,7 @@ import * as S from '../game/sched.js';
 import { TEAM_COLORS } from '../data/teamcolors.js';
 import { stage, singletColors } from './anim.js';
 import { seasonOf, careerOf, derived, KEYS, ensurePolls, flushStats, pendingStats } from '../game/stats.js';
+import * as LG from '../game/legacy.js';
 
 import { initSaves, loadLast, loadSlot, saveGame, saveAs, copySlot, renameSlot, deleteSlot, listSaves, MAX_SLOTS } from '../game/saves.js';
 const $app = document.getElementById('app');
@@ -51,7 +52,25 @@ const tl = (name, label) => `<a class="wlink" data-act="tprofile" data-v="${Stri
 const wrank = w => { const p = (ensurePolls(G)[w.lw || w.natural] || []).indexOf(w.id) + 1; return p || 0; };
 const wtxt = w => { const st = seasonOf(w), p = wrank(w); return `${st[0]}-${st[1]}${p ? ' #' + p : ''}`; };
 const wstat = w => { const st = seasonOf(w), p = wrank(w); return `<span class="muted">${st[0]}-${st[1]}</span>${p ? ` <b class="rk">#${p}</b>` : ''}`; };
-const wl = (x, label) => { const id = typeof x === 'string' ? x : x.id, w = G.wrestlers[id]; const nm = label ?? (w ? w.name : '?'); return w ? `<a class="wlink" data-act="profile" data-v="${id}">${nm}</a>` : nm; };
+const wl = (x, label) => { const id = typeof x === 'string' ? x : x && x.id, w = id && (G.wrestlers[id] || LG.archived(G, id)); const nm = label ?? (w ? w.name : '?'); return w ? `<a class="wlink" data-act="profile" data-v="${id}">${nm}</a>` : nm; };   // archived = departed wrestler whose profile is kept (legacy.js)
+const tnl = (id, label) => (G.teams[id] ? `<a class="wlink" data-act="team" data-v="${id}">${label ?? G.teams[id].name}</a>` : label ?? '');   // team name link without the logo
+// plain message text -> the same text with school, tournament and wrestler names linked to their profiles (inbox)
+const LINK = { key: '', re: null, map: null };
+const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function linkify(txt) {
+  if (!txt) return txt;
+  const key = `${G.season}:${G.week}:${Object.keys(G.wrestlers).length}:${G.phase}`;
+  if (LINK.key !== key) {
+    const m = new Map(), dup = new Set();
+    for (const id in G.teams) m.set(G.teams[id].name, ['team', id]);
+    for (const n of new Set([...G.tournaments.map(t => t.name), ...Object.keys(G.tHist || {})])) m.set(n, ['tprofile', n]);
+    for (const id in G.wrestlers) { const n = G.wrestlers[id].name; if (m.has(n)) dup.add(n); else m.set(n, ['profile', id]); }
+    for (const n of dup) if (m.get(n)[0] === 'profile') m.delete(n);   // two wrestlers share the name: don't guess
+    const names = [...m.keys()].filter(n => n.length > 3).sort((a, b) => b.length - a.length);
+    LINK.key = key; LINK.map = m; LINK.re = names.length ? new RegExp(`(?<![\\w'])(${names.map(escRe).join('|')})(?![\\w])`, 'g') : null;
+  }
+  return LINK.re ? txt.replace(LINK.re, n => { const [a, v] = LINK.map.get(n); return `<a class="wlink" data-act="${a}" data-v="${String(v).replace(/"/g, '&quot;')}">${n}</a>`; }) : txt;
+}
 const tag = (id, rm) => `#${rm[id]} ${tn(id)}`;
 const attrCell = v => `<td class="ac ${tier(v)}">${v}</td>`;
 const save = () => saveGame(G);
@@ -66,7 +85,7 @@ function render() {
   const label = G.phase === 'seasonEnd' ? 'Begin offseason ▶' : G.phase === 'offseason' ? ({ cut: 'Done cutting → Progression ▶', progress: 'Continue → Recruiting ▶', recruit: 'Done recruiting → Schedule ▶' }[offStep(G)] || `Start ${G.season + 1} season ▶`) : ev && ev.type === 'tourney' && ev.ref.kind === 'dual' && D.inProgress(ev.ref) ? 'Resume tournament ▶' : ev && !ev.done ? (ev.type === 'dual' ? 'Go to dual day ▶' : 'Go to tournament ▶') : ev && liveTourney() ? 'Resume tournament ▶' : ev ? 'Finish week ▶' : G.week === G.cal.selWeek && SEL.selActive(G) ? 'Selection show ▶' : G.week === G.cal.selWeek ? 'Advance (selection week) ▶' : 'Advance (bye week) ▶';
   const body = { home, roster, lineup, schedule, standings, rankings: rankingsScreen, stats: statsScreen, profile, team: teamProfile, tprofile: tournamentProfile, offseason: offseasonScreen, dualday, dual, recruit: recruiting, train: training, injuries, tourneyday, tourney, selection, dtourney }[ui.screen]();
   $app.innerHTML = `
-  <div class="top"><b>${tn(G.userTeam, 28)}</b><span class="muted">Coach ${G.coach}</span><span class="muted">${G.phase === 'seasonEnd' ? 'Season over' : G.phase === 'offseason' ? `Offseason ${G.season}` : `Week ${G.week} · ${fmtDate(G.week)}`}</span>
+  <div class="top"><b>${tn(G.userTeam, 28)}</b><span class="muted">Coach ${G.coach}</span><span class="muted">${G.phase === 'seasonEnd' ? `Season over · ${seasonLbl(G.season)}` : G.phase === 'offseason' ? `Offseason ${G.season}` : `Week ${G.week} · ${fmtDate(G.week, true)}`}</span>
     <span class="muted">Record ${rec.w}-${rec.l}</span>
     <span style="margin-left:auto"></span>
     <button data-act="continue">${label}</button>
@@ -127,6 +146,8 @@ function act(a, d) {
   if (a === 'stscope') { ui.stat.scope = d.v; return render(); }
   if (a === 'stsort') { ui.stat.sort = d.v; return render(); }
   if (a === 'stcat') { ui.stat.cat = d.v; return render(); }
+  if (a === 'rcat') { ui.stat.rcat = d.v; return render(); }
+  if (a === 'rteam') { ui.stat.rteam = d.v; return render(); }
   if (a === 'continue') {
     if (G.phase === 'seasonEnd') { beginOffseason(G); save(); return go('offseason'); }
     if (G.phase === 'offseason') {
@@ -173,7 +194,7 @@ function act(a, d) {
     const p = d.v === 'user' ? L.advanceToUser(t) : L.peekNext(t); if (!p) { save(); return render(); }
     const b = p.m.u >= 0 ? t.result.userBouts[p.m.u] : p.m.bt;
     if (!b) { L.advanceLive(t, 'match'); save(); return render(); }   // no replay data (older save): just reveal it
-    save(); ui.view = { idx: -1, res: replayBout(b), shown: 0, playing: true, tw: t.id }; return startFeed();
+    save(); ui.view = { idx: -1, res: replayBout(b), shown: 0, playing: true, tw: t.id, ids: { A: p.m.a, B: p.m.b }, title: t.kind === 'ncaa' && !!p.m.c && p.m.rl === 'Finals' }; return startFeed();
   }
   if (a === 'tadv') { stopTimers(); if (ui.view && ui.view.tw) ui.view = null; const t = G.tournaments.find(x => x.id === ui.tid); if (t && L.isLive(t)) { L.advanceLive(t, d.v, +ui.rwt || WEIGHTS[0]); save(); } return render(); }
   if (a === 'skipgo') {
@@ -195,7 +216,7 @@ function act(a, d) {
   if (a === 'tview') { ui.tview = d.v; return render(); }
   if (a === 'watchtb') {
     const t = G.tournaments.find(x => x.id === ui.tid), b = t.result.userBouts[+d.v];
-    ui.view = { idx: +d.v, res: replayBout(b), shown: 0, playing: true }; return startFeed();
+    ui.view = { idx: +d.v, res: replayBout(b), shown: 0, playing: true, ids: { A: b.a, B: b.b }, title: t.kind === 'ncaa' && b.label === 'Final' }; return startFeed();
   }
   if (a === 'cancelmove') { cancelWeightMove(G, d.v); save(); return render(); }
   if (a === 'rectab') { ui.rec.tab = d.v; return render(); }
@@ -229,13 +250,13 @@ function act(a, d) {
   if (a === 'backsched') return go('schedule');
   if (a === 'watchbout') {
     stopTimers(); const du = findDual(ui.dual.id), b = du.result.bouts[+d.v];
-    ui.view = { idx: +d.v, res: replayBout(b), shown: 0, playing: true }; return startFeed();
+    ui.view = { idx: +d.v, res: replayBout(b), shown: 0, playing: true, ...dualViewCtx(b) }; return startFeed();
   }
   if (a === 'watchnext') {
     stopTimers(); const du = findDual(ui.dual.id), i = ui.dual.shown, snap = du.done ? null : watchSnapshot(G, du); simTo(du, i + 1, false); const b = du.result.bouts[i];
     if (!b || !b.seed) { ui.dual.shown = Math.min(10, i + 1); return render(); }   // vacant/forfeit: nothing to watch
     const mySide = du.a === G.userTeam ? 'A' : du.b === G.userTeam ? 'B' : null;
-    ui.view = { idx: i, res: replayBout(b), shown: 0, playing: true, reveal: i, live: snap && mySide ? { du, i, snap, mySide, answers: {} } : null }; return startFeed();
+    ui.view = { idx: i, res: replayBout(b), shown: 0, playing: true, reveal: i, live: snap && mySide ? { du, i, snap, mySide, answers: {} } : null, ...dualViewCtx(b) }; return startFeed();
   }
   if (a === 'viewjump') { clearInterval(ui.vtimer); ui.view.asking = null; ui.view.shown = ui.view.res.log.length; ui.view.playing = false; ui.view.paused = false; revealWatched(); return render(); }
   if (a === 'viewchoose') {
@@ -273,6 +294,7 @@ function chg(k, el) {
   if (k === 'nowarn') { G.rec.noWarn = el.checked; save(); return; }
   if (k === 'pickconf') { ui.pickConf = el.value; ui.pick = null; return render(); }
   if (k === 'conf') { ui.conf = el.value; return render(); }
+  if (k === 'hofteam') { ui.stat.hteam = el.value; return render(); }
   if (k === 'alt') { const tid = el.dataset.t; G.entries[tid] = G.entries[tid] || {}; G.entries[tid][el.dataset.wt] = el.value ? [el.value] : []; save(); return; }
   if (k === 'aid') {
     const w = G.wrestlers[el.dataset.w], nv = +el.value, free = R.aidAvailable(G, G.userTeam) - R.pendingOffers(G, G.userTeam);
@@ -348,7 +370,7 @@ function home() {
   const top = rk.slice(0, 12).map(r => `<tr class="${r.id === G.userTeam ? 'me' : ''}"><td>${r.rank}</td><td>${tn(r.id)}</td><td>${r.w}-${r.l}</td><td>${Math.round(r.power)}</td></tr>`).join('');
   const mine = rk.find(r => r.id === G.userTeam);
   const injRows = t.roster.map(id => G.wrestlers[id]).filter(w => w.injury).map(w => `<div class="msg"><b>${wl(w)}</b> (${w.natural}) — ${w.injury.what}, ${w.injury.weeks}w</div>`).join('');
-  const inbox = G.inbox.slice(0, 6).map(m => `<div class="msg"><b>${m.title}</b><div class="muted">${m.body}</div></div>`).join('');
+  const inbox = G.inbox.slice(0, 6).map(m => `<div class="msg"><b>${linkify(m.title)}</b><div class="muted">${linkify(m.body)}</div></div>`).join('');
   return `<div class="grid2"><div><div class="card"><h2>Next up</h2>${next}</div><div class="card"><h2>Injury report</h2>${injRows || '<span class="muted">Nobody injured.</span>'}</div><div class="card"><h2>Inbox</h2>${inbox || 'No messages.'}</div></div>
     <div class="card"><h2>Top 12 <small class="muted">(you: #${mine.rank})</small></h2><table class="tbl"><tr><th>#</th><th>Team</th><th>Rec</th><th>Pwr</th></tr>${top}</table></div></div>`;
 }
@@ -409,8 +431,8 @@ function scheduleEditor() {
 }
 function weekNote(wk) {
   const cal = G.cal, t = teamTournaments(G, G.userTeam).find(x => x.week === wk), d = teamEvents(G, G.userTeam).find(x => x.week === wk);
-  if (t) return `${t.name} (your event)`;
-  if (d) { const home = d.a === G.userTeam; return `${home ? 'vs' : 'at'} ${G.teams[home ? d.b : d.a].name}`; }
+  if (t) return `${tl(t.name)} (your event)`;
+  if (d) { const home = d.a === G.userTeam; return `${home ? 'vs' : 'at'} ${tnl(home ? d.b : d.a)}`; }
   return wk === cal.selWeek ? 'NCAA selection week' : wk === cal.ncaaWeek ? 'NCAA Championships' : 'bye';
 }
 function skipControls() {
@@ -524,7 +546,10 @@ function statsScreen() {
   const s = (ui.stat ||= { scope: 'season', view: 'team', sort: 'w', cat: 'w' });
   const get = w => (s.scope === 'season' ? seasonOf(w) : careerOf(w));
   const minBouts = s.scope === 'season' ? 5 : 15;
-  const head = `<p>${pill('stview', 'team', 'My team', s.view === 'team')}${pill('stview', 'leaders', 'National leaders', s.view === 'leaders')} &nbsp; ${pill('stscope', 'season', 'This season', s.scope === 'season')}${pill('stscope', 'career', 'Career', s.scope === 'career')}</p>`;
+  const views = `${pill('stview', 'team', 'My team', s.view === 'team')}${pill('stview', 'leaders', 'National leaders', s.view === 'leaders')}${pill('stview', 'records', 'Records', s.view === 'records')}${pill('stview', 'hof', 'Hall of Fame', s.view === 'hof')}`;
+  if (s.view === 'records') return recordsView(s, views, pend);
+  if (s.view === 'hof') return hofView(s, views, pend);
+  const head = `<p>${views} &nbsp; ${pill('stscope', 'season', 'This season', s.scope === 'season')}${pill('stscope', 'career', 'Career', s.scope === 'career')}</p>`;
   if (s.view === 'leaders') {
     const col = COLS.find(c => c.k === s.cat);
     const all = Object.values(G.wrestlers).map(w => { const st = get(w); return { w, st, d: derived(st) }; }).filter(x => x.d.n > 0 && (!col.min || x.d.n >= minBouts));
@@ -550,7 +575,7 @@ function statsScreen() {
 // ---------- wrestler profile ----------
 function profile() {
   const w = G.wrestlers[ui.prof], back = `<button class="secondary" data-act="profback">◀ Back</button>`;
-  if (!w) return `<div class="card"><p>This wrestler is no longer on a roster (graduated or left).</p>${back}</div>`;
+  if (!w) { const a = LG.archived(G, ui.prof); return a ? archProfile(a, back) : `<div class="card"><p>This wrestler is no longer on a roster (graduated or left) and no profile was kept for him.</p>${back}</div>`; }
   const pend = syncStats();
   const mine = w.team === G.userTeam, t = G.teams[w.team], wt = w.lw || w.natural;
   const poll = ensurePolls(G)[wt] || [], pr = poll.indexOf(w.id) + 1;
@@ -587,7 +612,7 @@ function profile() {
     for (const b of tr.result.userBouts) {
       if (b.a !== w.id && b.b !== w.id) continue;
       const side = b.a === w.id ? 'A' : 'B', oppId = side === 'A' ? b.b : b.a;
-      log.push({ week: tr.week, ev: `${tr.name} · ${b.label}`, opp: nameOf(oppId, side === 'A' ? b.bName : b.aName), res: b.w === side, d: b.d });
+      log.push({ week: tr.week, ev: `${tl(tr.name)} · ${b.label}`, opp: nameOf(oppId, side === 'A' ? b.bName : b.aName), res: b.w === side, d: b.d });
     }
   }
   log.sort((a, b) => b.week - a.week);
@@ -595,7 +620,7 @@ function profile() {
   const cs = careerOf(w);
   return `<div class="card"><div class="row"><button class="secondary" data-act="profback">◀ Back</button></div>
     <div style="display:flex;align-items:center;gap:14px;margin-top:10px">${schoolLogo(w.team, t.name, 56)}
-      <div><h2 style="margin:0">${w.name}${w.real ? '' : ''}</h2><div class="muted">${CLASS_NAMES[w.cls]} · ${w.natural} lbs · ${t.name}${pr ? ` · #${pr} at ${wt}` : ''}</div></div>
+      <div><h2 style="margin:0">${w.name}${w.real ? '' : ''}</h2><div class="muted">${CLASS_NAMES[w.cls]} · ${w.natural} lbs · ${tnl(w.team)}${pr ? ` · #${pr} at ${wt}` : ''}${hofBadge(w.id)}</div></div>
       <div style="margin-left:auto;text-align:right"><div class="muted" style="font-size:12px">OVERALL</div><div style="font-size:34px;font-weight:700;line-height:1">${ovr(w)}</div></div></div>${pend}
     <div class="cols2" style="margin-top:14px;align-items:start"><div><h3>Info</h3><table class="tbl">${info}</table></div><div><h3>Ratings</h3><div class="cols2">${bars}</div>${tourCard(w, hide)}</div></div>
     <h3 style="margin-top:14px">Stats</h3>${statTable}
@@ -626,7 +651,7 @@ function injuries() {
   }).join('');
   const rehabRows = rehab.map(w => `<tr><td><b>${wl(w)}</b> <span class="muted">${CLASS_NAMES[w.cls]} · ${w.natural}</span>${inLu(w.id) ? ` <small class="muted">starter</small>` : ''}</td>
       <td>Back from ${w.rehab.what}</td><td>${w.rehab.left} week${w.rehab.left === 1 ? '' : 's'} left</td><td>${riskCell(w)}</td><td class="muted">${durability(w)}</td></tr>`).join('');
-  const log = (G.injLog || []).slice(0, 12).map(x => `<tr><td class="muted">${x.season} wk ${x.week}</td><td>${x.name} <span class="muted">${x.wt}</span></td><td>${x.what}${x.re ? ' <small class="neg">re-injury</small>' : ''}</td><td class="${sevCls(x.sev)}">${x.sev}</td><td class="muted">${x.weeks}w</td></tr>`).join('');
+  const log = (G.injLog || []).slice(0, 12).map(x => `<tr><td class="muted">${x.season} wk ${x.week}</td><td>${wl(x.id, x.name)} <span class="muted">${x.wt}</span></td><td>${x.what}${x.re ? ' <small class="neg">re-injury</small>' : ''}</td><td class="${sevCls(x.sev)}">${x.sev}</td><td class="muted">${x.weeks}w</td></tr>`).join('');
   const fragile = ws.filter(w => w.prone >= 15).length;
   return `<div class="card"><h2>Injury center</h2>
     <p class="muted"><b style="color:var(--text)">${hurt.length}</b> injured · <b style="color:var(--text)">${rehab.length}</b> in rehab window · ${healthy} available · ${fragile} injury-prone on the roster</p>
@@ -683,7 +708,7 @@ function tourneyday() {
       return `<tr><td><b>${wt}</b></td><td>${w ? `${wl(w)} <span class="muted">${CLASS_NAMES[w.cls]}</span> ${wstat(w)} <span class="${w.fatigue > 50 ? 'neg' : 'muted'}">F${Math.round(w.fatigue)}</span>` : '<span class="neg">empty</span>'}</td>${alt}</tr>`;
     }).join('');
   }
-  return `<div class="card"><h2>${t.name}</h2><p class="muted">Week ${G.week} · ${t.dates} · ${t.loc} · ${t.teams.length} teams${t.tier === 'major' ? ' · major invitational' : ''}</p>
+  return `<div class="card"><h2>${tl(t.name)}</h2><p class="muted">Week ${G.week} · ${t.dates} · ${t.loc} · ${t.teams.length} teams${t.tier === 'major' ? ' · major invitational' : ''}</p>
     ${t.kind === 'dual' ? '<p>Single-elimination bracket of dual meets for the top 16 programs: win your dual to advance. Your lineup is used for every dual, so set it first (you can change it between rounds). Fatigue and injuries carry from dual to dual.</p>' : t.kind === 'ncaa' ? '<p>Your NCAA qualifiers:</p>' : t.kind === 'conf' ? '<p>One entry per weight. Top finishers earn automatic NCAA berths; strong non-placers can still get at-large bids.</p>' : '<p>Your starters are entered. You may add a second wrestler at any weight.</p>'}
     <table class="tbl"><tr><th>Wt</th><th>Entry</th>${t.kind === 'open' ? '<th>Second entry</th>' : ''}</tr>${rows}</table>
     <div class="row" style="margin-top:10px"><button data-act="starttourney">Start tournament ▶</button><button class="secondary" data-act="nav" data-v="lineup">Edit lineup</button></div>
@@ -999,7 +1024,7 @@ function progressPanel() {
     ${off.grads && off.grads.length ? `<p class="muted">Graduated: ${off.grads.join(', ')}</p>` : ''}
     <table class="tbl dense"><tr><th>Name</th><th>Class</th><th>Wt</th><th>OVR</th><th>Δ</th><th>Potential</th><th>Rating gains</th><th></th></tr>${rows}</table>
     <p class="hint">Gains depend on class, program prestige, work ethic, practice focus and luck. ⭐ Breakouts raise potential; "stalled" wrestlers lose a point of potential and grow little. Ratings never drop in the current model, so "losses" show up as potential drops and stalls.</p>
-    ${rel.length ? `<p class="muted">Released wrestlers (now in the portal) also developed: ${rel.map(x => `${x.name} ${x.o1 >= x.o0 ? '+' : ''}${(x.o1 - x.o0).toFixed(1)}`).join(', ')}.</p>` : ''}</div>`;
+    ${rel.length ? `<p class="muted">Released wrestlers (now in the portal) also developed: ${rel.map(x => `${wl(x.id, x.name)} ${x.o1 >= x.o0 ? '+' : ''}${(x.o1 - x.o0).toFixed(1)}`).join(', ')}.</p>` : ''}</div>`;
 }
 // Offseason roster cut-down: must reach ROSTER_MAX before progression; cuts enter the portal.
 function cutPanel(need) {
@@ -1053,14 +1078,15 @@ function dual() {
     const b = r.bouts[i];
     if (!b || i >= n) return `<tr class="muted"><td><b>${wt}</b></td><td colspan="4">…</td></tr>`;
     const wa = b.w === 'A', wb = b.w === 'B';
-    return `<tr><td><b>${b.wt}</b></td><td class="${wa ? 'win' + (du.a === G.userTeam ? ' mine' : '') : wb && b.wa ? 'lose' : ''}">${b.wa ? wl(b.wa, b.na) : b.na}${subTag(b.subA)}</td><td class="${wb ? 'win' + (du.b === G.userTeam ? ' mine' : '') : wa && b.wb ? 'lose' : ''}">${b.wb ? wl(b.wb, b.nb) : b.nb}${subTag(b.subB)}</td><td>${b.m === 'Vacant' ? '—' : b.d}</td>
-      <td>${b.tp ? `${b.w === 'A' ? A.name : B.name} +${b.tp}` : ''} ${b.seed ? `<a data-act="watchbout" data-v="${i}">watch</a>` : ''}</td></tr>`;
+    const rkOf = (id, i) => { const x = b.rk ? b.rk[i] : id && G.wrestlers[id] ? wrank(G.wrestlers[id]) : 0; return x ? `<b class="rk">#${x}</b> ` : ''; };   // poll rank on the day (duals from before 2026-11-12: current rank)
+    return `<tr><td><b>${b.wt}</b></td><td class="${wa ? 'win' + (du.a === G.userTeam ? ' mine' : '') : wb && b.wa ? 'lose' : ''}">${b.wa ? rkOf(b.wa, 0) + wl(b.wa, b.na) : b.na}${subTag(b.subA)}</td><td class="${wb ? 'win' + (du.b === G.userTeam ? ' mine' : '') : wa && b.wb ? 'lose' : ''}">${b.wb ? rkOf(b.wb, 1) + wl(b.wb, b.nb) : b.nb}${subTag(b.subB)}</td><td>${b.m === 'Vacant' ? '—' : b.d}</td>
+      <td>${b.tp ? `${tnl(b.w === 'A' ? A.id : B.id)} +${b.tp}` : ''} ${b.seed ? `<a data-act="watchbout" data-v="${i}">watch</a>` : ''}</td></tr>`;
   }).join('');
   let ctrl;
   if (!final) ctrl = `${ui.timer ? '<button data-act="autopause" title="Stop auto-run after the current bout">⏸ Pause auto-run</button>' : `<button class="secondary" data-act="auto" title="Plays the remaining bouts with the lineup you have set">${ui.dual.autoPaused ? '▶ Resume auto-run' : 'Auto-Run'}</button>`}${ui.dual.live ? '<button data-act="watchnext">👁 Watch Next Match</button>' : ''}<button data-act="next">Next Bout Result ▶</button><button class="secondary" data-act="dualjump" title="Plays the remaining bouts with the lineup you have set">⏭ Jump to Result</button>`;
   else ctrl = ui.dual.tid ? `<button data-act="backtourn">Back to tournament ▶</button>` : ui.dual.live ? `<button data-act="finishweek">Finish week ▶</button>` : `<button class="secondary" data-act="backsched">Back to schedule</button>`;
-  const winName = r.winner === 'A' ? A.name : B.name;
-  const nm = id => (id && G.wrestlers[id] ? G.wrestlers[id].name : 'no one');
+  const winName = tnl(r.winner === 'A' ? A.id : B.id);
+  const nm = id => (id && G.wrestlers[id] ? wl(id) : 'no one');
   const why = { rest: 'resting a starter (dual clinched)', matchup: 'lineup change for a better matchup', coach: 'coach\'s call' };
   const moves = (r.subs || []).filter(s => s.k < n || s.tid === G.userTeam).map(s => `<li>${tn(s.tid, 14)} at <b>${s.wt}</b>: ${nm(s.in)} in for ${nm(s.out)} <span class="muted">· ${why[s.why] || s.why}</span></li>`).join('');
   // the user's coaching panel (live duals only): both lineups for the weights still to wrestle
@@ -1076,7 +1102,8 @@ function dual() {
       <table class="tbl"><tr><th>Wt</th><th>${tn(G.userTeam, 16)}</th><th>${tn(side === 'A' ? du.b : du.a, 16)}</th></tr>${crow}</table>
       <p class="hint">A wrestler wrestles once per dual. Rest a starter when the dual is won, or bump a better wrestler up a class (⚠ costs a little) when you are behind. Choosing someone already slotted at another weight? Replace him there first. Auto-Run and Jump to Result keep the lineup you have set here; the assistant coach only acts when a dual is simulated without you opening it.</p></div>`;
   }
-  return `<div class="card"><div class="scoreboard"><div class="A"><div class="pts">${sa}</div><div class="nm">${tn(A.id, 38)}</div></div>
+  const bd = bandSides({ A: TEAM_COLORS[du.a] || '#4ea1ff', B: TEAM_COLORS[du.b] || '#ff8a5c' }, ui.dual.tid ? null : 'A');   // home team green; neutral site (national duals): colour nearest red takes red
+  return `<div class="card" style="--a:${BAND[bd.A]};--b:${BAND[bd.B]}"><div class="scoreboard"><div class="A"><div class="pts">${sa}</div><div class="nm">${tn(A.id, 38)}</div></div>
     <div class="clock"><span>${final ? 'FINAL' : `Bout ${n} / ${total}`}</span><small>Week ${du.week}</small></div><div class="B"><div class="pts">${sb}</div><div class="nm">${tn(B.id, 38)}</div></div></div>
     <div class="row">${ctrl}</div>
     ${final ? `<p><b>${winName}</b> wins ${Math.max(r.sa, r.sb)}-${Math.min(r.sa, r.sb)}${r.tiebreak ? ' (tie-break on bonus points)' : ''}.</p>` : ''}
@@ -1085,9 +1112,9 @@ function dual() {
 }
 
 // wrestler profile: conference / NCAA results by season + Outstanding Wrestler awards (w.tr = {season: {c, n}} place 1-8, 9 = competed without placing; w.aw = awards)
-function tourCard(w, hide) {
+function tourCard(w, hide, past) {
   const ord = n => n + (['st', 'nd', 'rd'][n - 1] || 'th'), done = G.ncaa && G.ncaa.season === G.season && G.ncaa.rv && G.ncaa.rv.done;
-  const seasons = [...new Set([...Object.keys(w.tr || {}).map(Number), G.season])].sort((x, y) => y - x);
+  const seasons = [...new Set([...Object.keys(w.tr || {}).map(Number), ...(past ? [] : [G.season])])].sort((x, y) => y - x);
   const confDone = G.tournaments.some(t => t.kind === 'conf' && t.done);
   const lab = (kind, s) => {
     const tr = (w.tr || {})[s] || {}, p = tr[kind], cur = s === G.season;
@@ -1099,7 +1126,7 @@ function tourCard(w, hide) {
   const rows = seasons.map(s => `<tr><td>${s}</td><td>${lab('c', s)}</td><td>${lab('n', s)}</td></tr>`).join('');
   const aw = (w.aw || []).filter(a => a.wk !== hide || a.season !== G.season).sort((x, y) => y.season - x.season);
   return `<h3 style="margin-top:14px">Tournament results</h3><table class="tbl"><tr><th>Season</th><th>Conference</th><th>NCAA Championships</th></tr>${rows}</table>
-    ${aw.length ? `<p style="margin-top:8px"><b>Outstanding Wrestler</b> <span class="muted">${aw.length}×</span><br>${aw.map(a => `${a.ev} <span class="muted">${a.season}</span>`).join('<br>')}</p>` : ''}`;
+    ${aw.length ? `<p style="margin-top:8px"><b>Outstanding Wrestler</b> <span class="muted">${aw.length}×</span><br>${aw.map(a => `${tl(a.ev)} <span class="muted">${a.season}</span>`).join('<br>')}</p>` : ''}`;
 }
 
 // ---------- team + tournament profiles ----------
@@ -1152,6 +1179,7 @@ function teamProfile() {
     <h3 style="margin-top:14px">${G.season} season</h3>
     <div style="overflow-x:auto"><table class="tbl"><tr><th>Wk</th><th>Date</th><th>Dual</th><th></th><th>Result</th></tr>${duals || '<tr><td colspan="5" class="muted">No duals scheduled</td></tr>'}</table></div>
     ${evs ? `<h3 style="margin-top:14px">Tournaments</h3><table class="tbl"><tr><th>Wk</th><th>Event</th><th>Dates</th><th>Team finish</th></tr>${evs}</table>` : ''}
+    ${schoolHof(id)}
     ${nc ? `<h3 style="margin-top:14px">NCAA Championships history</h3><table class="tbl"><tr><th>Season</th><th>Team finish</th><th>Pts</th><th>All-Americans</th><th>Champions</th></tr>${nc}</table>` : ''}</div>`;
 }
 function tournamentProfile() {
@@ -1169,7 +1197,7 @@ function tournamentProfile() {
   const tally = (key, label) => { const c = {}; past.forEach(x => key(x).forEach(k => { c[k.k] = c[k.k] || { n: 0, html: k.html }; c[k.k].n++; })); const rows = Object.values(c).sort((a, b) => b.n - a.n).slice(0, 5);
     return rows.length ? `<table class="tbl"><tr><th>${label}</th><th>Titles</th></tr>${rows.map(r => `<tr><td>${r.html}</td><td>${r.n}</td></tr>`).join('')}</table>` : ''; };
   const teamTally = tally(x => x.team ? [{ k: x.team, html: tn(x.team, 18) }] : [], 'Most team titles');
-  const indTally = tally(x => Object.values(x.champs || {}).map(c => ({ k: c.name, html: `${wl(c.id, c.name)} <span class="muted">${G.teams[c.team]?.name || ''}</span>` })), 'Most individual titles');
+  const indTally = tally(x => Object.values(x.champs || {}).map(c => ({ k: c.name, html: `${wl(c.id, c.name)} <span class="muted">${tnl(c.team)}</span>` })), 'Most individual titles');
   const rows = past.map(x => `<tr><td>${seasonLbl(x.season)}</td><td>${x.team ? tn(x.team, 18) : '—'}</td><td>${x.pts ?? ''}</td><td>${x.mow ? `${wl(x.mow.id, x.mow.name)} <span class="muted">${x.mow.wt}</span>` : '<span class="muted">—</span>'}</td>
     <td><details><summary>${Object.keys(x.champs || {}).length} champions</summary><table class="tbl dense">${WEIGHTS.filter(wt => x.champs?.[wt]).map(wt => { const c = x.champs[wt], m = c.team === G.userTeam;
       return `<tr><td><b>${wt}</b></td><td class="${m ? 'tcname' : ''}">${wl(c.id, c.name)}</td><td>${G.teams[c.team] ? tn(c.team, 14) : ''}</td></tr>`; }).join('')}</table></details></td></tr>`).join('');
@@ -1201,15 +1229,88 @@ function boutView() {
   const res = v.res, log = res.log.slice(0, v.shown), last = log[log.length - 1];
   const done = v.shown >= res.log.length;
   const feed = log.map(ev => `<div class="ev ${ev.type}"><span class="t">${ev.period} ${ev.clock}</span>${ev.text}</div>`).join('');
-  const st = res.stats;
-  return `<div class="card${v.paused ? ' vpaused' : ''}" id="boutcard" style="--spd:${SPEEDS[ui.speed].ms / 1000}"><div class="scoreboard"><div class="A"><div class="pts">${last ? last.a : 0}</div><div class="nm">${res.wrestlers.A.name}</div>${rtBox(last, 0)}</div>
-    <div class="clock"><span>${last ? last.clock : '3:00'}</span><small>${last ? last.period : ''}</small></div><div class="B"><div class="pts">${last ? last.b : 0}</div><div class="nm">${res.wrestlers.B.name}</div>${rtBox(last, 1)}</div></div>
+  const st = res.stats, col = singletColors(G, res, TEAM_COLORS), bd = bandSides(col, v.home);
+  return `<div class="card${v.paused ? ' vpaused' : ''}" id="boutcard" style="--spd:${SPEEDS[ui.speed].ms / 1000};--a:${BAND[bd.A]};--b:${BAND[bd.B]}"><div class="scoreboard"><div class="A"><div class="pts">${last ? last.a : 0}</div>${sbName(v, res, 'A')}${rtBox(last, 0)}</div>
+    <div class="clock"><span>${last ? last.clock : '3:00'}</span><small>${last ? last.period : ''}</small></div><div class="B"><div class="pts">${last ? last.b : 0}</div>${sbName(v, res, 'B')}${rtBox(last, 1)}</div></div>
     <div class="row">${done || v.asking ? '' : `<button data-act="viewpause">${v.paused ? '▶ Resume' : '⏸ Pause'}</button>`}<button class="secondary" data-act="viewjump" ${done ? 'disabled' : ''}>⏭ Jump to result</button><button class="secondary" data-act="viewclose">Close</button>
       <label class="spd">Speed <input type="range" min="0" max="2" step="1" value="${ui.speed}" data-chg="vspeed"> <b>${SPEEDS[ui.speed].n}</b></label></div>
-    ${stage(res, last, singletColors(G, res, TEAM_COLORS))}
+    ${stage(res, last, col, { band: { A: BAND[bd.A], B: BAND[bd.B] }, champ: !!v.title })}
     ${v.asking ? askPanel(v, res, last) : ''}
     <div id="feed">${feed}</div>
     ${done ? `<div class="result"><b>${res.detail}</b> · ${res.teamPoints} team points · Takedowns ${st.A.takedowns}-${st.B.takedowns} · Escapes ${st.A.escapes}-${st.B.escapes} · Near-fall pts ${st.A.nfPoints}-${st.B.nfPoints} · Ride ${fmtClock(st.A.ride)}-${fmtClock(st.B.ride)}</div>` : ''}</div>`;
+}
+
+// ---------- ankle bands, scoreboard names ----------
+// Folkstyle ankle bands are red and green. In a dual the home team wears green; at tournaments and neutral-site duals the wrestler whose singlet
+// is nearer red wears red and the other green. The scoreboard numbers use the same colours.
+const BAND = { red: '#e5534b', green: '#3fb27f' };
+function bandSides(col, home) {
+  if (home) return { [home]: 'green', [home === 'A' ? 'B' : 'A']: 'red' };
+  const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)), d = (h, t) => rgb(h).reduce((s, v, i) => s + (v - t[i]) ** 2, 0);
+  const R = [211, 47, 47], Gn = [46, 158, 79];
+  return d(col.A, R) + d(col.B, Gn) <= d(col.A, Gn) + d(col.B, R) ? { A: 'red', B: 'green' } : { A: 'green', B: 'red' };
+}
+// viewer context for a dual bout: wrestler ids, poll ranks on the day, home side (A = home team; national dual tournament = neutral site)
+const dualViewCtx = b => ({ ids: { A: b.wa, B: b.wb }, rk: b.rk ? { A: b.rk[0], B: b.rk[1] } : null, home: ui.dual && ui.dual.tid ? null : 'A' });
+// scoreboard name: logo, poll rank, linked name, school + season record, and an S flag for each stalling call so far
+function sbName(v, res, side) {
+  const id = v.ids && v.ids[side], w = id && G.wrestlers[id], nm = res.wrestlers[side].name;
+  const tid = w ? w.team : Object.keys(G.teams).find(k => G.teams[k].name === res.wrestlers[side].school);
+  const rk = v.rk ? v.rk[side] : w ? wrank(w) : 0, st = w ? seasonOf(w) : null;
+  const calls = res.log.slice(0, v.shown).filter(e => e.fx === 'stall' && e.who === side).length;
+  const flag = calls ? ` <span class="sflag" title="${calls} stalling call${calls > 1 ? 's' : ''}">S${calls > 1 ? `<small>${calls}</small>` : ''}</span>` : '';
+  return `<div class="nm bn">${tid ? schoolLogo(tid, G.teams[tid].name, 26) : ''}<div><div class="bnm">${rk ? `<b class="rk">#${rk}</b> ` : ''}${id ? wl(id, nm) : nm}${flag}</div><div class="wsub">${tid ? tnl(tid) : ''}${st ? ` · ${st[0]}-${st[1]}` : ''}</div></div></div>`;
+}
+
+// ---------- records, Halls of Fame ----------
+function recordsView(s, views, pend) {
+  const scope = s.scope === 'career' ? 'career' : 'season', cats = LG.catsFor(scope), cat = cats.find(c => c.k === s.rcat) || cats[0], team = s.rteam === 'team' ? G.userTeam : null;
+  const list = LG.liveRecords(G, scope, cat.k, team), fmt = cat.fmt || (v => v);
+  const rows = list.map((e, i) => `<tr class="${e.team === G.userTeam ? 'me' : ''}"><td>${i + 1}</td><td>${wl(e.id, e.name)}${e.live ? ' <small class="tag al">active</small>' : ''}</td><td>${G.teams[e.team] ? tn(e.team, 16) : ''}</td><td>${e.wt || ''}</td><td>${scope === 'season' ? seasonLbl(e.season) : `thru ${seasonLbl(e.season)}`}</td><td><b>${fmt(e.v)}</b></td></tr>`).join('');
+  return `<div class="card"><h2>Record book <small class="muted">${scope === 'season' ? 'single season' : 'career'} · ${team ? G.teams[team].name : 'all of college wrestling'}</small></h2>${pend}
+    <p>${views} &nbsp; ${pill('stscope', 'season', 'Single season', scope === 'season')}${pill('stscope', 'career', 'Career', scope === 'career')} &nbsp; ${pill('rteam', 'nat', 'National', !team)}${pill('rteam', 'team', 'My school', !!team)}</p>
+    <p>${cats.map(c => pill('rcat', c.k, c.h, c === cat)).join('')}</p>
+    <table class="tbl"><tr><th>#</th><th>Wrestler</th><th>School</th><th>Wt</th><th>${scope === 'season' ? 'Season' : 'Career'}</th><th>${cat.h}</th></tr>${rows || '<tr><td colspan="6" class="muted">No records yet.</td></tr>'}</table>
+    <p class="hint">Records start when you began this game (real wrestlers' earlier careers aren't known). The ${scope === 'season' ? 'current season counts live (marked active) and is written into the book when the season ends' : 'careers of wrestlers still competing count live (marked active); a career enters the book when he graduates or leaves'}. ${cat.min ? `${cat.h} needs ${cat.min[scope]}+ matches. ` : ''}Duals and tournaments count; forfeits don't.</p></div>`;
+}
+const hofRow = (m, team = true) => `<tr class="${m.team === G.userTeam ? 'me' : ''}"><td>${m.ind}</td><td>${wl(m.id, m.name)}${m.nat ? ' <small class="tag aq" title="also in the national Hall of Fame">NCAA HOF</small>' : ''}</td>${team ? `<td>${G.teams[m.team] ? tn(m.team, 16) : ''}</td>` : ''}<td>${m.wt}</td><td class="muted">${m.from === m.to ? m.to : `${m.from}–${m.to}`}</td><td>${m.w}-${m.l}</td><td>${m.ch}</td><td>${m.aa}</td><td class="muted">${m.why}</td></tr>`;
+const hofHead = (team = true) => `<tr><th>Class of</th><th>Wrestler</th>${team ? '<th>School</th>' : ''}<th>Wt</th><th>Years</th><th>Record</th><th>Titles</th><th>AA</th><th>Achievements</th></tr>`;
+function hofView(s, views, pend) {
+  const L = LG.ensureLegacy(G), nat = L.hof.slice().sort((a, b) => b.ind - a.ind || b.ch - a.ch || b.aa - a.aa);
+  const tid = G.teams[s.hteam] ? s.hteam : G.userTeam, sch = (L.shof[tid] || []).slice().sort((a, b) => b.ind - a.ind || b.ch - a.ch);
+  const mc = LG.multiChamps(G).map(m => { const yrs = m.nc.filter(x => x[1] === 1).map(x => x[0]);
+    return `<tr class="${m.team === G.userTeam ? 'me' : ''}"><td>${wl(m.id, m.name)}${m.active ? ' <small class="tag al">active</small>' : ''}</td><td>${G.teams[m.team] ? tn(m.team, 16) : ''}</td><td>${m.wt}</td><td><b>${m.ch}×</b></td><td>${yrs.join(', ')}</td><td>${m.aa}</td></tr>`; }).join('');
+  const opts = Object.values(G.teams).sort((a, b) => a.name.localeCompare(b.name)).map(t => `<option value="${t.id}" ${t.id === tid ? 'selected' : ''}>${t.name}${(L.shof[t.id] || []).length ? ` (${L.shof[t.id].length})` : ''}</option>`).join('');
+  return `<div class="card"><h2>Hall of Fame</h2>${pend}<p>${views}</p>
+    <p class="muted">Wrestlers are inducted when their college careers end. <b>National Hall of Fame:</b> two or more NCAA titles, a title plus three or more All-American finishes, or four All-American finishes with a finals appearance. <b>School Halls of Fame:</b> an NCAA title, three or more All-American finishes, or two with 80+ wins at 85%+ (every national inductee is in his school's Hall too). Counted from when this game began.</p>
+    <h3>National Hall of Fame <small class="muted">${nat.length} member${nat.length === 1 ? '' : 's'}</small></h3>
+    ${nat.length ? `<div style="overflow-x:auto"><table class="tbl">${hofHead()}${nat.map(m => hofRow(m)).join('')}</table></div>` : '<p class="muted">No inductees yet. The first class is inducted when the first season\'s seniors graduate.</p>'}
+    <h3 style="margin-top:14px">School Hall of Fame <select data-chg="hofteam">${opts}</select></h3>
+    ${sch.length ? `<div style="overflow-x:auto"><table class="tbl">${hofHead(false)}${sch.map(m => hofRow(m, false)).join('')}</table></div>` : `<p class="muted">${G.teams[tid].name} has no inductees yet.</p>`}
+    <h3 style="margin-top:14px">Multi-time NCAA champions</h3>
+    ${mc ? `<table class="tbl"><tr><th>Wrestler</th><th>School</th><th>Wt</th><th>Titles</th><th>Title years</th><th>AA</th></tr>${mc}</table>` : '<p class="muted">Nobody has won two NCAA titles yet in this game.</p>'}</div>`;
+}
+function schoolHof(tid) {
+  const L = LG.ensureLegacy(G), sch = (L.shof[tid] || []).slice().sort((a, b) => b.ind - a.ind || b.ch - a.ch);
+  return sch.length ? `<h3 style="margin-top:14px">Hall of Fame <small class="muted">${sch.length} member${sch.length === 1 ? '' : 's'}</small></h3><div style="overflow-x:auto"><table class="tbl">${hofHead(false)}${sch.map(m => hofRow(m, false)).join('')}</table></div>` : '';
+}
+function hofBadge(id) {
+  const L = LG.ensureLegacy(G);
+  return L.hof.some(m => m.id === id) ? ' · <b class="tcwin">🏅 National Hall of Fame</b>' : Object.values(L.shof).some(l => l.some(m => m.id === id)) ? ' · <b>🏅 School Hall of Fame</b>' : '';
+}
+// profile of a departed wrestler kept in the archive (graduated or left): career numbers, tournament history, honours
+function archProfile(a, back) {
+  const line = (label, st, cls = '') => { const d = derived(st); return `<tr class="${cls}"><td>${label}</td>${COLS.map(c => `<td>${c.fmt(st, d)}</td>`).join('')}</tr>`; };
+  const car = a.hist.reduce((x, h) => x.map((v, i) => v + (h[i + 1] || 0)), KEYS.map(() => 0));
+  const w = { ...a, st: null };
+  return `<div class="card"><div class="row">${back}</div>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:10px">${G.teams[a.team] ? schoolLogo(a.team, G.teams[a.team].name, 56) : ''}
+      <div><h2 style="margin:0">${a.name}</h2><div class="muted">${a.natural} lbs · ${tnl(a.team)} · final season ${seasonLbl(a.last)}${hofBadge(a.id)}</div></div></div>
+    <div class="cols2" style="margin-top:14px;align-items:start"><div><h3>Info</h3><table class="tbl"><tr><td class="muted">School</td><td>${G.teams[a.team] ? tn(a.team, 18) : '—'}</td></tr><tr><td class="muted">Weight</td><td>${a.natural} lbs</td></tr>
+      <tr><td class="muted">Hometown</td><td>${a.hm ? a.hm.replace(' / ', ' · ') : '—'}</td></tr><tr><td class="muted">Status</td><td>Career over (${seasonLbl(a.last)})</td></tr></table></div>
+      <div>${tourCard(w, -1, true)}</div></div>
+    <h3 style="margin-top:14px">Stats</h3><div style="overflow-x:auto"><table class="tbl"><tr><th>Season</th>${COLS.map(c => `<th>${c.h}</th>`).join('')}</tr>${a.hist.map(h => line(h[0], h.slice(1))).join('')}${line('<b>Career</b>', car, 'me')}</table></div>
+    <p class="hint">Departed wrestlers keep a profile when they hold a record, are in a Hall of Fame, won an NCAA title, or wrestled for you. Counts start when you began this game.</p></div>`;
 }
 
 render();

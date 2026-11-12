@@ -42,7 +42,7 @@ export function pTakedown(O, D) {
   return 1 / (1 + Math.exp(-((1 - t) * mid + t * elite)));
 }
 // Match flow knobs (2026-11-09 scoring retune): how often wrestlers shoot, get turned (near-falls), escape or reverse.
-export const FLOW = { rideK: 0.5, letUp: 0.9, letLead: 3, shotPow: 3, act: 0.28, turn: 0.0035, level: 0.12, esc: 0.07, rev: 0.05 };   // 2026-11-09 tech-fall pass: letUp/letLead (dominant wrestlers let opponents up to score again), shotPow (stronger wrestler takes more of the shots); was act .58 / turn .014 / level 0 / esc .08 / rev .18 before the scoring retune
+export const FLOW = { rideK: 0.5, letUp: 0.9, letLead: 3, letMin: 40, shotPow: 3, act: 0.28, turn: 0.0035, level: 0.12, esc: 0.07, rev: 0.05 };   // 2026-11-09 tech-fall pass: letUp/letLead (dominant wrestlers let opponents up to score again), shotPow (stronger wrestler takes more of the shots); was act .58 / turn .014 / level 0 / esc .08 / rev .18 before the scoring retune
 // pace by weight class: lighter weights are quicker and score more, heavyweights shoot less (real scoring falls steadily from 125 to 285)
 export const PACE = new Proxy({ 125: 1.1, 133: 1.07, 141: 1.04, 149: 1.02, 157: 1.0, 165: 0.99, 174: 0.97, 184: 0.94, 197: 0.9, 285: 0.8 }, { get: (t, k) => t[k] ?? 1 });
 export const ELITE = { amp: 0, from: 14, span: 4 };   // off: the elite takedown curve (TD) already separates the top tier
@@ -132,6 +132,7 @@ export function simulateBout(wA, wB, opts = {}) {
     const opts = [
       ['a blast double', a.str * 1.2 + a.tdo * 0.5], ['a low single', a.speed + a.tdo * 0.6], ['a high-crotch', a.tdo + a.flex * 0.4],
       ['an ankle pick', a.flex * 1.1 + a.speed * 0.4], ['a double leg', a.tdo + a.str * 0.3], ['a snap and go-behind', a.hand * 1.2 + a.iq * 0.3], ['a duck-under', a.speed * 0.8 + a.hand * 0.7],
+      ['a sweep single', a.speed * 0.9 + a.tdo * 0.5], ['a high single and trip', a.str * 0.6 + a.tdo * 0.5 + a.big * 0.3],   // one rng draw whatever the list length: results unchanged, only the move named
     ];
     return rng.weighted(opts, o => Math.pow(Math.max(1, o[1] - 5), 2))[0];
   };
@@ -144,7 +145,7 @@ export function simulateBout(wA, wB, opts = {}) {
     return rng.weighted(opts, o => Math.pow(Math.max(1, o[1] - 5), 2))[0];
   };
   // move name -> animation key (viewer only)
-  const MV = { 'a blast double': 'double', 'a low single': 'single', 'a high-crotch': 'highc', 'an ankle pick': 'ankle', 'a double leg': 'double', 'a snap and go-behind': 'snap', 'a duck-under': 'duck', 'out of a wild scramble': 'scr',
+  const MV = { 'a blast double': 'double', 'a low single': 'single', 'a high-crotch': 'highc', 'an ankle pick': 'ankle', 'a double leg': 'double', 'a snap and go-behind': 'snap', 'a duck-under': 'duck', 'a sweep single': 'sweep', 'a high single and trip': 'trip', 'out of a wild scramble': 'scr',
     'a huge arm throw': 'armthrow', 'a headlock': 'headlock', 'a lateral drop': 'lateral', "a fireman's carry": 'fireman', 'a high-amplitude lift': 'lift',
     'a half nelson': 'half', 'a cradle': 'cradle', 'a tilt': 'tilt', 'a leg ride and turk': 'turk', 'an arm bar': 'armbar', 'a cross-face cradle': 'cradle', 'a chicken wing': 'wing' };
   const BIG = ['a huge arm throw', 'a headlock', 'a lateral drop', "a fireman's carry", 'a high-amplitude lift'];
@@ -262,7 +263,8 @@ export function simulateBout(wA, wB, opts = {}) {
     drain(dt, T === 'A' ? 0.5 : 0.7, T === 'A' ? 0.7 : 0.5);
     // bonus hunting: a clearly dominant wrestler who is well ahead sometimes lets his opponent up (escape point) to go back to the feet and score again;
     // this is what turns lopsided matches into tech falls (equal wrestlers never qualify: it needs a big takedown-offense edge AND a lead)
-    if (S.mode === 'reg' && FLOW.letUp > 0) {
+    // ...but never with less than FLOW.letMin seconds left in the period: there would be no time to score the takedown back, so he rides it out
+    if (S.mode === 'reg' && FLOW.letUp > 0 && S.remaining >= FLOW.letMin) {
       const lead = S.score[T] - S.score[Bt], gap = clamp((e(T, 'tdo') - e(Bt, 'tdd') - 2) / 6, 0, 1);
       if (lead >= FLOW.letLead && gap > 0 && rng.chance(FLOW.letUp * gap)) {
         ST[Bt].escapes++; award(Bt, RULES.escape); S.pos = 'neutral';

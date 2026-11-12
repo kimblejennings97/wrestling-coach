@@ -22,7 +22,7 @@ const LIMBS = ['hL', 'hR', 'fL', 'fR'], POLES = ['pL', 'pR', 'qL', 'qR'];
 const DEF = { hL: { b: [-2.4, 1.4, 0] }, hR: { b: [-2.4, 1.4, 0] }, fL: { b: [-7.2, 0.5, 0] }, fR: { b: [-7.2, 0.5, 0] } };
 
 function lerpPose(A, B, t) {
-  const P = { p: [mix(A.p[0], B.p[0], t), mix(A.p[1], B.p[1], t)], z: mix(A.z, B.z, t), yaw: mix(A.yaw, B.yaw, t), lean: mix(A.lean, B.lean, t), roll: mix(A.roll, B.roll, t), vs: B.vs || A.vs, t };
+  const P = { p: [mix(A.p[0], B.p[0], t), mix(A.p[1], B.p[1], t)], z: mix(A.z, B.z, t), yaw: mix(A.yaw, B.yaw, t), lean: mix(A.lean, B.lean, t), roll: mix(A.roll, B.roll, t), vs: B.vs || A.vs, t, nb: t >= 0.5 ? B.nb : A.nb };   // nb = ankle band taken off
   for (const k of LIMBS) P[k] = [A[k] || DEF[k], B[k] || DEF[k]];
   for (const k of POLES) P[k] = [A[k] || null, B[k] || null];
   return P;
@@ -68,7 +68,9 @@ function solve(figs) {   // figs: {name: interpolated pose} -> {name: joints}
 }
 
 // ---------- drawing ----------
-function drawFrame(all, cam, cols) {
+export const HEADGEAR = true;   // ear guards + strap on both wrestlers
+// prop = { p: [x, y, z], c: colour, rot } : a thrown ankle band (title celebration)
+function drawFrame(all, cam, cols, prop) {
   const th = cam[0] * D, ph = cam[1] * D, ct = Math.cos(th), st = Math.sin(th), cp = Math.cos(ph), sp = Math.sin(ph);
   const pr = v => { const d = -v[0] * st + v[2] * ct; return [(v[0] * ct + v[2] * st) * U, (-v[1] * cp + d * sp) * U, d * cp + v[1] * sp]; };
   const n1 = x => Math.round(x * 10) / 10;
@@ -86,9 +88,25 @@ function drawFrame(all, cam, cols) {
       seg(J['hp' + s], J['kn' + s], 4.6, ref ? '#30343a' : sk(s)); seg(J['hp' + s], mix3(J['hp' + s], J['kn' + s], 0.5), 5, ref ? '#30343a' : sc(s), 0.01); seg(J['kn' + s], J['ft' + s], 3.8, ref ? '#30343a' : sk(s)); seg(J['ft' + s], J['toe' + s], 3.6, far(s) ? shade(SHOE, 0.8) : SHOE, 0.02);
       seg(J['sh' + s], J['el' + s], 3.6, sk(s)); seg(J['el' + s], J['ha' + s], 3.2, sk(s));
     }
+    // ankle band (red or green) on the left ankle, unless he has taken it off
+    if (!ref && cols.band && cols.band[n] && !J.P.nb) {   // sorted just above its own shin (a shorter segment's average depth would slip under it)
+      const k0 = parts.length, sd = (pr(J.knL)[2] + pr(J.ftL)[2]) / 2;
+      seg(mix3(J.knL, J.ftL, 0.74), mix3(J.knL, J.ftL, 0.92), 5.6, cols.band[n]);
+      parts[k0].d = sd + fb + 0.015;
+    }
     // head: a plain grey circle
     const h = pr(J.head);
     parts.push({ d: h[2] + 0.4 + fb, raw: `<circle cx="${n1(h[0])}" cy="${n1(h[1])}" r="5.2" fill="${SKIN}" stroke="${INK}" stroke-width="1"/>` });
+    if (!ref && HEADGEAR) {   // headgear: an ear guard on each side (the far one hides behind the head) and a strap over the crown
+      const hg = shade(c, 0.62), E = k => pr(add(J.head, mul(J.lat, k * 1.45))), top = pr(add(J.head, mul(J.u, 1.6))), eL = E(-1), eR = E(1);
+      const cx = 2 * top[0] - (eL[0] + eR[0]) / 2, cy = 2 * top[1] - (eL[1] + eR[1]) / 2;
+      parts.push({ d: h[2] + 0.41 + fb, raw: `<path d="M${n1(eL[0])} ${n1(eL[1])}Q${n1(cx)} ${n1(cy)} ${n1(eR[0])} ${n1(eR[1])}" stroke="${INK}" stroke-width="3.2"/><path d="M${n1(eL[0])} ${n1(eL[1])}Q${n1(cx)} ${n1(cy)} ${n1(eR[0])} ${n1(eR[1])}" stroke="${hg}" stroke-width="1.6"/>` });
+      for (const e of [eL, eR]) parts.push({ d: e[2] + 0.42 + fb, raw: `<ellipse cx="${n1(e[0])}" cy="${n1(e[1])}" rx="2.5" ry="2.9" fill="${hg}" stroke="${INK}" stroke-width="0.9"/>` });
+    }
+  }
+  if (prop) {   // the ankle band in flight / on the mat
+    const q = pr(prop.p), at = `cx="${n1(q[0])}" cy="${n1(q[1])}" rx="2.6" ry="1.2" transform="rotate(${Math.round(prop.rot || 0)} ${n1(q[0])} ${n1(q[1])})"`;
+    parts.push({ d: q[2] + 3, raw: `<ellipse ${at} fill="none" stroke="${INK}" stroke-width="2.6"/><ellipse ${at} fill="none" stroke="${prop.c}" stroke-width="1.3"/>` });
   }
   parts.sort((a, b) => a.d - b.d);
   return parts.map(p => p.raw || `<path d="${p.s}" stroke="${INK}" stroke-width="${p.w + 1.8}"/><path d="${p.s}" stroke="${p.c}" stroke-width="${p.w}"/>`).join('');
@@ -270,9 +288,12 @@ const CLIPS = {
     K(0, RT(), RB(), M),
     K(0.2, { p: [2.8, 5.4], z: -0.8, lean: 34, fL: [1, 0], fR: [3.4, 0], hL: { o: 'belly', d: [1, 0, -0.4] }, hR: { o: 'belly', d: [1, -0.3, 0.6] } }, { p: [5.2, 5.4], lean: 42, fL: [6.6, 0], fR: [3.8, 0], hL: { s: 'belly', d: [1.2, -0.2, 0] }, hR: { s: 'belly', d: [1.2, -0.4, 0] } }),
     K(0.38, { p: [3.6, 6.7], z: -0.5, lean: 10, fL: [2.4, 0], fR: [4.4, 0], hL: { o: 'belly', d: [1, 0, -0.4] }, hR: { o: 'belly', d: [1, -0.3, 0.6] } }, { p: [5.4, 7], lean: 14, fL: [6.6, 0], fR: [4.6, 0], hL: { s: 'belly', d: [1.2, -0.2, 0] }, hR: { s: 'belly', d: [1.2, -0.4, 0] } }),
-    K(0.56, { p: [3.8, 7], z: -0.5, lean: -14, fL: [2.6, 0], fR: [5, 0], hL: { o: 'belly', d: [1, 0, -0.4] }, hR: { o: 'belly', d: [1, -0.3, 0.6] } }, { p: [5.4, 9.6], lean: 50, fL: { b: [-6, 3, 0] }, fR: { b: [-7, 0.6, 0] }, hL: { r: [2.6, -1] }, hR: { r: [3, 0] } }),
-    K(0.76, { p: [3.6, 4.4], z: -0.8, lean: 62, fL: [0.2, 0], fR: [1.4, 0], hL: { o: 'belly', d: [0.4, -0.6, -0.4] }, hR: { o: 'belly', d: [0.4, -0.8, 0.8] } }, { p: [6.4, 2.6], lean: 96, fL: { b: [-6.8, 1.6, 0] }, fR: { b: [-7.2, 0.4, 0] }, hL: [12.2, 0.4], hR: [12.6, 0.4] }),
-    K(1, FT(), FB(), M)], loop: [{ a: FT(), o: FB() }, { a: FT({ p: [2.6, 2.7] }), o: FB({ hR: [11.4, 0.9] }) }] }),
+    // 2026-11-12: lifted higher and swung round, his legs flung out wide to the side before he is driven down (a slam, not a set-down)
+    K(0.5, { p: [3.8, 7.1], z: -0.5, lean: -16, fL: [2.6, 0], fR: [5, 0], hL: { o: 'belly', d: [1, 0, -0.4] }, hR: { o: 'belly', d: [1, -0.3, 0.6] } }, { p: [5.2, 10.2], lean: 46, fL: { b: [-6.2, 2.6, 1.4] }, fR: { b: [-6.8, 0.6, 2.2] }, hL: { r: [2.6, -1] }, hR: { r: [3, 0] } }),
+    K(0.63, { p: [4, 6.9], z: -0.3, yaw: -25, lean: -6, fL: [2.6, 0], fR: [5.2, 0, 0.6], hL: { o: 'belly', d: [1, 0, -0.4] }, hR: { o: 'belly', d: [1, -0.3, 0.6] } }, { p: [5.6, 9.4], z: 1.4, yaw: -40, lean: 84, roll: 30, fL: { b: [-6, 1.4, 4.6] }, fR: { b: [-6.8, -0.2, 3.4] }, hL: { r: [2.6, -1.6] }, hR: { r: [3, -0.6] } }),
+    K(0.77, { p: [3.6, 4.2], z: -0.8, lean: 64, fL: [0.2, 0], fR: [1.4, 0], hL: { o: 'belly', d: [0.4, -0.6, -0.4] }, hR: { o: 'belly', d: [0.4, -0.8, 0.8] } }, { p: [6.4, 2.3], yaw: -8, lean: 98, roll: 6, fL: { b: [-6.2, 1.2, 3.6] }, fR: { b: [-6.8, 0.2, 2.2] }, hL: [12.2, 0.4], hR: [12.6, 0.4] }),
+    K(0.88, { p: [3.4, 3.6], z: -0.9, lean: 66, fL: [0, 0], fR: [1.2, 0], hL: { o: 'belly', d: [0.4, -0.6, -0.4] }, hR: { o: 'belly', d: [0.4, -0.8, 0.8] } }, { p: [6.3, 1.5], lean: 92, fL: { b: [-7, 0.6, 1.4] }, fR: { b: [-7.1, 0.2, 0.8] }, hL: [12, 0.4], hR: [12.4, 0.4] }),
+    K(1, FT(), FB(), M)], n: 16, dur: 1.0, loop: [{ a: FT(), o: FB() }, { a: FT({ p: [2.6, 2.7] }), o: FB({ hR: [11.4, 0.9] }) }] }),
 
   // ----- turns: 'a' is the top man -----
   half: () => ({ pin: true, kf: [
@@ -337,6 +358,83 @@ const CLIPS = {
 };
 CLIPS.highc = CLIPS.single; CLIPS.armbar = CLIPS.wing;
 
+// ----- more takedowns (2026-11-12) -----
+// sweep single: level change low to the lead leg with the head outside, come up holding the leg out wide (shelved on the hip) and run round
+// to the side; the trapped leg turns him until his back is to the attacker, who drives him forward to the mat and finishes behind him
+CLIPS.sweep = () => ({ n: 16, dur: 1.1, kf: [
+  K(0, S(XA, 1), S(XO, -1), N),
+  K(0.12, { p: [-4.6, 3.6], lean: 50, fL: [-2.4, 0], fR: [-7, 0], hL: { r: [3.4, -1.9] }, hR: { r: [3, -2.6] } }, S(XO, -1, { hL: { r: [2.6, -3.2] }, hR: { r: [2.4, -3.6] } })),
+  K(0.26, { p: [1.6, 2.5], z: 1.2, lean: 70, fL: [3.4, 0.3, 1.8], fR: [-3, 0.3, 0.8], hL: { o: 'ftL', d: [0, 0.7, 0] }, hR: { o: 'knL', d: [0.2, -0.2, 0] } },
+    { p: [7.4, 5.7], f: -1, lean: 42, fL: [4.4, 0], fR: [8.8, 0], hL: { o: 'chest', d: [0, 1, 0] }, hR: { o: 'belly', d: [0, 1, 0] } }),
+  K(0.42, { p: [1.6, 4.2], z: 3.4, yaw: -30, lean: 40, fL: [3, 0, 4.2], fR: [-0.6, 0, 3.2], hL: { o: 'ftL', d: [0, 0.4, 0] }, hR: { o: 'knL', d: [0, 0.2, 0] } },
+    { p: [7.4, 6.2], yaw: 150, lean: 24, fL: [4, 3, 2.6], fR: [8, 0, -0.6], hL: { r: [2, -0.6, 1.4] }, hR: { r: [1.6, -2.4, -1.2] } }, [-24, 18]),
+  K(0.56, { p: [2.2, 5.6], z: 3, yaw: -20, lean: 24, fL: [3.4, 0, 4], fR: [0.6, 0, 2.4], hL: { o: 'ftL', d: [0, 0.4, 0] }, hR: { o: 'knL', d: [0, 0.3, 0] } },
+    { p: [7.2, 6.5], yaw: 95, lean: 18, fL: [4, 4.4, 2.6], fR: [7.4, 0, -0.6], hL: { r: [1.6, -1, 2.6] }, hR: { r: [1.4, -1.4, -2.6] } }, [-28, 18]),
+  K(0.68, { p: [2.8, 5.6], z: 1.2, yaw: -6, lean: 26, fL: [4, 0, 2], fR: [1.4, 0, 0.2], hL: { o: 'ftL', d: [0, 0.3, 0] }, hR: { o: 'knL', d: [0, 0.3, 0] } },
+    { p: [7.4, 6.3], yaw: 30, lean: 24, fL: [4, 4.4, 1.2], fR: [8, 0, -0.4], hL: { r: [3, -2.2] }, hR: { r: [2.8, -2.8] } }, [-24, 19]),
+  K(0.84, { p: [3.4, 4.8], z: -0.6, lean: 48, fL: [1.4, 0, 0.4], fR: [3.4, 0, -1.2], hL: { o: 'ftL', d: [0, 0.3, 0] }, hR: { o: 'hip', d: [0, 0.6, 0] } },
+    { p: [6.2, 4], yaw: 4, lean: 70, fL: [3.6, 3.2, 0.6], fR: [4.8, 0.3, -0.6], hL: [11, 0, -0.8], hR: [11.2, 0, 0.8] }, [-20, 21]),
+  K(1, RT(), RB(), M)] });
+// single leg trip: in on a single, stand up and elevate the leg high so he hops on one foot, then reap the standing leg: a big fall to his back
+CLIPS.trip = () => ({ n: 16, dur: 1.1, kf: [
+  K(0, S(XA, 1), S(XO, -1), N), K(0.11, SHOT(), S(XO, -1)),
+  K(0.24, INLEGS({ hL: { o: 'knL', d: [0.6, 0.6, 0] }, hR: { o: 'knL', d: [0.4, -0.8, 0] } }), { p: [7, 6], f: -1, lean: 34, fL: [4.6, 0], fR: [8.4, 0], hL: { o: 'head' }, hR: { o: 'chest', d: [0, 1, 0] } }),
+  K(0.4, UP(2.6, 1, { lean: 6, fL: [3.6, 0], fR: [1.2, 0], hL: { o: 'ftL', d: [0, 0.4, 0] }, hR: { o: 'knL', d: [0, 0.4, 0] } }),
+    { p: [7.8, 7.1], f: -1, lean: -10, fL: [4.6, 9.4, 1.6], fR: [8.2, 0], hL: { r: [1.2, 1.6] }, hR: { r: [0.4, 2.2] }, qL: [0, 1, 0] }, [-20, 14]),
+  K(0.5, UP(3, 1, { lean: -6, fL: [4, 0], fR: [1.6, 0], hL: { o: 'ftL', d: [0, 0.4, 0] }, hR: { o: 'knL', d: [0, 0.4, 0] } }),
+    { p: [8.2, 7.8], f: -1, lean: -14, fL: [4.8, 11.2, 1.8], fR: [8.6, 1], hL: { r: [0.6, 2.6] }, hR: { r: [-0.4, 2.4] }, qL: [0, 1, 0] }, [-22, 14]),
+  K(0.6, UP(4.4, 1, { lean: 10, fL: [9.2, 0.6, -0.4], fR: [2.4, 0], hL: { o: 'ftL', d: [0, 0.4, 0] }, hR: { o: 'knL', d: [0, 0.4, 0] } }),
+    { p: [7.8, 6.8], f: -1, lean: -40, fL: [5.2, 11, 1.6], fR: [10.8, 1.8, -0.4], hL: { r: [-0.6, 2.6] }, hR: { r: [-1.4, 2] }, qL: [0, 1, 0] }, [-12, 15]),
+  K(0.7, { p: [5.6, 5.4], lean: 34, fL: [7.2, 0], fR: [3, 0], hL: { o: 'knL' }, hR: { o: 'belly' } },
+    { p: [8.8, 4], f: -1, lean: -82, fL: { b: [-6.6, 2, 0] }, fR: { b: [-6, 3.2, 0] }, hL: { r: [-3, 2.4] }, hR: { r: [-3.6, 1] } }),
+  K(0.78, { p: [5.6, 3.4], lean: 64, fL: [1.8, 0.3], fR: [2.4, 0.3], hL: { o: 'chest' }, hR: { o: 'belly' } },
+    { p: [9, 1.4], f: -1, lean: -86, fL: { b: [-5.4, 3.4, 0] }, fR: { b: [-6.6, 1.4, 0] }, hL: [13.6, 0.5], hR: [13.2, 2.4] }, [-10, 20]),
+  ...tail(0.86, SEAT({ p: [8.8, 1.5], lean: -80 }), COVER())] });
+
+// ----- NCAA title celebrations ('a' = the champion, 'o' = beaten finalist, 'r' = referee); they start from the hand-raise pose -----
+const KNEEL = (x, f, k) => ({ p: [x, 3.7], f, lean: 24, fL: [x - f * 3.4, 0.3, 0.6], fR: [x - f * 3.2, 0.3, -0.8], hL: { s: 'knL', d: [0, 0.9, 0] }, hR: { s: 'knR', d: [0, 0.9, 0] }, ...k });   // beaten, on his knees
+const RAISED = () => UP(-5.2, 1, { yaw: 78, fL: [-5.9, 0], fR: [-4.5, 0], hL: { r: [0.4, 6.2, -1.6] }, pL: [0, 0, -1] });   // the 'end' clip's raised-hand pose
+const REF0 = () => UP(0, 1, { yaw: 90, z: -1.4, fL: [0.7, 0], fR: [-0.7, 0], hR: { o: 'haL', of: 'a', d: [0.5, -0.4, 0] }, pR: [0, 0, -1], hL: { o: 'haR', of: 'o', d: [0, 0.2, 0] } });
+const REF1 = () => UP(-14, 1, { yaw: 40, z: -3, fL: [-13.4, 0, -2.6], fR: [-14.6, 0, -3.4], hL: { r: [1.4, -1.6] }, hR: { r: [1.4, -2] } });   // steps away to the side
+const VUP = (x, y, k) => ({ p: [x, y], yaw: 90, lean: 0, fL: [x + 1, 0], fR: [x - 1, 0], hL: { b: [4.4, 0.5, -2.3] }, hR: { b: [4.4, 0.5, 2.3] }, ...k });   // facing the crowd, both arms up
+const champStart = () => [K(0, RAISED(), UP(5.6, -1, { yaw: 100, lean: 8, p: [5.6, 7.1] }), [0, 14], { r: REF0() })];
+// jumping up and down, fists in the air
+CLIPS.champJump = () => {
+  const lo = x => VUP(x, 6.2, { fL: [x + 1, 0], fR: [x - 1, 0] }), hi = x => VUP(x, 9.4, { fL: [x + 1, 2.2], fR: [x - 1, 2.2], hL: { b: [4.6, 0.8, -1.8] }, hR: { b: [4.6, 0.8, 1.8] } });
+  const kf = [...champStart(), K(0.14, lo(-4.6), KNEEL(7, -1), [0, 14], { r: REF1() })];
+  [0.26, 0.38, 0.5, 0.62, 0.74, 0.86, 1].forEach((t, i) => kf.push(K(t, i % 2 ? lo(-4.4 + i * 0.3) : hi(-4.4 + i * 0.3))));
+  return { n: 26, dur: 2.2, cam: [0, 14], kf, loopDur: 0.8, loop: [{ a: hi(-2.6), o: KNEEL(7, -1), r: REF1() }, { a: lo(-2.6), o: KNEEL(7, -1), r: REF1() }] };
+};
+// a cartwheel across the mat. Body in the screen plane: heading +x with roll -90 (chest to the crowd), lean = rotation in that plane; arms and legs are
+// spokes of a wheel, so the hip height is set by whichever hand or foot is lowest.
+function wheel(t, lean, x) {
+  const a = lean * D, off = (ku, kl) => ku * Math.cos(a) + kl * Math.sin(a), y = 0.3 - Math.min(off(9, -3.95), off(9, 3.95), off(-6.6, -3.55), off(-6.6, 3.55));
+  return K(t, { p: [x, y], yaw: 0, roll: -90, lean, fL: { b: [-6.6, 0, -2.6] }, fR: { b: [-6.6, 0, 2.6] }, hL: { b: [4.4, 0, -2.6] }, hR: { b: [4.4, 0, 2.6] } });
+}
+CLIPS.champCart = () => {
+  const kf = [...champStart(), K(0.12, VUP(-8, 7, { yaw: 0, roll: -90, fL: [-7, 0], fR: [-9, 0], hL: { b: [4.4, 0, -2.6] }, hR: { b: [4.4, 0, 2.6] } }), KNEEL(9.5, -1), [0, 14], { r: REF1() })];
+  for (let i = 1; i <= 8; i++) kf.push(wheel(0.12 + i * 0.075, i * 45, -8 + i * 1.3));
+  // (yaw 0, roll -90) faces the crowd exactly like (yaw 90, roll 0), so the finish stays in the wheel's representation (no spin when blending)
+  const up = (y, k) => VUP(2.4, y, { yaw: 0, roll: -90, lean: 360, fL: [3.4, 0], fR: [1.4, 0], ...k });
+  kf.push(K(1, up(7.25)));
+  return { n: 30, dur: 2.4, cam: [0, 14], kf, loopDur: 0.9, loop: [{ a: up(7.25), o: KNEEL(9.5, -1), r: REF1() }, { a: up(7.6, { hL: { b: [4.7, 0.9, -1.6] }, hR: { b: [4.7, 0.9, 1.6] } }), o: KNEEL(9.5, -1), r: REF1() }] };
+};
+// pulls off his ankle band and throws it high in the air
+CLIPS.champToss = () => {
+  const x = -4.6, band = { f: 'a', j: 'haL' }, nb = { nb: 1 };
+  const kf = [...champStart(),
+    K(0.12, UP(x, 1, { yaw: 90, fL: [x + 0.8, 0], fR: [x - 0.8, 0] }), KNEEL(7, -1), [0, 14], { r: REF1() }),
+    K(0.24, { p: [x, 5.6], yaw: 90, lean: 58, fL: [x + 0.9, 0, -0.4], fR: [x - 0.9, 0, 0.6], hL: { s: 'ftL', d: [0, 0.6, 0.2] }, hR: { s: 'knR', d: [0, 0.6, 0.4] } }),
+    K(0.34, { p: [x, 5.8], yaw: 90, lean: 52, fL: [x + 0.9, 0, -0.4], fR: [x - 0.9, 0, 0.6], hL: { s: 'ftL', d: [0, 1.4, 0.4] }, hR: { s: 'knR', d: [0, 0.6, 0.4] }, ...nb }, null, null, { pr: band }),
+    K(0.46, UP(x, 1, { yaw: 90, lean: -4, fL: [x + 0.9, 0], fR: [x - 0.9, 0], hL: { b: [-2.6, -1.8, -2.4] }, hR: { b: [-2.4, 0.6, 1.2] }, ...nb }), null, null, { pr: band }),
+    K(0.56, UP(x, 1, { yaw: 90, lean: -8, p: [x, 7.4], fL: [x + 0.9, 0], fR: [x - 0.9, 0], hL: { b: [5, 0.8, -1.2] }, hR: { b: [-2.2, 0.8, 1.4] }, ...nb }), null, null, { pr: band }),
+    K(0.66, VUP(x, 7.25, { lean: -6, ...nb }), null, null, { pr: [x + 1.2, 17, 0.6] }),
+    K(0.8, VUP(x, 7.6, { lean: -10, hL: { b: [4.7, 0.9, -1.6] }, hR: { b: [4.7, 0.9, 1.6] }, ...nb }), null, null, { pr: [x + 2.4, 25, 1] }),
+    K(0.9, VUP(x, 7.25, { lean: -6, ...nb }), null, null, { pr: [x + 3.2, 13, 1.4] }),
+    K(1, VUP(x, 7.25, nb), null, null, { pr: [x + 3.8, 0.4, 1.8] })];
+  return { n: 30, dur: 2.4, cam: [0, 14], kf, loopDur: 0.9, loop: [{ a: VUP(x, 7.25, nb), o: KNEEL(7, -1), r: REF1() }, { a: VUP(x, 7.6, { ...nb, hL: { b: [4.7, 0.9, -1.6] }, hR: { b: [4.7, 0.9, 1.6] } }), o: KNEEL(7, -1), r: REF1() }] };
+};
+
 // hip throw (headlock / arm throw / lateral drop / fireman's carry): step in, turn the back, load him on the hip, over he goes, legs above the thrower's head
 function throwClip(grab, low) {
   const dy = low ? -2.2 : 0;
@@ -374,7 +472,7 @@ function getClip(name) {
     cam = k.cam = k.cam || cam;
   }
   c.kf = kf; c.n = c.n || 12; c.dur = c.dur || 0.85;
-  if (c.loop) c.loop = c.loop.map(l => Object.fromEntries(Object.entries(l).map(([f, P]) => [f, norm(P)])));
+  if (c.loop) c.loop = c.loop.map(l => Object.fromEntries(Object.entries(l).map(([f, P]) => [f, f[0] === '_' ? P : norm(P)])));
   return cache[name] = c;
 }
 function sample(c, t) {   // -> { figs: {name: interpolated pose}, cam }
@@ -382,23 +480,33 @@ function sample(c, t) {   // -> { figs: {name: interpolated pose}, cam }
   while (i < kf.length - 2 && t > kf[i + 1].t) i++;
   const A = kf[i], B = kf[i + 1], s = Math.max(0, Math.min(1, (t - A.t) / Math.max(1e-6, B.t - A.t))), figs = {};
   for (const f of ['a', 'o', 'r']) if (B[f]) figs[f] = lerpPose(A[f + '2'] || A[f], B[f], s);
-  return { figs, cam: [mix(A.cam[0], B.cam[0], s), mix(A.cam[1], B.cam[1], s)] };
+  const out = { figs, cam: [mix(A.cam[0], B.cam[0], s), mix(A.cam[1], B.cam[1], s)] };
+  if (A.pr || B.pr) out.pr = [A.pr || B.pr, B.pr || A.pr, s];   // keyframe prop: [x, y, z] or a joint { f: 'a', j: 'haL' }
+  return out;
 }
-const still = (set, cam, cols) => drawFrame(solve(Object.fromEntries(Object.entries(set).map(([f, P]) => [f, lerpPose(P, P, 1)]))), cam, cols);
+function propAt(all, pr, cols, spin = 0) {
+  if (!pr) return null;
+  const at = q => (Array.isArray(q) ? [q[0], q[1], q[2] || 0] : add((all[q.f] || {})[q.j] || [0, 0, 0], q.d || [0, 0, 0]));
+  return { p: mix3(at(pr[0]), at(pr[1]), pr[2]), c: (cols.band && cols.band.a) || '#e5534b', rot: spin };
+}
+const FIGS = ['a', 'o', 'r'];
+const still = (set, cam, cols) => { const all = solve(Object.fromEntries(FIGS.filter(f => set[f]).map(f => [f, lerpPose(set[f], set[f], 1)]))); return drawFrame(all, cam, cols, set._pr ? propAt(all, [set._pr, set._pr, 0], cols, 20) : null); };
 function loopSets(c) {   // the poses the clip settles into: given explicitly, or the last keyframe plus a slightly lower copy of it ("breathing"; a harder squeeze for pins)
-  if (c.loop) return c.loop;
-  const L = c.kf[c.kf.length - 1], set = {}, set2 = {};
-  for (const f of ['a', 'o', 'r']) if (L[f]) { const P = L[f + '2'] || L[f]; set[f] = P; set2[f] = { ...P, p: [P.p[0], P.p[1] - (c.pin && f === 'a' ? 0.5 : P.p[1] > 2.2 ? 0.25 : 0)], lean: P.lean + (P.p[1] > 2.2 ? 2 : 0) }; }
+  const L = c.kf[c.kf.length - 1];
+  if (c.loop) return L && L.pr ? c.loop.map(s => ({ ...s, _pr: L.pr })) : c.loop;
+  const set = {}, set2 = {};
+  for (const f of FIGS) if (L[f]) { const P = L[f + '2'] || L[f]; set[f] = P; set2[f] = { ...P, p: [P.p[0], P.p[1] - (c.pin && f === 'a' ? 0.5 : P.p[1] > 2.2 ? 0.25 : 0)], lean: P.lean + (P.p[1] > 2.2 ? 2 : 0) }; }
+  if (L.pr) set._pr = set2._pr = L.pr;
   return [set, set2];
 }
 function frames(name, cols, camO) {
   const c = getClip(name), out = [], n = c.kf.length ? c.n : 1, endCam = camO || c.cam || (c.kf.length ? c.kf[c.kf.length - 1].cam : N);
-  for (let i = 0; i < n - 1; i++) { const s = sample(c, i / (n - 1)); out.push(drawFrame(solve(s.figs), s.cam, cols)); }
+  for (let i = 0; i < n - 1; i++) { const s = sample(c, i / (n - 1)), all = solve(s.figs); out.push(drawFrame(all, s.cam, cols, propAt(all, s.pr, cols, i * 47))); }
   return { c, seq: out, loop: loopSets(c).map(set => still(set, endCam, cols)) };
 }
 
 // which clip an event plays, and which wrestler is its 'a' figure
-const TD = { double: 1, single: 1, highc: 1, ankle: 1, snap: 1, duck: 1, scr: 1, counter: 1 }, THROW = { headlock: 1, armthrow: 1, lateral: 1, fireman: 1, lift: 1 };
+const TD = { double: 1, single: 1, highc: 1, ankle: 1, snap: 1, duck: 1, scr: 1, counter: 1, sweep: 1, trip: 1 }, THROW = { headlock: 1, armthrow: 1, lateral: 1, fireman: 1, lift: 1 };
 const TURN = { half: 1, cradle: 1, tilt: 1, turk: 1, armbar: 1, wing: 1 }, STUFF = { sprawl: 1, handfight: 1, hipout: 1, whizzer: 1, oob: 1, throw: 1 }, RIDE = { breakdown: 1, matret: 1, hips: 1, flat: 1 };
 const other = s => (s === 'A' ? 'B' : 'A');
 export function clipFor(res, last) {
@@ -419,20 +527,23 @@ export function clipFor(res, last) {
 
 const LABEL = { td: 'TAKEDOWN!', esc: 'ESCAPE', rev: 'REVERSAL!', nf: 'NEAR FALL!', fall: 'FALL!', stall: 'STALLING', scramble: 'SCRAMBLE' };
 const MOVE = { headlock: 'HEADLOCK', armthrow: 'ARM THROW', lateral: 'LATERAL DROP', fireman: "FIREMAN'S CARRY", lift: 'BIG LIFT', cradle: 'CRADLE', tilt: 'TILT', wing: 'CHICKEN WING', armbar: 'ARM BAR', half: 'HALF NELSON', turk: 'TURK',
-  matret: 'MAT RETURN', counter: 'COUNTER', duck: 'DUCK-UNDER', granby: 'GRANBY ROLL', switch: 'SWITCH', ankle: 'ANKLE PICK', snap: 'GO-BEHIND', scr: 'SCRAMBLE' };
+  matret: 'MAT RETURN', counter: 'COUNTER', duck: 'DUCK-UNDER', granby: 'GRANBY ROLL', switch: 'SWITCH', ankle: 'ANKLE PICK', snap: 'GO-BEHIND', scr: 'SCRAMBLE', sweep: 'SWEEP SINGLE', trip: 'SINGLE LEG TRIP' };
+const CHAMP = ['champJump', 'champCart', 'champToss'];
 
 // opt.still (0..1): draw one frozen moment of the clip (used by test pages); opt.clip / opt.a: force a clip
 export function stage(res, last, col, opt = {}) {
   const fx = last ? last.fx : null, who = last ? last.who : null, end = last && last.type === 'end';
   let [name, aSide] = opt.clip ? [opt.clip, opt.a || 'A'] : clipFor(res, last);
+  const champ = !opt.clip && end && opt.champ;   // NCAA title: one of three celebrations instead of the plain hand raise
+  if (champ) name = CHAMP[((res.seed >>> 0) % 7919) % CHAMP.length];
   if (!CLIPS[name]) name = 'idleN';
-  const cols = { a: col[aSide], o: col[other(aSide)], r: '#1d2126' };
+  const cols = { a: col[aSide], o: col[other(aSide)], r: '#1d2126', band: opt.band ? { a: opt.band[aSide], o: opt.band[other(aSide)] } : null };
   const { c, seq, loop } = frames(name, cols, opt.cam);
   const mirror = (aSide === 'B') !== !!c.aBottom ? -1 : 1;
   let body;
   if (opt.still !== undefined) {
     const s = c.kf.length ? sample(c, opt.still) : null;
-    body = s && opt.still < 1 ? drawFrame(solve(s.figs), opt.cam || s.cam, cols) : loop[s ? (opt.still > 1 ? 1 : 0) : Math.min(loop.length - 1, Math.floor(opt.still * loop.length))];
+    body = s && opt.still < 1 ? (all => drawFrame(all, opt.cam || s.cam, cols, propAt(all, s.pr, cols)))(solve(s.figs)) : loop[s ? (opt.still > 1 ? 1 : 0) : Math.min(loop.length - 1, Math.floor(opt.still * loop.length))];
   } else {
     const n = seq.length, slot = n ? c.dur / n : 0, ld = c.loopDur || (c.pin ? 0.7 : 1.3), cs = x => `calc(${+x.toFixed(3)}s * var(--spd, 1))`;
     body = seq.map((f, i) => `<g class="fr" style="animation-delay:${cs(i * slot)};animation-duration:${cs(slot)}">${f}</g>`).join('')
@@ -443,7 +554,7 @@ export function stage(res, last, col, opt = {}) {
   if (fx === 'nf') { const m = (last.text || '').match(/(\d) points/); label = m ? 'NEAR FALL +' + m[1] : label; if (/takedown plus/.test(last.text || '')) label = 'TD + NEAR FALL'; }
   if (mvName) label = label ? `${mvName} · ${label}` : mvName;
   const lblCol = fx && who ? col[who] : '#f5b942';
-  const endTxt = end ? `${res.wrestlers[res.winner].name.split(' ').slice(-1)[0].toUpperCase()} WINS${res.method === 'Fall' ? ' BY FALL' : ''}` : '';
+  const endTxt = end ? `${res.wrestlers[res.winner].name.split(' ').slice(-1)[0].toUpperCase()}${champ ? ' · NCAA CHAMPION!' : ` WINS${res.method === 'Fall' ? ' BY FALL' : ''}`}` : '';
   return `<svg class="stage" viewBox="0 -14 200 106" preserveAspectRatio="xMidYMid meet">
     <ellipse cx="100" cy="${GY + 2}" rx="99" ry="15" fill="#1c3b2c"/><ellipse cx="100" cy="${GY + 2}" rx="93" ry="12.5" fill="none" stroke="#2c5a43" stroke-width="1.5"/><ellipse cx="100" cy="${GY + 2}" rx="26" ry="4" fill="none" stroke="#2c5a43" stroke-width="1.5"/>
     <g transform="translate(100,${GY}) scale(${mirror},1)" fill="none" stroke-linecap="round">${body}</g>

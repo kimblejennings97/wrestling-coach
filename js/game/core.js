@@ -12,7 +12,7 @@ import { REAL_OVERRIDES } from '../data/overrides.js';
 import { REAL_TEAMS } from '../data/realteams.js';
 import { ncaaFloor } from '../data/ncaa2026.js';
 import { runEvent, makeConfTournaments, computeNcaaField, completeSelection, finalizeSeason, recordTHist } from './tourney.js';
-import { recordBout, updatePolls, flushStats, recordDual, ensureDualRatings, lineupProjection } from './stats.js';
+import { recordBout, updatePolls, flushStats, recordDual, ensureDualRatings, lineupProjection, pollRank } from './stats.js';
 import { generateRecruitClass, processRecruitingWeek, runWeeklyAuto } from './recruit.js';
 
 // Calendar is per-season (G.cal): week 1 = first Saturday of November; tournaments follow weekday rules (see data/tournaments.js).
@@ -34,7 +34,7 @@ export const ovr = w => Math.round(overall(w) * 10) / 10;
 
 // ---------- helpers ----------
 export const dateOfWeek = week => new Date(CAL.start + (week - 1) * 7 * 86400000);
-export const fmtDate = week => dateOfWeek(week).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+export const fmtDate = (week, yr) => dateOfWeek(week).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', ...(yr ? { year: 'numeric' } : {}), timeZone: 'UTC' });
 export const teamName = (G, id) => G.teams[id].name;
 function shuffle(arr, rng) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
@@ -300,6 +300,7 @@ export function stepDual(G, d, opts = {}) {
   for (const side of ['A', 'B']) { const tid = side === 'A' ? d.a : d.b; if (tid === G.userTeam && !(opts.assist && G.assist !== false && !P.manual)) continue; coachMoves(G, d, side); }
   const A = G.teams[d.a], B = G.teams[d.b], ia = P.lineA[wt] || null, ib = P.lineB[wt] || null;
   const bout = { wt, wa: ia, wb: ib };
+  bout.rk = [ia, ib].map(id => (id && G.wrestlers[id] ? pollRank(G, G.wrestlers[id]) : 0));   // poll ranks on the day (0 = unranked); the dual results list them
   if (ia && ia !== P.origA[wt]) bout.subA = true;
   if (ib && ib !== P.origB[wt]) bout.subB = true;
   if (ia && ib) {

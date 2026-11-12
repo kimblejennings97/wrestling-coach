@@ -227,3 +227,10 @@ nav::-webkit-scrollbar, .bkt::-webkit-scrollbar { height: 6px; }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 520px) { nav a { padding: 8px 10px; } }
 
 .ask { border: 1px solid var(--gold); background: #1b1810; border-radius: 8px; padding: 10px 12px; margin: 8px 0; } .ask h3 { margin: 0 0 4px; font-size: 15px; } .ask button { text-align: left; line-height: 1.25; } .ask small { font-weight: 400; opacity: .8; }
+/* bout viewer scoreboard names (2026-11-12): logo, poll rank, linked name, school + record, stalling flag */
+.scoreboard .nm.bn { display: flex; align-items: center; justify-content: center; gap: 7px; text-align: left; margin-top: 2px; }
+.scoreboard .nm.bn .bnm { color: var(--text); font-weight: 600; font-size: 14px; }
+.scoreboard .nm.bn .wsub { font-size: 11px; color: var(--muted); }
+.sflag { display: inline-block; margin-left: 5px; padding: 0 4px; border-radius: 2px 6px 6px 2px; background: var(--gold); color: #1a1406; font-size: 11px; font-weight: 800; line-height: 15px; vertical-align: 1px; box-shadow: -2px 0 0 #8a6a1f; }
+.sflag small { font-size: 9px; margin-left: 1px; }
+@media (max-width: 600px) { .scoreboard .nm.bn { flex-direction: column; gap: 2px; text-align: center; } .scoreboard .nm.bn .bnm { font-size: 12px; } }

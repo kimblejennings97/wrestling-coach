@@ -3,6 +3,7 @@
 //   t.rv = { cnt: { weight: matches revealed }, feed: [[weight, matchIndex], ...], done }
 // Rule: round N can't be revealed anywhere until round N-1 is finished at EVERY weight (so `wround` only works for weights still in the current round).
 import { WEIGHTS } from '../data/gen.js';
+import { runBracket } from './tourney.js';
 
 const PLACE_PTS = { 1: 16, 2: 12, 3: 10, 4: 9, 5: 7, 6: 6, 7: 4, 8: 3 };
 const BONUS_PTS = { 'Fall': 2, 'Tech Fall': 1.5, 'Major Decision': 1 };
@@ -54,14 +55,39 @@ export function advanceLive(t, mode, wt) {
   return out;
 }
 
-// Team scores from what has been revealed: match points (+bonus) for each revealed match, placement points once a placer's last match is revealed.
+// The worst place wrestler `id` can still finish, given what has been revealed at this weight: re-run the bracket with every revealed match
+// as it happened and `id` losing every match not yet revealed (other unrevealed matches: their real result when the pairing exists, else the
+// better seed; they only decide WHO he meets, not where a loss drops him). E.g. a semifinal win guarantees 2nd, a quarterfinal win 6th,
+// winning the blood round 8th. Equals his real place once his last match is revealed. Placement points are credited at this floor (NCAA rule).
+export function floorPlace(t, wt, id) {
+  const W = t.result.weights[wt]; if (!W.ent) return 9;
+  const o = orderOf(t, wt), n = t.rv ? t.rv.cnt[wt] : o.length, q = new Map(), key = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
+  const rank = new Map(o.map((m, k) => [m, k]));
+  for (const m of W.matches) { const k = key(m.a, m.b); if (!q.has(k)) q.set(k, []); q.get(k).push({ w: m.w === 'A' ? m.a : m.b, rev: rank.get(m) < n }); }   // per pairing, in play order (rematches happen)
+  const used = new Map(), ents = W.ent.map(e => ({ ...e }));
+  const places = runBracket(ents, (a, b) => {
+    const k = key(a.id, b.id), list = q.get(k) || [], i = used.get(k) || 0, rec = list[i]; used.set(k, i + 1);
+    let win;
+    if (a.id === id || b.id === id) win = rec && rec.rev ? rec.w : (a.id === id ? b.id : a.id);
+    else win = rec ? rec.w : (a.seed <= b.seed ? a.id : b.id);
+    return win === a.id ? { w: a, l: b } : { w: b, l: a };
+  });
+  const e = ents.find(x => x.id === id);
+  return (e && places.get(e)) || 9;
+}
+// Team scores from what has been revealed: match points (+bonus) for each revealed match, plus placement points as soon as a place is GUARANTEED
+// (floorPlace), raised as the wrestler climbs. Only final placers can ever have a top-8 floor, so only they are checked.
 export function liveScores(G, t) {
   const pts = {}, add = (tid, p) => { pts[tid] = (pts[tid] || 0) + p; };
   for (const wt of WEIGHTS) {
     const W = t.result.weights[wt], o = orderOf(t, wt), n = t.rv.cnt[wt], last = {};
     o.forEach((m, k) => { last[m.a] = k; last[m.b] = k; });
     for (let k = 0; k < n; k++) { const m = o[k]; add(G.wrestlers[m.w === 'A' ? m.a : m.b].team, (m.c ? 1 : 0.5) + (BONUS_PTS[m.m] || 0)); }
-    for (const e of W.top) if (last[e.id] != null && last[e.id] < n) add(e.team, PLACE_PTS[e.place]);
+    for (const e of W.top) {
+      if (last[e.id] != null && last[e.id] < n) { add(e.team, PLACE_PTS[e.place]); continue; }   // his place is final
+      const f = W.ent ? floorPlace(t, wt, e.id) : 9;
+      if (f <= 8) add(e.team, PLACE_PTS[f]);
+    }
   }
   return Object.entries(pts).map(([team, p]) => ({ team, pts: p })).sort((a, b) => b.pts - a.pts);
 }

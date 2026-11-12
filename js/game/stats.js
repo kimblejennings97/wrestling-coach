@@ -5,6 +5,7 @@
 // Nothing here feeds back into the bout engine, so match results stay deterministic.
 import { WEIGHTS } from '../data/gen.js';
 import { overall } from './core.js';
+import { closeSeasonRecords } from './legacy.js';
 
 export const KEYS = ['w', 'l', 'fall', 'tf', 'md', 'dec', 'td', 'esc', 'rev', 'nf', 'pf', 'pa', 'aa', 'ch'];
 export const IDX = Object.fromEntries(KEYS.map((k, i) => [k, i]));
@@ -67,6 +68,7 @@ export const derived = st => {
 // season rollover (call before G.season++): archive counters, regress ratings toward the grown wrestler's OVR
 export function rollSeasonStats(G) {
   flushStats(G);
+  closeSeasonRecords(G);   // no-op when beginOffseason already closed this season's books
   for (const id in G.wrestlers) {
     const w = G.wrestlers[id];
     if (w.st && bouts(w.st) + w.st[12] > 0) (w.hist ??= []).push([G.season, ...w.st]);

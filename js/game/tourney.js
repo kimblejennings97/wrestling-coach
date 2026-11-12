@@ -229,7 +229,7 @@ export function finalizeSeason(G, spec) {
   const r = spec.result, champs = {}, aa = {};
   for (const wt of WEIGHTS) {
     for (const e of r.weights[wt].top) {
-      if (e.place === 1) champs[wt] = { name: e.name, team: e.team };
+      if (e.place === 1) champs[wt] = { id: e.id, name: e.name, team: e.team };
       aa[e.team] = (aa[e.team] || 0) + 1;
     }
   }

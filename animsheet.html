@@ -8,9 +8,9 @@
 import { stage, CLIP_NAMES } from './js/ui/anim.js';
 const q = new URLSearchParams(location.search), names = (q.get('c') || CLIP_NAMES.join(',')).split(','), side = q.get('a') || 'A', o = document.getElementById('o');
 if (q.get('w')) document.documentElement.style.setProperty('--w', q.get('w') + 'px');
-const res = { winner: side, method: 'Dec', wrestlers: { A: { name: 'Al Red' }, B: { name: 'Bo Blue' } } }, col = { A: '#e0483c', B: '#3c8ae0' };
-const draw = n => `<b>${n}</b>${stage(res, null, col, { clip: n, a: side })}`;
-if (q.get('t')) { o.style.display = 'block'; o.innerHTML = names.map(n => `<div class="row"><b>${n}</b>${q.get('t').split(',').map(t => stage(res, null, col, { clip: n, a: side, still: +t })).join('')}</div>`).join(''); }
+const res = { winner: side, method: 'Dec', wrestlers: { A: { name: 'Al Red' }, B: { name: 'Bo Blue' } } }, col = { A: '#e0483c', B: '#3c8ae0' }, band = { A: '#e5534b', B: '#3fb27f' };
+const draw = n => `<b>${n}</b>${stage(res, null, col, { clip: n, a: side, band })}`;
+if (q.get('t')) { o.style.display = 'block'; o.innerHTML = names.map(n => `<div class="row"><b>${n}</b>${q.get('t').split(',').map(t => stage(res, null, col, { clip: n, a: side, still: +t, band })).join('')}</div>`).join(''); }
 else {
   const setSpd = () => o.style.setProperty('--spd', document.getElementById('spd').value);
   const all = () => { o.innerHTML = names.map(n => `<div class="tile" data-n="${n}">${draw(n)}</div>`).join(''); };

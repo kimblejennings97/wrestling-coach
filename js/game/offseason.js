@@ -9,6 +9,7 @@ import { overall, overallLegacy, sanitizeLineup, autoLineup, aiPlan, coachFactor
 import { applyPrestige } from './prestige.js';
 import { buildNext } from './sched.js';
 import { rollSeasonStats, updatePolls, careerOf, flushStats } from './stats.js';
+import { closeSeasonRecords, retire, pruneArchive } from './legacy.js';
 import { finalizeRecruits, buildPortal, resolvePortal, generateRecruitClass, aidAvailable, AID_CAP, ROSTER_MAX, autoCut, cutsNeeded, pruneGone } from './recruit.js';
 
 const nextWeight = wt => WEIGHTS[WEIGHTS.indexOf(wt) + 1] ?? null;
@@ -56,6 +57,7 @@ export const offStep = G => (G.phase === 'offseason' ? (G.off && G.off.step) || 
 export function beginOffseason(G) {
   const rng = makeRng(G.seed + G.season * 131 + 5);
   flushStats(G);
+  closeSeasonRecords(G);   // single-season record books close before the seniors leave
   finalizeRecruits(G);
   const stats = { grads: 0, freshmen: 0 }, gradNames = [];
   G.alumni = G.alumni || [];
@@ -64,7 +66,8 @@ export function beginOffseason(G) {
     for (const id of t.roster) {
       const w = G.wrestlers[id];
       if (w.cls >= 4) {
-        if (tid === G.userTeam) { G.alumni.push({ name: w.name, season: G.season, weight: w.natural, ovr: Math.round(overall(w) * 10) / 10, car: careerOf(w) }); stats.grads++; gradNames.push(`${w.name} (${w.natural})`); }
+        retire(G, w);   // career record books, Halls of Fame, archive (keeps his profile reachable)
+        if (tid === G.userTeam) { G.alumni.push({ id: w.id, name: w.name, season: G.season, weight: w.natural, ovr: Math.round(overall(w) * 10) / 10, car: careerOf(w) }); stats.grads++; gradNames.push(`${w.name} (${w.natural})`); }
         delete G.wrestlers[id]; continue;
       }
       delete w.fresh;   // last year's freshmen are now eligible to transfer
@@ -179,6 +182,7 @@ export function startNewSeason(G) {
   G.ncaa = null;
   updatePolls(G); // preseason poll (movement is vs. last season's final poll)
   pruneGone(G);   // unsigned transfers who left the sport
+  pruneArchive(G);
   G.recruits = generateRecruitClass(G, rng);
   G.rec = { hours: 20, board: [], mode: G.rec?.mode || "manual", noWarn: G.rec?.noWarn };   // keep the "Every week" mode and the warning preference across seasons
   for (const id in G.teams) G.teams[id].incoming = [];

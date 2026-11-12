@@ -5,6 +5,7 @@ import { ATTR_KEYS } from '../engine/bout.js';
 import { generateWrestler, WEIGHTS, ARCHETYPES, randomName } from '../data/gen.js';
 import { STATE_NQ, STATE_REGION, stateBoost } from '../data/states.js';
 import { overall, autoLineup } from './core.js';
+import { retire } from './legacy.js';
 
 export const AID_CAP = 9.9;
 export const WEEKLY_HOURS = 20;
@@ -387,7 +388,7 @@ export function resolvePortal(G) {
 // Remove wrestlers who left the sport (keeps saves small); anyone still referenced by last season's polls stays one more year.
 export function pruneGone(G) {
   const inPoll = new Set(); for (const k of ['rkCur', 'rkPrev']) for (const wt in G[k] || {}) for (const id of G[k][wt]) inPoll.add(id);
-  for (const id of Object.keys(G.wrestlers)) { const w = G.wrestlers[id]; if (w.gone && !inPoll.has(id)) delete G.wrestlers[id]; }
+  for (const id of Object.keys(G.wrestlers)) { const w = G.wrestlers[id]; if (w.gone && !inPoll.has(id)) { retire(G, w, G.season - 1); delete G.wrestlers[id]; } }
 }
 
 
