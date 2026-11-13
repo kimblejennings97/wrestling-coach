@@ -19,12 +19,13 @@ Keep these files current: when you change a system, update its topic file (curre
 ## Where things stand (2026-11-12)
 - Playable end to end: preseason -> duals/tournaments -> selection show -> NCAAs -> 4-step offseason -> next season, multiple save slots, player editor.
 - Almost everything was verified **headlessly** (sim harnesses, DOM click-throughs, Edge screenshots). The user has hand-tested little of it; the iPad is their test device. `dist/` must be rebuilt (`deploy.bat`) before iPad testing.
+- Bout viewer mat follows the venue (2026-11-12): host team colour + logo in duals, organisation mat + logo at conference tournaments / NCAAs, neutral green elsewhere (`js/data/venues.js`, animation.md). Not yet checked on the iPad.
 - Open ideas: export/import save file; auto-taper option for the user; top-position stalling / stall ladder; escapes and league-mix MD probably high; coach/staff, facilities, NIL; redshirts; women's / other divisions / freestyle mode; Match Lab has no animation.
 
 ## Decisions made with the user (don't re-litigate)
 - Platform: browser app, no build step, **Node is NOT installed**; Python is `py` (not `python`).
 - Scope v1: NCAA D1 men's folkstyle. Takedown = 3 points (`RULES`).
-- Real school names, real rosters and logos ON for private testing; turn off `LOGOS_ENABLED` (js/data/logos.js) and `REAL_NAMES_ENABLED` (js/data/realtop.js) before any public release.
+- Real school names, real rosters and logos (school + conference/NCAA) ON for private testing; turn off `LOGOS_ENABLED` (js/data/logos.js) and `REAL_NAMES_ENABLED` (js/data/realtop.js) before any public release.
 - Never bypass WrestleStat's blocking: ask the user to re-save the pages.
 - When retuning, **keep wrestler attributes unchanged** (fit weights/curves instead).
 - Match viewing = streamed play-by-play + animation + "Jump to result". Matches are simulated before they are shown; interactive choices only in watched live duals (re-sim from the same seed).
@@ -44,7 +45,7 @@ Works autonomously and reports briefly; concise answers with a recommendation an
 - `index.html` + `js/ui/app.js` (all screens), `css/style.css`, `js/ui/anim.js` (bout animation), `js/ui/match.js` + `lab.html` (Match Lab), `moves.html` (Move Viewer).
 - `js/engine/bout.js` (+ rng.js): bout sim and tunables.
 - `js/game/`: `core.js` (state G, new game, real rosters, lineups, duals, finishWeek, training, injuries, rankings, save/migrate), `tourney.js`, `live.js`, `selection.js`, `dualtourney.js`, `dualcoach.js`, `sched.js`, `recruit.js`, `offseason.js`, `prestige.js`, `stats.js`, `legacy.js`, `saves.js`, `playeredit.js`.
-- `js/data/`: gen, schools, practice, tournaments, realteams (generated), realtop, overrides, ncaa2026, states, logos, teamcolors.
+- `js/data/`: gen, schools, practice, tournaments, realteams (generated), realtop, overrides, ncaa2026, states, logos, teamcolors, venues (bout viewer mat). `assets/logos/` school logos, `assets/logos/org/` conference + NCAA logos.
 - Tools/tests kept: `animsheet.html`, `harness.html`, `diag.html`, `sim_balance.html`, `longrun.html`, `tools/*.py`.
 
 ## Invariants and gotchas

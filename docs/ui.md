@@ -17,7 +17,7 @@
 
 ## Bout viewer (`boutView`)
 - Scoreboard `sbName`: logo, poll rank, linked name and school, record, gold **S** stall flag (count when > 1); red/green numbers by ankle band (`BAND`, `bandSides`: duals home = green; neutral sites by singlet colour); riding clock shows only the net advantage under the leader ("RT m:ss", gold +1 at a minute). Views carry `ids`, `rk`, `home`, `title`.
-- Feed: speed slider (`ui.speed`, localStorage `wc.speed`, default Normal), Pause/Resume, Jump to result, timeout chain that waits for long clips (`feedDelay`). Stage from anim.js with `orient: orientAt(log, shown-1)` and `champ` for NCAA finals.
+- Feed: speed slider (`ui.speed`, localStorage `wc.speed`, default Normal), Pause/Resume, Jump to result, timeout chain that waits for long clips (`feedDelay`). Stage from anim.js with `orient: orientAt(log, shown-1)` and `champ` for NCAA finals. `ui.view.venue` (set where the view opens: `dualVenue()` for duals, `tourneyVenue(t)` for tournament bouts) picks the mat colour and centre logo; see animation.md (Mat).
 - Dual viewer: bout table with ranks, Watch next match (reveals when done), Coach's corner, lineup move log, choice prompts (`askPanel`) — see season.md.
 
 ## Saves (js/game/saves.js)
