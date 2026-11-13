@@ -92,14 +92,15 @@ function drawFrame(all, cam, cols, prop) {
     seg(J.shL, J.shR, 5, c, -0.02); seg(J.hpL, J.hpR, 5.4, ref ? '#30343a' : c, -0.02);
     for (const s of ['L', 'R']) {
       seg(J['hp' + s], J['kn' + s], 4.6, ref ? '#30343a' : sk(s)); const kLeg = parts.length; seg(J['hp' + s], mix3(J['hp' + s], J['kn' + s], 0.5), 5, ref ? '#30343a' : sc(s), 0.01);
-      if (dec && dec.legBand) for (const [u, v] of [[0.36, 0.39], [0.425, 0.455]]) stripe(mix3(J['hp' + s], J['kn' + s], u), mix3(J['hp' + s], J['kn' + s], v), 5, far(s) ? shade(dec.legBand, 0.78) : dec.legBand, parts[kLeg].d + 0.002);   // two thin stripes round the leg just above the hem (0.5)   // signature singlet: thin stripe round the leg, just above the hem seg(J['kn' + s], J['ft' + s], 3.8, ref ? '#30343a' : sk(s)); seg(J['ft' + s], J['toe' + s], 3.6, far(s) ? shade(SHOE, 0.8) : SHOE, 0.02);
+      if (dec && dec.legBand) for (const [u, v] of [[0.36, 0.39], [0.425, 0.455]]) stripe(mix3(J['hp' + s], J['kn' + s], u), mix3(J['hp' + s], J['kn' + s], v), 5, far(s) ? shade(dec.legBand, 0.78) : dec.legBand, parts[kLeg].d + 0.002);   // signature singlet: two thin stripes round the leg just above the hem (0.5)
+      seg(J['kn' + s], J['ft' + s], 3.8, ref ? '#30343a' : sk(s)); seg(J['ft' + s], J['toe' + s], 3.6, far(s) ? shade(SHOE, 0.8) : SHOE, 0.02);   // shin + shoe (keep on their own line: a trailing comment once swallowed them)
       seg(J['sh' + s], J['el' + s], 3.6, sk(s)); seg(J['el' + s], J['ha' + s], 3.2, sk(s));
     }
     // ankle band (red or green) on the left ankle, unless he has taken it off
     if (!ref && cols.band && cols.band[n] && !J.P.nb) {   // sorted just above its own shin (a shorter segment's average depth would slip under it)
-      const k0 = parts.length, sd = (pr(J.knL)[2] + pr(J.ftL)[2]) / 2;
-      seg(mix3(J.knL, J.ftL, 0.79), mix3(J.knL, J.ftL, 0.9), 4.3, cols.band[n]);
-      parts[k0].d = sd + fb + 0.015;
+      // a thin flat-ended ring (butt caps; round caps made a tall blob): ink edge, then the colour, a little wider than the shin
+      const sd = (pr(J.knL)[2] + pr(J.ftL)[2]) / 2, P = u => pr(mix3(J.knL, J.ftL, u)), path = (u, v) => { const A = P(u), B = P(v); return `M${n1(A[0])} ${n1(A[1])}L${n1(B[0])} ${n1(B[1])}`; };
+      parts.push({ d: sd + fb + 0.015, raw: `<path d="${path(0.72, 0.9)}" stroke="${INK}" stroke-width="6.2" stroke-linecap="butt"/><path d="${path(0.75, 0.87)}" stroke="${cols.band[n]}" stroke-width="4.6" stroke-linecap="butt"/>` });
     }
     // head: a plain grey circle
     const h = pr(J.head);
