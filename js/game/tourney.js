@@ -48,7 +48,7 @@ export function runBracket(entries, play) {
     const next = [], losers = [];
     for (let i = 0; i < cur.length; i += 2) {
       const a = cur[i], b = cur[i + 1];
-      if (a && b) { const x = play(a, b, true, roundName(r, k), plan['T' + r], topName(r)); next.push(x.w); losers.push(x.l); } else { next.push(a || b); losers.push(null); }
+      if (a && b) { const x = play(a, b, true, roundName(r, k), plan['T' + r], topName(r)); next.push(x.w); losers.push(x.l); } else { if (a || b) (a || b).pend = ((a || b).pend || 0) + 1; next.push(a || b); losers.push(null); }
     }
     wbL[r] = losers; cur = next;
   }
@@ -58,7 +58,7 @@ export function runBracket(entries, play) {
     const w = [], l = [];
     for (let i = 0; i < A.length; i++) {
       const a = A[i], b = B[i];
-      if (a && b) { const x = play(a, b, false, label, plan[step], consName[step]); w.push(x.w); l.push(x.l); } else { w.push(a || b); l.push(null); }
+      if (a && b) { const x = play(a, b, false, label, plan[step], consName[step]); w.push(x.w); l.push(x.l); } else { if (a || b) (a || b).pend = ((a || b).pend || 0) + 0.5; w.push(a || b); l.push(null); }
     }
     return { w, l };
   };
@@ -144,12 +144,13 @@ export function runEvent(G, spec, opts = {}) {
 // and appends the user's bouts/places to res. Team points and the champion's dominance are kept per weight (pts, ch) for finishEvent.
 function runWeight(G, spec, wt, entries, base, res, rs) {
   const keep = !!rs, tag = spec.id + ':' + wt;
-  entries.forEach(e => { e.bouts = 0; e.tp = 0; e.mg = 0; e.n = 0; e.lvl = undefined; e.lm = undefined; });
+  entries.forEach(e => { e.bouts = 0; e.tp = 0; e.mg = 0; e.n = 0; e.lvl = undefined; e.lm = undefined; e.pend = 0; });
   const pts = {}, addPts = (tid, p) => { pts[tid] = (pts[tid] || 0) + p; };
   const matches = keep ? [] : null;
   let j = 0;
   const play = (a, b, champ, label, minR = 1, rl = '') => {
     const slot = j++;
+    if (spec.kind === 'ncaa' && rl === 'Consolation 4') rl = 'Consolation 4 (Blood Round)';   // NCAA round of 12: winners are All-Americans
     const wa = wrestlerAt(G, a.id, wt), wb = wrestlerAt(G, b.id, wt);
     for (const [x, e] of [[wa, a], [wb, b]]) if (e.form) for (const k of Object.keys(x.attrs)) x.attrs[k] = Math.max(1, Math.min(20, x.attrs[k] + e.form));
     const eA = Math.max(FATIGUE.tourneyFloor, startEnergy(wa) - FATIGUE.tourneyDrain * a.bouts), eB = Math.max(FATIGUE.tourneyFloor, startEnergy(wb) - FATIGUE.tourneyDrain * b.bouts);
@@ -162,11 +163,15 @@ function runWeight(G, spec, wt, entries, base, res, rs) {
     a.bouts++; b.bouts++;
     const win = r.winner === 'A' ? a : b, lose = win === a ? b : a;
     win.tp += TEAM_PTS[r.method] ?? 3; win.mg += Math.abs(r.score.A - r.score.B); win.n++; lose.n++;   // dominance bookkeeping for the Outstanding Wrestler award
-    addPts(win.team, (champ ? 1 : 0.5) + (BONUS_PTS[r.method] || 0));
+    // NCAA team scoring: advancement 1 (championship side) / 0.5 (consolation), none in the finals or placement matches (placement points cover them);
+    // a bye pays its advancement points only if the wrestler wins his next match; bonus fall 2 / tech fall 1.5 / major 1 in every match
+    const adv = rl === 'Finals' || rl === 'Placement matches' ? 0 : champ ? 1 : 0.5, bye = win.pend || 0; a.pend = b.pend = 0;
+    const tpts = adv + bye + (BONUS_PTS[r.method] || 0);
+    addPts(win.team, tpts);
     const mine = a.team === G.userTeam || b.team === G.userTeam, uIdx = mine ? res.userBouts.length : -1;
     // round = 1 + the latest round either wrestler just came from (so consolation rounds line up with the championship rounds)
     const lvl = Math.max(minR, (a.lvl ?? -1) + 1, (b.lvl ?? -1) + 1);   // explicit reveal level (roundPlan); dependency is only a safety net
-    if (keep) { matches.push({ i: slot, l: lvl, rl, c: champ ? 1 : 0, lb: label, a: a.id, b: b.id, sa: a.seed, sb: b.seed, pa: a.lm ?? -1, pb: b.lm ?? -1, w: r.winner, m: r.method, d: r.detail, u: uIdx,
+    if (keep) { matches.push({ i: slot, l: lvl, rl, c: champ ? 1 : 0, lb: label, a: a.id, b: b.id, sa: a.seed, sb: b.seed, pa: a.lm ?? -1, pb: b.lm ?? -1, w: r.winner, m: r.method, d: r.detail, u: uIdx, tp: tpts,
       bt: mine ? undefined : { seed, eA, eB, planA: pa, planB: pb, snapA: { name: wa.name, school: wa.school, weight: wt, attrs: { ...wa.attrs } }, snapB: { name: wb.name, school: wb.school, weight: wt, attrs: { ...wb.attrs } } } }); a.lm = b.lm = slot; }
     a.lvl = b.lvl = lvl;
     if (mine) {
