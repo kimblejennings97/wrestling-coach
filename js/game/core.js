@@ -458,7 +458,7 @@ function pruneReplays(G) {
     if (!t.done || !t.result || t.week >= G.week) continue;
     t.result.userBouts.forEach(strip);
     if (t.duals) t.duals.forEach(d => d.result && d.result.bouts.forEach(strip));   // dual tournaments keep box scores only
-    delete t.rv; for (const wt in t.result.weights) { delete t.result.weights[wt].matches; delete t.result.weights[wt].ent; }   // brackets are only kept until the week moves on
+    delete t.rv; delete t.rs; for (const wt in t.result.weights) { const W = t.result.weights[wt]; delete W.matches; delete W.ent; delete W.pts; delete W.ch; }   // brackets (and re-run data) are only kept until the week moves on
     if (t.kind === 'conf' && G.ncaa) for (const wt in t.result.weights) delete t.result.weights[wt].all;
   }
 }

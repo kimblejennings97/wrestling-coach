@@ -30,7 +30,7 @@ button:disabled { opacity: .45; cursor: default; }
 .scoreboard .nm { font-size: 13px; color: var(--muted); }
 .scoreboard .A .pts { color: var(--a); } .scoreboard .B .pts { color: var(--b); }
 .clock { font-size: 18px; font-variant-numeric: tabular-nums; }
-.clock small { display: block; color: var(--muted); font-size: 11px; }
+.clock small { display: block; color: var(--muted); font-size: 11px; } .clock .cwt { font-weight: 600; color: var(--text, inherit); font-size: 12px; } .clock .crd { margin-top: 2px; }
 #feed { height: 480px; overflow-y: auto; background: #0c1116; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
 .ev { padding: 3px 0; border-bottom: 1px solid #16202a; }
 .ev .t { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; display: inline-block; width: 58px; }
@@ -214,7 +214,7 @@ nav::-webkit-scrollbar, .bkt::-webkit-scrollbar { height: 6px; }
 
 .scoreboard .clock .ride { display: block; margin-top: 2px; font-size: 11px; font-variant-numeric: tabular-nums; } .scoreboard .clock .ride .a { color: var(--a); } .scoreboard .clock .ride .b { color: var(--b); }
 
-.spd { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 13px; } .spd input { width: 110px; }
+.spd { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 13px; } .spd input { width: 110px; } .spd.tch input { width: auto; }
 
 .scoreboard .rt { font-size: 12px; margin-top: 3px; min-height: 16px; font-variant-numeric: tabular-nums; color: var(--muted); } .scoreboard .rt.pt { color: var(--gold); font-weight: 700; } .scoreboard .rt.lead { color: var(--text); }
 

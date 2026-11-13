@@ -89,7 +89,8 @@ function entriesFor(G, spec, wt, rng) {
     if (spec.kind === 'open') { // alternates: user picks, AI sometimes brings a second wrestler
       let alt = tid === G.userTeam ? (G.entries?.[spec.id]?.[wt] || []) : [];
       if (tid !== G.userTeam && rng() < 0.55) {
-        const b = t.roster.map(i => G.wrestlers[i]).filter(w => w.natural === wt && !w.injury && !ids.includes(w.id)).sort((a, b) => overall(b) - overall(a))[0];
+        const starters = Object.values(t.lineup);   // never a wrestler who already starts at another weight (he would be entered twice)
+        const b = t.roster.map(i => G.wrestlers[i]).filter(w => w.natural === wt && !w.injury && !ids.includes(w.id) && !starters.includes(w.id)).sort((a, b) => overall(b) - overall(a))[0];
         if (b) alt = [b.id];
       }
       for (const a of alt) if (!ids.includes(a) && !G.wrestlers[a].injury) ids.push(a);
@@ -100,56 +101,112 @@ function entriesFor(G, spec, wt, rng) {
 }
 
 // ---------- run one tournament (open / conference / NCAA) ----------
+// Every match draws from its OWN seed (event, weight, bracket slot), never from a shared stream, so one match can be re-simulated (the user's
+// start-of-period choices, redoMatch) without disturbing any other match whose pairing did not change. The slot index j = the j-th play() call
+// at that weight, which depends only on the field size (runBracket's structure), so it is the same in every re-run; with keep it is also m.i.
+const slotSeed = (base, j) => {
+  let h = (base ^ Math.imul(j + 1, 0x9E3779B1)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85EBCA6B) >>> 0; h = Math.imul(h ^ (h >>> 13), 0xC2B2AE35) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) % 2e9 + 1;
+};
+// wrestler state an event changes directly (stats go through G.sq): restored before a weight is re-run
+const snapOf = (G, w) => ({ injury: w.injury ? { ...w.injury } : null, rehab: w.rehab ?? null, fatigue: w.fatigue, tr: w.tr && w.tr[G.season] ? { ...w.tr[G.season] } : null });
+function restoreSnap(G, w, s) {
+  w.injury = s.injury ? { ...s.injury } : null; w.rehab = s.rehab; w.fatigue = s.fatigue;
+  if (s.tr) (w.tr ||= {})[G.season] = { ...s.tr }; else if (w.tr) delete w.tr[G.season];
+}
+
 export function runEvent(G, spec, opts = {}) {
   if (spec.kind === 'dual') return runDual(G, spec);   // National Dual Tournament: bracket of dual meets (dualtourney.js)
   const keep = !!opts.keep;   // keep every match (for the round-by-round viewer): only done for the user's own event
   const rng = makeRng(G.seed + spec.week * 99991 + spec.id.length * 131 + [...spec.id].reduce((a, c) => a + c.charCodeAt(0), 0) * 7);
   for (const tid of spec.teams) if (tid !== G.userTeam && spec.kind !== 'ncaa') G.teams[tid].lineup = autoLineup(G, tid);
   if (spec.kind !== 'ncaa' && spec.teams.includes(G.userTeam)) sanitizeLineup(G, G.userTeam);
-  const res = { weights: {}, team: {}, userBouts: [], userPlaces: [] }, champs = [];
-  const addPts = (tid, p) => { res.team[tid] = (res.team[tid] || 0) + p; };
+  const res = { weights: {}, userBouts: [], userPlaces: [] };
+  // keep: everything needed to re-run one weight later (entries with their form, slot-seed base, wrestler snapshots, the user's choices, G.sq range)
+  const rs = keep ? { w: {}, snap: {}, ch: opts.ch ? JSON.parse(JSON.stringify(opts.ch)) : {} } : null;   // opts.ch: choices known up front (tests)
+  spec.rs = rs || undefined;
   for (const wt of WEIGHTS) {
     const entries = entriesFor(G, spec, wt, rng).sort((a, b) => b.ss - a.ss);
-    entries.forEach((e, i) => { e.seed = i + 1; e.bouts = 0; e.tp = 0; e.mg = 0; e.n = 0; const ov = overall(G.wrestlers[e.id]); e.form = FORM.sd ? rng.gauss() * FORM.sd * Math.max(FORM.min, Math.min(1, (FORM.hi - ov) / FORM.span)) : 0; });
-    const matches = keep ? [] : null;
-    const play = (a, b, champ, label, minR = 1, rl = '') => {
-      const wa = wrestlerAt(G, a.id, wt), wb = wrestlerAt(G, b.id, wt);
-      for (const [x, e] of [[wa, a], [wb, b]]) if (e.form) for (const k of Object.keys(x.attrs)) x.attrs[k] = Math.max(1, Math.min(20, x.attrs[k] + e.form));
-      const eA = Math.max(FATIGUE.tourneyFloor, startEnergy(wa) - FATIGUE.tourneyDrain * a.bouts), eB = Math.max(FATIGUE.tourneyFloor, startEnergy(wb) - FATIGUE.tourneyDrain * b.bouts);
-      const seed = rng.int(1, 2e9), pa = G.teams[a.team].plan, pb = G.teams[b.team].plan;
-      const r = simulateBout(wa, wb, { seed, planA: pa, planB: pb, energyA: eA, energyB: eB });
-      recordBout(G, a.id, b.id, wt, r);
-      a.bouts++; b.bouts++;
-      const win = r.winner === 'A' ? a : b, lose = win === a ? b : a;
-      win.tp += TEAM_PTS[r.method] ?? 3; win.mg += Math.abs(r.score.A - r.score.B); win.n++; lose.n++;   // dominance bookkeeping for the Outstanding Wrestler award
-      addPts(win.team, (champ ? 1 : 0.5) + (BONUS_PTS[r.method] || 0));
-      const uIdx = (a.team === G.userTeam || b.team === G.userTeam) ? res.userBouts.length : -1;
-      // round = 1 + the latest round either wrestler just came from (so consolation rounds line up with the championship rounds)
-      const lvl = Math.max(minR, (a.lvl ?? -1) + 1, (b.lvl ?? -1) + 1);   // explicit reveal level (roundPlan); dependency is only a safety net
-      if (keep) { const i = matches.length; matches.push({ i, l: lvl, rl, c: champ ? 1 : 0, lb: label, a: a.id, b: b.id, sa: a.seed, sb: b.seed, pa: a.lm ?? -1, pb: b.lm ?? -1, w: r.winner, m: r.method, d: r.detail, u: uIdx,
-        bt: uIdx >= 0 ? undefined : { seed, eA, eB, planA: pa, planB: pb, snapA: { name: wa.name, school: wa.school, weight: wt, attrs: { ...wa.attrs } }, snapB: { name: wb.name, school: wb.school, weight: wt, attrs: { ...wb.attrs } } } }); a.lm = b.lm = i; }
-      a.lvl = b.lvl = lvl;
-      if (a.team === G.userTeam || b.team === G.userTeam) {
-        res.userBouts.push({ wt, label, a: a.id, b: b.id, aTeam: a.team, bTeam: b.team, aName: wa.name, bName: wb.name, w: r.winner, d: r.detail, sA: r.score.A, sB: r.score.B, seed, eA, eB, planA: pa, planB: pb,
-          snapA: { name: wa.name, school: wa.school, weight: wt, attrs: wa.attrs }, snapB: { name: wb.name, school: wb.school, weight: wt, attrs: wb.attrs } });
-      }
-      for (const e of [a, b]) if (rng() < matchInjuryChance(G.wrestlers[e.id]) && !G.wrestlers[e.id].injury) giveInjury(G, G.wrestlers[e.id], rng, e.team === G.userTeam, 'at ' + spec.name);
-      return { w: win, l: lose };
-    };
-    const places = runBracket(entries, play);
-    const top = [], all = [];
-    for (const e of entries) {
-      const p = places.get(e) || 9, w = G.wrestlers[e.id];
-      all.push({ id: e.id, team: e.team, place: p, seed: e.seed, ss: e.ss });
-      if (p <= 8) { top.push({ id: e.id, name: w.name, team: e.team, place: p }); addPts(e.team, PLACE_PTS[p]); }
-      if (spec.kind === 'ncaa') recordPlacement(G, e.id, p);
-      w.fatigue = Math.min(100, w.fatigue + FATIGUE.tourneyBout * e.bouts);
-      if (e.team === G.userTeam) res.userPlaces.push({ wt, id: e.id, place: p, n: entries.length });
-      if (spec.kind === 'conf' || spec.kind === 'ncaa') ((w.tr ||= {})[G.season] ||= {})[spec.kind === 'conf' ? 'c' : 'n'] = p;   // personal tournament history (9 = competed, did not place)
-      if (p === 1 && e.n) champs.push({ e, wt });
+    entries.forEach((e, i) => { e.seed = i + 1; const ov = overall(G.wrestlers[e.id]); e.form = FORM.sd ? rng.gauss() * FORM.sd * Math.max(FORM.min, Math.min(1, (FORM.hi - ov) / FORM.span)) : 0; });
+    const base = rng.int(1, 2e9);
+    if (keep) { rs.w[wt] = { base, ents: entries.map(e => ({ id: e.id, team: e.team, seed: e.seed, ss: e.ss, form: e.form })) }; for (const e of entries) rs.snap[e.id] = snapOf(G, G.wrestlers[e.id]); }
+    const s0 = (G.sq || []).length;
+    res.weights[wt] = runWeight(G, spec, wt, entries, base, res, rs);
+    if (keep) rs.w[wt].sq = [s0, (G.sq || []).length];
+  }
+  finishEvent(G, spec, res, keep);
+  spec.result = res; spec.done = true;
+  return res;
+}
+
+// one weight's bracket: plays it, applies its side effects (stats queue, injuries, fatigue, tournament history), returns res.weights[wt]
+// and appends the user's bouts/places to res. Team points and the champion's dominance are kept per weight (pts, ch) for finishEvent.
+function runWeight(G, spec, wt, entries, base, res, rs) {
+  const keep = !!rs, tag = spec.id + ':' + wt;
+  entries.forEach(e => { e.bouts = 0; e.tp = 0; e.mg = 0; e.n = 0; e.lvl = undefined; e.lm = undefined; });
+  const pts = {}, addPts = (tid, p) => { pts[tid] = (pts[tid] || 0) + p; };
+  const matches = keep ? [] : null;
+  let j = 0;
+  const play = (a, b, champ, label, minR = 1, rl = '') => {
+    const slot = j++;
+    const wa = wrestlerAt(G, a.id, wt), wb = wrestlerAt(G, b.id, wt);
+    for (const [x, e] of [[wa, a], [wb, b]]) if (e.form) for (const k of Object.keys(x.attrs)) x.attrs[k] = Math.max(1, Math.min(20, x.attrs[k] + e.form));
+    const eA = Math.max(FATIGUE.tourneyFloor, startEnergy(wa) - FATIGUE.tourneyDrain * a.bouts), eB = Math.max(FATIGUE.tourneyFloor, startEnergy(wb) - FATIGUE.tourneyDrain * b.bouts);
+    const seed = slotSeed(base, slot), pa = G.teams[a.team].plan, pb = G.teams[b.team].plan;
+    // the user's corner (not when both wrestlers are his): his start-of-period picks for this slot, if he made any while watching it
+    const userSide = a.team === G.userTeam && b.team !== G.userTeam ? 'A' : b.team === G.userTeam && a.team !== G.userTeam ? 'B' : null;
+    const c = rs && rs.ch[wt + ':' + slot], choices = c && c.a === a.id && c.b === b.id ? c.choices : null;
+    const r = simulateBout(wa, wb, { seed, planA: pa, planB: pb, energyA: eA, energyB: eB, userSide, choices });
+    recordBout(G, a.id, b.id, wt, r);
+    a.bouts++; b.bouts++;
+    const win = r.winner === 'A' ? a : b, lose = win === a ? b : a;
+    win.tp += TEAM_PTS[r.method] ?? 3; win.mg += Math.abs(r.score.A - r.score.B); win.n++; lose.n++;   // dominance bookkeeping for the Outstanding Wrestler award
+    addPts(win.team, (champ ? 1 : 0.5) + (BONUS_PTS[r.method] || 0));
+    const mine = a.team === G.userTeam || b.team === G.userTeam, uIdx = mine ? res.userBouts.length : -1;
+    // round = 1 + the latest round either wrestler just came from (so consolation rounds line up with the championship rounds)
+    const lvl = Math.max(minR, (a.lvl ?? -1) + 1, (b.lvl ?? -1) + 1);   // explicit reveal level (roundPlan); dependency is only a safety net
+    if (keep) { matches.push({ i: slot, l: lvl, rl, c: champ ? 1 : 0, lb: label, a: a.id, b: b.id, sa: a.seed, sb: b.seed, pa: a.lm ?? -1, pb: b.lm ?? -1, w: r.winner, m: r.method, d: r.detail, u: uIdx,
+      bt: mine ? undefined : { seed, eA, eB, planA: pa, planB: pb, snapA: { name: wa.name, school: wa.school, weight: wt, attrs: { ...wa.attrs } }, snapB: { name: wb.name, school: wb.school, weight: wt, attrs: { ...wb.attrs } } } }); a.lm = b.lm = slot; }
+    a.lvl = b.lvl = lvl;
+    if (mine) {
+      res.userBouts.push({ wt, j: slot, label, a: a.id, b: b.id, aTeam: a.team, bTeam: b.team, aName: wa.name, bName: wb.name, w: r.winner, d: r.detail, sA: r.score.A, sB: r.score.B, seed, eA, eB, planA: pa, planB: pb, userSide, choices: choices || undefined,
+        snapA: { name: wa.name, school: wa.school, weight: wt, attrs: wa.attrs }, snapB: { name: wb.name, school: wb.school, weight: wt, attrs: wb.attrs } });
     }
-    top.sort((x, y) => x.place - y.place);
-    res.weights[wt] = { n: entries.length, top, all: spec.kind === 'conf' ? all : undefined, matches: matches || undefined, ent: keep ? entries.map(e => ({ id: e.id, team: e.team, seed: e.seed })) : undefined };
+    const irng = makeRng(seed ^ 0x5BD1E995);   // injury rolls: per slot too
+    for (const e of [a, b]) if (irng() < matchInjuryChance(G.wrestlers[e.id]) && !G.wrestlers[e.id].injury) {
+      const isU = e.team === G.userTeam; giveInjury(G, G.wrestlers[e.id], irng, isU, 'at ' + spec.name);
+      if (isU && keep) { G.inbox[0].tev = tag; if (G.injLog && G.injLog[0]) G.injLog[0].tev = tag; }   // so a re-run can take the note back
+    }
+    return { w: win, l: lose };
+  };
+  const places = runBracket(entries, play);
+  const top = [], all = [];
+  let ch = null;
+  for (const e of entries) {
+    const p = places.get(e) || 9, w = G.wrestlers[e.id];
+    all.push({ id: e.id, team: e.team, place: p, seed: e.seed, ss: e.ss });
+    if (p <= 8) { top.push({ id: e.id, name: w.name, team: e.team, place: p }); addPts(e.team, PLACE_PTS[p]); }
+    if (spec.kind === 'ncaa') recordPlacement(G, e.id, p);
+    w.fatigue = Math.min(100, w.fatigue + FATIGUE.tourneyBout * e.bouts);
+    if (e.team === G.userTeam) res.userPlaces.push({ wt, id: e.id, place: p, n: entries.length });
+    if (spec.kind === 'conf' || spec.kind === 'ncaa') ((w.tr ||= {})[G.season] ||= {})[spec.kind === 'conf' ? 'c' : 'n'] = p;   // personal tournament history (9 = competed, did not place)
+    if (p === 1 && e.n) ch = { id: e.id, team: e.team, tp: e.tp, mg: e.mg, n: e.n };
+  }
+  top.sort((x, y) => x.place - y.place);
+  return { n: entries.length, top, all: spec.kind === 'conf' ? all : undefined, matches: matches || undefined, ent: keep ? entries.map(e => ({ id: e.id, team: e.team, seed: e.seed })) : undefined, pts, ch };
+}
+
+// team scores and the Outstanding Wrestler from the per-weight results (re-run safe: takes back an earlier award for this event)
+function finishEvent(G, spec, res, keep) {
+  if (res.mow) { const w = G.wrestlers[res.mow.id]; if (w && w.aw) w.aw = w.aw.filter(a => !(a.season === G.season && a.ev === spec.name && a.wk === spec.week)); delete res.mow; }
+  delete res.teamScores;   // (re)added below in a fixed key order
+  const team = {}, champs = [];
+  for (const wt of WEIGHTS) {
+    const W = res.weights[wt];
+    for (const [tid, p] of Object.entries(W.pts)) team[tid] = (team[tid] || 0) + p;
+    if (W.ch) champs.push({ e: W.ch, wt });
+    if (!keep) { delete W.pts; delete W.ch; }
   }
   // Outstanding Wrestler: the champion who was most dominant (average team points per match: decision 3, major 4, tech fall 5, fall 6; ties by average margin)
   if (champs.length) {
@@ -157,10 +214,57 @@ export function runEvent(G, spec, opts = {}) {
     res.mow = { id: best.e.id, name: w.name, team: best.e.team, wt: best.wt, tpm: Math.round(best.e.tp / best.e.n * 100) / 100, n: best.e.n };
     (w.aw ||= []).push({ season: G.season, ev: spec.name, wt: best.wt, wk: spec.week });
   }
-  res.teamScores = Object.entries(res.team).map(([team, pts]) => ({ team, pts })).sort((a, b) => b.pts - a.pts);
-  delete res.team;
-  spec.result = res; spec.done = true;
-  return res;
+  res.teamScores = Object.entries(team).map(([t, pts]) => ({ team: t, pts })).sort((a, b) => b.pts - a.pts);
+}
+
+// The user changed a start-of-period choice in his match at (wt, slot j) of a live event: re-run that weight with the choice stored.
+// Only that weight changes (the others are independent); matches whose pairing is unchanged replay exactly, so everything already
+// revealed stays as shown (checked: returns ok false and keeps the old result if a revealed match would change). Returns { ok, bout }.
+export function redoMatch(G, spec, wt, j, side, choices) {
+  const rs = spec.rs, R = spec.result; if (!rs || !rs.w[wt] || !R) return { ok: false };
+  const W0 = R.weights[wt], m0 = W0.matches.find(m => m.i === j); if (!m0) return { ok: false };
+  const RW = rs.w[wt], tag = spec.id + ':' + wt, key = wt + ':' + j, oldCh = rs.ch[key];
+  const sqOk = G.sq && G.sq.length >= RW.sq[1];   // the queue still holds this weight's results (it is only flushed once the event is over)
+  // take back this weight's side effects
+  for (const e of RW.ents) restoreSnap(G, G.wrestlers[e.id], rs.snap[e.id]);
+  G.inbox = G.inbox.filter(x => x.tev !== tag); if (G.injLog) G.injLog = G.injLog.filter(x => x.tev !== tag);
+  rs.ch[key] = { a: m0.a, b: m0.b, side, choices: { ...choices } };
+  const keepUB = R.userBouts.filter(b => b.wt !== wt), keepUP = R.userPlaces.filter(p => p.wt !== wt);
+  R.userBouts = []; R.userPlaces = [];
+  const realSq = G.sq; G.sq = [];
+  const ents = RW.ents.map(e => ({ ...e }));
+  const W1 = runWeight(G, spec, wt, ents, RW.base, R, rs);
+  const fresh = G.sq; G.sq = realSq || [];
+  // everything already revealed at this weight must be unchanged
+  const same = (x, y) => x && y && x.a === y.a && x.b === y.b && x.w === y.w && x.m === y.m && x.d === y.d && x.l === y.l;
+  const cnt = spec.rv ? spec.rv.cnt[wt] : 0, o0 = W0.matches.slice().sort((a, b) => a.l - b.l || a.i - b.i), o1 = W1.matches.slice().sort((a, b) => a.l - b.l || a.i - b.i);
+  let ok = true; for (let k = 0; k < cnt; k++) if (o0[k].i !== o1[k].i || !same(o0[k], o1[k])) ok = false;
+  if (!ok) {   // should never happen; put the old weight back as it was (its side effects are re-applied by a plain re-run without the new choice)
+    console.warn('redoMatch: a revealed match would change; choice ignored', wt, j);
+    if (oldCh) rs.ch[key] = oldCh; else delete rs.ch[key];
+    for (const e of RW.ents) restoreSnap(G, G.wrestlers[e.id], rs.snap[e.id]);
+    G.inbox = G.inbox.filter(x => x.tev !== tag); if (G.injLog) G.injLog = G.injLog.filter(x => x.tev !== tag);
+    R.userBouts = []; R.userPlaces = []; G.sq = [];
+    const W2 = runWeight(G, spec, wt, RW.ents.map(e => ({ ...e })), RW.base, R, rs), f2 = G.sq; G.sq = realSq || [];
+    return { ok: false, bout: settleWeight(G, spec, wt, W2, f2, keepUB, keepUP, sqOk, j) };
+  }
+  return { ok: true, bout: settleWeight(G, spec, wt, W1, fresh, keepUB, keepUP, sqOk, j) };
+}
+// put a re-run weight back into the event: its stats records into G.sq (same place), user bouts/places in event order, team scores, award
+function settleWeight(G, spec, wt, W, fresh, keepUB, keepUP, sqOk, j) {
+  const rs = spec.rs, R = spec.result, RW = rs.w[wt], ord = x => WEIGHTS.indexOf(x.wt);
+  if (sqOk) {
+    const [s, e] = RW.sq, d = fresh.length - (e - s);
+    G.sq.splice(s, e - s, ...fresh); RW.sq = [s, s + fresh.length];
+    for (const w2 of WEIGHTS) if (w2 !== wt && rs.w[w2] && rs.w[w2].sq[0] >= e) { rs.w[w2].sq[0] += d; rs.w[w2].sq[1] += d; }
+  }
+  R.weights[wt] = W;
+  R.userBouts = keepUB.concat(R.userBouts).sort((x, y) => ord(x) - ord(y) || x.j - y.j);
+  R.userPlaces = keepUP.concat(R.userPlaces).sort((x, y) => ord(x) - ord(y));
+  const ix = new Map(R.userBouts.map((b, i) => [b.wt + ':' + b.j, i]));
+  for (const w2 of WEIGHTS) for (const m of R.weights[w2].matches || []) if (m.u >= 0) m.u = ix.get(w2 + ':' + m.i);
+  finishEvent(G, spec, R, true);
+  return R.userBouts[ix.get(wt + ':' + j)];
 }
 
 // ---------- conference -> NCAA ----------

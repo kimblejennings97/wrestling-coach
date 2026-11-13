@@ -28,7 +28,7 @@ Keep these files current: when you change a system, update its topic file (curre
 - Real school names, real rosters and logos (school + conference/NCAA) ON for private testing; turn off `LOGOS_ENABLED` (js/data/logos.js) and `REAL_NAMES_ENABLED` (js/data/realtop.js) before any public release.
 - Never bypass WrestleStat's blocking: ask the user to re-save the pages.
 - When retuning, **keep wrestler attributes unchanged** (fit weights/curves instead).
-- Match viewing = streamed play-by-play + animation + "Jump to result". Matches are simulated before they are shown; interactive choices only in watched live duals (re-sim from the same seed).
+- Match viewing = streamed play-by-play + animation + "Jump to result". Matches are simulated before they are shown; interactive start-of-period choices in watched live duals AND in your own matches of a live tournament (re-sim from the same seed; tournaments re-run the rest of that weight, 2026-11-12; on/off setting `G.tChoices`).
 - No recruiting caps for the user (AI-only). Max one weight move per season.
 - Tournament dates follow weekday rules; conference = first Saturday of March; NCAA = Thu-Sat of the third week of March.
 

@@ -20,7 +20,7 @@
 - Near falls: `turn` x exp(top vs bottom) x `exp(-level*(botDefense-12))` (a good bottom wrestler is hard to turn). Pins: `PIN = { base .10, adv .016, strK .003, min .015, max .4, bigMult 1.2 }`; near-fall/pin odds use un-amplified `e0()`.
 - Bonus hunting: a top man leading by `letLead`+ with a big tdo-vs-tdd edge lets the bottom man up (prob `letUp * gap`) to score again; never with < `letMin` 40 s left in the period. This is what produces tech falls.
 - Riding time: only `rideK` (half) of top time counts; the 1-point award at >= 1:00 net now in ~20% of bouts.
-- Period choices `CHOICE = { top 7, p2Neutral 7, trailNeutral 3, defer 47 }` (McGarvey 2018: 2nd-period chooser picks bottom 89 / neutral 7 / top 4%; ~47% of toss winners defer, decided by a seed hash, no rng). Period 3 rule is a judgement call (no data). `opts.userSide` + `opts.choices` let the user choose in live duals (see ui.md).
+- Period choices `CHOICE = { top 7, p2Neutral 7, trailNeutral 3, defer 47 }` (McGarvey 2018: 2nd-period chooser picks bottom 89 / neutral 7 / top 4%; ~47% of toss winners defer, decided by a seed hash, no rng). Period 3 rule is a judgement call (no data). `opts.userSide` + `opts.choices` let the user choose in live duals and in his matches of a live tournament (season.md).
 - Stalling: only a conservative-plan leader in period 2+ (16% of his idle neutral ticks); 1st call warning, then +1. ~11% of bouts get a warning with a realistic plan mix. No sourced real rate.
 
 ## Measured results (current)

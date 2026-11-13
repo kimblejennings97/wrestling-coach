@@ -15,7 +15,7 @@ import * as L from '../game/live.js';
 import * as SEL from '../game/selection.js';
 import * as D from '../game/dualtourney.js';
 const D_NAME = D.DUAL_NAME;
-import { seedOrder } from '../game/tourney.js';
+import { seedOrder, redoMatch } from '../game/tourney.js';
 import * as S from '../game/sched.js';
 import { TEAM_COLORS } from '../data/teamcolors.js';
 import { teamVenue, tourneyVenue, NEUTRAL_MAT } from '../data/venues.js';
@@ -197,7 +197,8 @@ function act(a, d) {
     const p = d.v === 'user' ? L.advanceToUser(t) : L.peekNext(t); if (!p) { save(); return render(); }
     const b = p.m.u >= 0 ? t.result.userBouts[p.m.u] : p.m.bt;
     if (!b) { L.advanceLive(t, 'match'); save(); return render(); }   // no replay data (older save): just reveal it
-    save(); ui.view = { idx: -1, res: replayBout(b), shown: 0, playing: true, tw: t.id, ids: { A: p.m.a, B: p.m.b }, title: t.kind === 'ncaa' && !!p.m.c && p.m.rl === 'Finals', venue: tourneyVenue(t) }; return startFeed();
+    const tlv = p.m.u >= 0 && b.userSide && t.rs ? { tid: t.id, wt: p.wt, j: p.m.i, mySide: b.userSide, answers: {} } : null;   // your wrestler's match: you may make his start-of-period choices (re-runs the rest of his weight)
+    save(); ui.view = { idx: -1, res: replayBout(b), shown: 0, playing: true, tw: t.id, live: tlv, rnd: tRound(t, p.wt, p.m), ids: { A: p.m.a, B: p.m.b }, title: t.kind === 'ncaa' && !!p.m.c && p.m.rl === 'Finals', venue: tourneyVenue(t) }; return startFeed();
   }
   if (a === 'tadv') { stopTimers(); if (ui.view && ui.view.tw) ui.view = null; const t = G.tournaments.find(x => x.id === ui.tid); if (t && L.isLive(t)) { L.advanceLive(t, d.v, +ui.rwt || WEIGHTS[0]); save(); } return render(); }
   if (a === 'skipgo') {
@@ -218,8 +219,13 @@ function act(a, d) {
   if (a === 'selwt') { ui.selwt = +d.v; return render(); }
   if (a === 'tview') { ui.tview = d.v; return render(); }
   if (a === 'watchtb') {
-    const t = G.tournaments.find(x => x.id === ui.tid), b = t.result.userBouts[+d.v];
-    ui.view = { idx: +d.v, res: replayBout(b), shown: 0, playing: true, ids: { A: b.a, B: b.b }, title: t.kind === 'ncaa' && b.label === 'Final', venue: tourneyVenue(t) }; return startFeed();
+    const t = G.tournaments.find(x => x.id === ui.tid), b = t.result.userBouts[+d.v], m = (t.result.weights[b.wt].matches || []).find(x => x.u === +d.v);
+    ui.view = { idx: +d.v, res: replayBout(b), shown: 0, playing: true, rnd: m ? tRound(t, b.wt, m) : b.label, ids: { A: b.a, B: b.b }, title: t.kind === 'ncaa' && b.label === 'Final', venue: tourneyVenue(t) }; return startFeed();
+  }
+  if (a === 'watchtm') {   // a revealed match from the Other teams tab
+    const t = G.tournaments.find(x => x.id === ui.tid), m = t && t.result.weights[+d.wt]?.matches?.find(x => x.i === +d.v), b = m && (m.u >= 0 ? t.result.userBouts[m.u] : m.bt);
+    if (!b || !b.seed || ui.view) return render();
+    ui.view = { idx: -1, res: replayBout(b), shown: 0, playing: true, rnd: tRound(t, +d.wt, m), ids: { A: m.a, B: m.b }, title: t.kind === 'ncaa' && !!m.c && m.rl === 'Finals', venue: tourneyVenue(t) }; return startFeed();
   }
   if (a === 'cancelmove') { cancelWeightMove(G, d.v); save(); return render(); }
   if (a === 'rectab') { ui.rec.tab = d.v; return render(); }
@@ -265,7 +271,10 @@ function act(a, d) {
   if (a === 'viewchoose') {
     const v = ui.view, lv = v && v.live; if (!lv || !v.asking) return render();
     lv.answers[v.asking.key] = d.v; v.asking = null;
-    const nb = redoBout(G, lv.du, lv.snap, lv.answers); v.res = replayBout(nb); v.playing = true; v.paused = false; save();
+    let nb;
+    if (lv.tid) { const t = G.tournaments.find(x => x.id === lv.tid); nb = t && L.isLive(t) ? redoMatch(G, t, lv.wt, lv.j, lv.mySide, lv.answers).bout : null; if (!nb) { v.live = null; return startFeed(); } }
+    else nb = redoBout(G, lv.du, lv.snap, lv.answers);
+    v.res = replayBout(nb); v.playing = true; v.paused = false; save();
     return startFeed();
   }
   if (a === 'viewpause') { const v = ui.view; if (v.asking) return render(); if (v.paused) { v.paused = false; v.playing = true; return startFeed(); } clearInterval(ui.vtimer); v.paused = true; return render(); }
@@ -286,7 +295,7 @@ function startFeed() {
   const tick = () => {
     if (!ui.view) return clearInterval(ui.vtimer);
     const v = ui.view, nx = v.res.log[v.shown];
-    if (v.live && nx && nx.ask && nx.ask.who === v.live.mySide && v.live.answers[nx.ask.key] === undefined) { clearInterval(ui.vtimer); v.asking = nx.ask; return render(); }   // your wrestler has a choice: wait for it
+    if (v.live && (!v.live.tid || G.tChoices !== false) && nx && nx.ask && nx.ask.who === v.live.mySide && v.live.answers[nx.ask.key] === undefined) { clearInterval(ui.vtimer); v.asking = nx.ask; return render(); }   // your wrestler has a choice: wait for it
     ui.view.shown++;
     if (ui.view.shown >= ui.view.res.log.length) { clearInterval(ui.vtimer); ui.view.playing = false; revealWatched(); return render(); }
     render();
@@ -314,6 +323,7 @@ function chg(k, el) {
   if (k === 'recstatus') { ui.rec.status = el.value; ui.rec.limit = 40; return render(); }
   if (k === 'sched') { const r = S.setWeek(G, +el.dataset.wk, el.value); if (!r.ok) alert(r.msg); save(); return render(); }
   if (k === 'twt') { ui.twt = +el.value; return render(); }
+  if (k === 'tteam') { ui.tteam = el.value; return render(); }
   if (k === 'vspeed') { ui.speed = +el.value; try { localStorage.setItem('wc.speed', ui.speed); } catch (e) {} if (ui.view && ui.view.playing && !ui.view.paused) return startFeed(); return render(); }
   if (k === 'rwt') { ui.rwt = +el.value; return render(); }
   if (k === 'skipwk') { ui.skip.wk = +el.value; return; }
@@ -321,6 +331,11 @@ function chg(k, el) {
   if (k === 'skippause') { ui.skip.pause = el.checked; return; }
   if (k === 'plan') { me().plan = el.value; save(); return; }
   if (k === 'assist') { G.assist = el.checked; save(); return; }
+  if (k === 'tchoice') {   // tournament setting: make your wrestlers' start-of-period choices yourself (off = the coach's suggestion, no pauses)
+    G.tChoices = el.checked; save(); const v = ui.view;
+    if (!el.checked && v && v.asking && v.live && v.live.tid) { v.asking = null; v.playing = true; v.paused = false; return startFeed(); }
+    return render();
+  }
   if (k === 'dualsub') { const du = findDual(ui.dual.id), r = userSub(G, du, +el.dataset.wt, el.value || null); if (!r.ok) alert(r.msg); save(); return render(); }
   if (k === 'tfocus') { G.training.focus[+el.dataset.i] = el.value; save(); return render(); }
   if (k === 'tint') { G.training.intensity = el.value; save(); return render(); }
@@ -907,6 +922,8 @@ function rname(t, l, wt) {   // name stored on the matches themselves (m.rl); fa
   for (const w of (wt ? [wt] : WEIGHTS)) { const m = (t.result.weights[w].matches || []).find(x => x.l === l && x.rl); if (m) return m.rl; }
   return `Round ${l}`;
 }
+// round shown under the bout viewer's clock: the reveal round (Round of 16, Quarterfinals, Consolation 3...), or the exact bout for finals/placements
+function tRound(t, wt, m) { const rn = rname(t, m.l, wt); return rn === 'Placement matches' || rn === 'Finals' ? m.lb : rn; }
 function bracketHtml(t, wt) {
   const W = t.result.weights[wt], ms = W.matches, live = L.isLive(t);
   const rev = live ? L.revealedSet(t, wt) : new Set(ms.map(m => m.i));
@@ -929,11 +946,41 @@ function bracketHtml(t, wt) {
     ${sect(true, 'Championship bracket')}${sect(false, 'Consolation / placement matches')}`;
 }
 
+// "Other teams" tab: any entered team's wrestlers like My wrestlers (record, next match, finish) and its revealed matches.
+// Once the week moves on the bracket is pruned: then only the team's placers (conference events: every entrant's place) are left.
+function teamsTab(t) {
+  const r = t.result, live = L.isLive(t), sc = live ? L.liveScores(G, t) : r.teamScores, pts = new Map(sc.map(x => [x.team, x.pts]));
+  const ids = new Set(sc.map(x => x.team));
+  for (const wt of WEIGHTS) for (const e of (r.weights[wt].ent || r.weights[wt].all || r.weights[wt].top)) ids.add(e.team);
+  const list = [...ids].filter(id => G.teams[id]).sort((a, b) => (pts.get(b) || 0) - (pts.get(a) || 0) || G.teams[a].name.localeCompare(G.teams[b].name));
+  let tm = ui.tteam; if (!list.includes(tm)) tm = list.find(x => x !== G.userTeam) || list[0]; ui.tteam = tm;
+  if (!tm) return '<p class="muted">No teams.</p>';
+  const rank = sc.findIndex(x => x.team === tm);
+  const sel = `<p><label>Team <select data-chg="tteam">${list.map(id => `<option value="${id}" ${id === tm ? 'selected' : ''}>${G.teams[id].name}${pts.has(id) ? ` (${pts.get(id)} pts)` : ''}</option>`).join('')}</select></label>
+    ${tn(tm, 20)} <span class="muted">${rank >= 0 ? `#${rank + 1} · ${pts.get(tm)} pts${live ? ' so far' : ''}` : 'no points'}</span></p>`;
+  const ord = p => `${p}${['st', 'nd', 'rd'][p - 1] || 'th'}`;
+  if (!L.hasBracket(t)) {
+    const rows = WEIGHTS.flatMap(wt => (r.weights[wt].all || r.weights[wt].top).filter(e => e.team === tm).map(e => `<tr><td>${wt}</td><td>${wl(e.id, e.name)}</td><td>${e.place <= 8 ? `<b class="${e.place === 1 ? 'tcwin' : ''}">${ord(e.place)}</b>` : '<span class="muted">did not place</span>'}</td></tr>`)).join('');
+    return `${sel}<table class="tbl"><tr><th>Wt</th><th>Wrestler</th><th>Finish</th></tr>${rows || '<tr><td colspan="3" class="muted">No placers.</td></tr>'}</table><p class="muted">Full results are only kept for the week of the event.</p>`;
+  }
+  const st = L.myStatus(G, t, tm);
+  const rows = st.map(x => {
+    const rn = x.next && rname(t, x.next.l, x.wt), nx = x.next ? `Next: ${rn}${x.next.lb !== rn ? ' · ' + x.next.lb : ''}` : x.place ? `<b class="${x.place === 1 ? 'tcwin' : ''}">Finished ${ord(x.place)}</b>` : '<span class="muted">Eliminated</span>';
+    return `<tr><td>${x.wt}</td><td>${wl(x.id)} <small class="muted">seed ${x.seed}</small></td><td>${x.w}-${x.l}</td><td>${nx}</td></tr>`; }).join('');
+  const mt = [];
+  for (const wt of WEIGHTS) { const o = L.orderOf(t, wt), n = live ? t.rv.cnt[wt] : o.length;
+    for (let k = 0; k < n; k++) { const m = o[k], side = G.wrestlers[m.a].team === tm ? 'A' : G.wrestlers[m.b].team === tm ? 'B' : null; if (!side) continue;
+      const me = side === 'A' ? m.a : m.b, opp = side === 'A' ? m.b : m.a, won = m.w === side, rb = m.u >= 0 ? r.userBouts[m.u] : m.bt;
+      mt.push(`<tr><td>${wt}</td><td>${(rn => rn + (m.lb !== rn ? ' · ' + m.lb : ''))(rname(t, m.l, wt))}</td><td>${wl(me)} vs ${wl(opp)} ${schoolLogo(G.wrestlers[opp].team, G.teams[G.wrestlers[opp].team].name, 14)}</td><td class="${won ? 'tcwin' : 'neg'}">${won ? 'W' : 'L'} ${m.d}</td><td>${rb && rb.seed ? `<a data-act="watchtm" data-wt="${wt}" data-v="${m.i}">watch</a>` : ''}</td></tr>`); } }
+  return `${sel}<table class="tbl"><tr><th>Wt</th><th>Wrestler</th><th>Record</th><th>Status</th></tr>${rows || '<tr><td colspan="4" class="muted">No entries</td></tr>'}</table>
+    <h3 style="margin-top:14px">Their matches${live ? ' so far' : ''}</h3><table class="tbl"><tr><th>Wt</th><th>Round</th><th>Match</th><th>Result</th><th></th></tr>${mt.join('') || '<tr><td colspan="5" class="muted">None yet.</td></tr>'}</table>`;
+}
+
 function tourney() {
   const t = G.tournaments.find(x => x.id === ui.tid); if (!t || !t.result) return '<div class="card">No results.</div>';
   const live = L.isLive(t), hasBr = L.hasBracket(t), r = t.result, wtSel = ui.twt || WEIGHTS[0];
   let view = ui.tview || 'team';
-  const tabsDef = live ? [['team', 'Team scores & results'], ['bracket', 'Brackets'], ['mine', 'My wrestlers']] : [['team', 'Team scores'], ['weights', 'Weight classes'], ...(hasBr ? [['bracket', 'Brackets']] : []), ['mine', 'My wrestlers']];
+  const tabsDef = live ? [['team', 'Team scores & results'], ['bracket', 'Brackets'], ['mine', 'My wrestlers'], ['teams', 'Other teams']] : [['team', 'Team scores'], ['weights', 'Weight classes'], ...(hasBr ? [['bracket', 'Brackets']] : []), ['mine', 'My wrestlers'], ['teams', 'Other teams']];
   if (!tabsDef.find(x => x[0] === view)) view = 'team';
   const tabs = tabsDef.map(([k, n]) => `<button class="${view === k ? '' : 'secondary'}" data-act="tview" data-v="${k}">${n}</button>`).join(' ');
   const wsel = `<label>Weight <select data-chg="twt">${WEIGHTS.map(x => `<option ${x === wtSel ? 'selected' : ''}>${x}</option>`).join('')}</select></label>`;
@@ -954,7 +1001,8 @@ function tourney() {
         <label>Weight <select data-chg="rwt">${WEIGHTS.map(w => `<option value="${w}" ${w === rwt ? 'selected' : ''} ${avail.includes(w) ? '' : 'disabled'}>${w}${avail.includes(w) ? '' : ' (round done)'}</option>`).join('')}</select></label>
         <button data-act="tadv" data-v="wround" ${avail.length ? '' : 'disabled'}>Finish round at ${rwt} ▶</button>
         <button data-act="tadv" data-v="round">Finish round ${cr} (all weights) ▶</button>
-        <button class="secondary" data-act="tadv" data-v="all">Finish tournament ▶▶</button></div></div>`;
+        <button class="secondary" data-act="tadv" data-v="all">Finish tournament ▶▶</button></div>
+      <div class="row">${tChoiceBox()}</div></div>`;
     if (view === 'team') {
       const sc = L.liveScores(G, t), mi = sc.findIndex(x => x.team === G.userTeam), show = sc.slice(0, 14);
       if (mi >= 14) show.push(sc[mi]);
@@ -964,10 +1012,12 @@ function tourney() {
         <h3 style="margin-top:14px">Latest results</h3><table class="tbl">${feed || '<tr><td class="muted">Nothing revealed yet. Press Next match or Finish round.</td></tr>'}</table>`;
     } else if (view === 'bracket') {
       body = `${wsel} <span class="muted">${r.weights[wtSel].n} wrestlers</span>${bracketHtml(t, wtSel)}`;
+    } else if (view === 'teams') {
+      body = teamsTab(t);
     } else {
       const st = L.myStatus(G, t);
       const rows = st.map(x => { const w = G.wrestlers[x.id];
-        const nx = x.next ? `Next: ${rname(t, x.next.l, x.wt)} · ${x.next.lb}` : x.place ? `<b class="${x.place === 1 ? 'tcwin' : ''}">Finished ${x.place}${['st', 'nd', 'rd'][x.place - 1] || 'th'}</b>` : '<span class="muted">Eliminated</span>';
+        const rn = x.next && rname(t, x.next.l, x.wt), nx = x.next ? `Next: ${rn}${x.next.lb !== rn ? ' · ' + x.next.lb : ''}` : x.place ? `<b class="${x.place === 1 ? 'tcwin' : ''}">Finished ${x.place}${['st', 'nd', 'rd'][x.place - 1] || 'th'}</b>` : '<span class="muted">Eliminated</span>';
         return `<tr><td>${x.wt}</td><td>${wl(x.id)} <small class="muted">seed ${x.seed}</small></td><td>${x.w}-${x.l}</td><td>${nx}</td></tr>`; }).join('');
       const seen = new Set(); for (const wt of WEIGHTS) for (const m of L.orderOf(t, wt).slice(0, t.rv.cnt[wt])) if (m.u >= 0) seen.add(m.u);
       const bouts = r.userBouts.map((b, i) => ({ b, i })).filter(x => seen.has(x.i)).map(({ b, i }) => { const mineA = b.aTeam === G.userTeam, won = (b.w === 'A') === mineA;
@@ -989,6 +1039,8 @@ function tourney() {
       <table class="tbl"><tr><th>Place</th><th>Wrestler</th><th>Team</th></tr>${w.top.map(e => `<tr class="${e.team === G.userTeam ? 'me' : ''}"><td>${e.place}</td><td class="${e.team === G.userTeam ? 'tcname' : ''}">${wl(e.id, e.name)}</td><td>${tn(e.team)}</td></tr>`).join('')}</table>`;
   } else if (view === 'bracket') {
     body = `${wsel} <span class="muted">${r.weights[wtSel].n} wrestlers · brackets are removed once the week moves on</span>${bracketHtml(t, wtSel)}`;
+  } else if (view === 'teams') {
+    body = teamsTab(t);
   } else {
     const places = r.userPlaces.map(p => `<tr class="me"><td>${p.wt}</td><td class="tcname">${wl(p.id)}</td><td>${p.place <= 8 ? `<b class="${p.place === 1 ? 'tcwin' : ''}">${p.place}${['st', 'nd', 'rd'][p.place - 1] || 'th'}</b>` : '<span class="muted">did not place</span>'}</td><td class="muted">of ${p.n}</td></tr>`).join('');
     const bouts = r.userBouts.map((b, i) => { const mineA = b.aTeam === G.userTeam, won = (b.w === 'A') === mineA;
@@ -1315,6 +1367,7 @@ function rtBox(last, side) {
   const net = last && last.ride ? last.ride[0] - last.ride[1] : 0, mine = side === 0 ? net > 0 : net < 0, v = Math.abs(net);
   return `<div class="rt ${mine ? (v >= 60 ? 'pt' : 'lead') : 'none'}" title="Riding-time advantage: a full minute ahead at the end of regulation earns a point">${mine ? `RT ${fmtClock(v)}${v >= 60 ? ' · +1' : ''}` : '&nbsp;'}</div>`;
 }
+const tChoiceBox = () => `<label class="spd tch" title="When you watch one of your wrestlers' matches, the viewer pauses at the start of the 2nd and 3rd periods so you pick top, bottom, neutral or defer. Off: the coach's suggestion is used and the match plays straight through."><input type="checkbox" data-chg="tchoice" ${G.tChoices !== false ? 'checked' : ''}> Make period choices in my matches</label>`;
 // the user's wrestler has a start-of-period choice
 const CH_LABEL = { top: ['Top', 'start on top (offense)'], bottom: ['Bottom', 'start on bottom (defense)'], neutral: ['Neutral', 'start standing'], defer: ['Defer', 'let your opponent choose the 2nd period; you choose the 3rd'] };
 function askPanel(v, res, last) {
@@ -1332,9 +1385,9 @@ function boutView() {
   const feed = log.map(ev => `<div class="ev ${ev.type}"><span class="t">${ev.period} ${ev.clock}</span>${ev.text}</div>`).join('');
   const st = res.stats, col = singletColors(G, res, TEAM_COLORS), bd = bandSides(col, v.home);
   return `<div class="card${v.paused ? ' vpaused' : ''}" id="boutcard" style="--spd:${SPEEDS[ui.speed].ms / 1000};--a:${BAND[bd.A]};--b:${BAND[bd.B]}"><div class="scoreboard"><div class="A"><div class="pts">${last ? last.a : 0}</div>${sbName(v, res, 'A')}${rtBox(last, 0)}</div>
-    <div class="clock"><span>${last ? last.clock : '3:00'}</span><small>${last ? last.period : ''}</small></div><div class="B"><div class="pts">${last ? last.b : 0}</div>${sbName(v, res, 'B')}${rtBox(last, 1)}</div></div>
+    <div class="clock">${res.wrestlers.A.weight ? `<small class="cwt">${res.wrestlers.A.weight} lbs</small>` : ''}<span>${last ? last.clock : '3:00'}</span><small>${last ? last.period : ''}</small>${v.rnd ? `<small class="crd">${v.rnd}</small>` : ''}</div><div class="B"><div class="pts">${last ? last.b : 0}</div>${sbName(v, res, 'B')}${rtBox(last, 1)}</div></div>
     <div class="row">${done || v.asking ? '' : `<button data-act="viewpause">${v.paused ? '▶ Resume' : '⏸ Pause'}</button>`}<button class="secondary" data-act="viewjump" ${done ? 'disabled' : ''}>⏭ Jump to result</button><button class="secondary" data-act="viewclose">Close</button>
-      <label class="spd">Speed <input type="range" min="0" max="2" step="1" value="${ui.speed}" data-chg="vspeed"> <b>${SPEEDS[ui.speed].n}</b></label></div>
+      <label class="spd">Speed <input type="range" min="0" max="2" step="1" value="${ui.speed}" data-chg="vspeed"> <b>${SPEEDS[ui.speed].n}</b></label>${v.live && v.live.tid ? tChoiceBox() : ''}</div>
     ${stage(res, last, col, { band: { A: BAND[bd.A], B: BAND[bd.B] }, champ: !!v.title, orient: orientAt(res.log, v.shown - 1), venue: v.venue })}
     ${v.asking ? askPanel(v, res, last) : ''}
     <div id="feed">${feed}</div>
@@ -1416,5 +1469,3 @@ function archProfile(a, back) {
 }
 
 render();
-
-

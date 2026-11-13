@@ -92,12 +92,13 @@ export function liveScores(G, t) {
   return Object.entries(pts).map(([team, p]) => ({ team, pts: p })).sort((a, b) => b.pts - a.pts);
 }
 
-// The user's wrestlers: record so far, next match (only once his previous match is revealed, so nothing leaks), and place when known.
-export function myStatus(G, t) {
+// One team's wrestlers (default: the user's): record so far, next match (only once his previous match is revealed, so nothing leaks), and place when known.
+// Works on a finished event too, as long as its bracket is still kept (everything counts as revealed).
+export function myStatus(G, t, team = G.userTeam) {
   const out = [];
   for (const wt of WEIGHTS) {
-    const W = t.result.weights[wt], rev = revealedSet(t, wt), o = orderOf(t, wt);
-    for (const e of W.ent.filter(x => x.team === G.userTeam)) {
+    const W = t.result.weights[wt], o = orderOf(t, wt), rev = isLive(t) ? revealedSet(t, wt) : new Set(o.map(m => m.i));
+    for (const e of W.ent.filter(x => x.team === team)) {
       let w = 0, l = 0;
       for (const m of W.matches) if (rev.has(m.i) && (m.a === e.id || m.b === e.id)) ((m.w === 'A' ? m.a : m.b) === e.id ? w++ : l++);
       const next = o.find(m => !rev.has(m.i) && (m.a === e.id || m.b === e.id) && (m.a === e.id ? m.pa : m.pb) === -1 || (!rev.has(m.i) && (m.a === e.id || m.b === e.id) && rev.has(m.a === e.id ? m.pa : m.pb))) || null;
