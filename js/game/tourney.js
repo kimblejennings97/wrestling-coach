@@ -5,7 +5,7 @@ import { makeRng } from '../engine/rng.js';
 import { WEIGHTS } from '../data/gen.js';
 import { CONF_BIDS, NCAA_FIELD } from '../data/tournaments.js';
 import { overall, wrestlerAt, sanitizeLineup, startEnergy, autoLineup, giveInjury, matchInjuryChance, FATIGUE, rankings, tournamentRankings } from './core.js';
-import { TEAM_COLORS } from '../data/teamcolors.js';
+import { TEAM_COLORS, SPECIAL_KITS } from '../data/teamcolors.js';
 import { runDual } from './dualtourney.js';
 import { recordBout, recordPlacement, seasonOf, eloOf, ELO_PER_OVR, ensurePolls } from './stats.js';
 
@@ -287,7 +287,8 @@ export function tourneyKit(G, t, clash = KIT_CLASH) {
   if (t.kind === 'ncaa' && t.field) for (const wt in t.field) for (const e of t.field[wt]) q[e.team] = (q[e.team] || 0) + 1;
   const order = (t.teams || []).filter(id => G.teams[id]).sort((a, b) => (q[b] || 0) - (q[a] || 0) || (pos.get(a) || 999) - (pos.get(b) || 999));
   const colour = [], white = [];
-  for (const id of order) { const c = TEAM_COLORS[id]; (c && kitDist(c, WHITE_KIT) >= clash && colour.every(o => kitDist(c, TEAM_COLORS[o]) >= clash) ? colour : white).push(id); }
+  const colOf = id => (SPECIAL_KITS[id] && SPECIAL_KITS[id].body) || TEAM_COLORS[id];   // signature singlets (Iowa black, Penn State navy) are always worn
+  for (const id of order) { const c = colOf(id); (SPECIAL_KITS[id] || (c && kitDist(c, WHITE_KIT) >= clash && colour.every(o => kitDist(c, colOf(o)) >= clash)) ? colour : white).push(id); }
   t.kit = { w: white };
   return t.kit;
 }

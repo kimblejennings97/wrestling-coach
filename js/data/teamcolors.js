@@ -79,3 +79,10 @@ export const TEAM_COLORS = {
  "wisconsin": "#f04242",
  "wyoming": "#cc8466"
 };
+
+// Signature singlets: always worn (duals and tournaments, never swapped to white). body = singlet colour (black is a charcoal so it still reads
+// on the dark stage), legBand = two thin stripes around each singlet leg just above its hem, belt = stripe around the waist.
+export const SPECIAL_KITS = {
+  iowa: { body: '#2a2b2e', legBand: '#f2c33a' },
+  'penn-state': { body: '#1f3c7a', belt: '#ffffff' },
+};

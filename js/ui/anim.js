@@ -8,6 +8,7 @@
 // one looping between two or more poses (.lp). Neutral clips are seen from the side; on the mat the camera swings round so the wrestlers face down-right.
 // World axes: x = right (wrestler 'a' faces +x), y = up, z = toward the viewer. Units: 1 = 3 px; a standing wrestler is ~16.5 tall.
 
+import { SPECIAL_KITS } from '../data/teamcolors.js';   // signature singlets (Iowa, Penn State)
 const SKIN = '#a3a9b0', SHOE = '#565c64', INK = '#0a0e12', U = 3, GY = 74;
 const T = { torso: 5.2, thigh: 3.7, shin: 3.7, uarm: 2.7, farm: 2.6, sw: 1.35, hw: 0.95 };
 const D = Math.PI / 180;
@@ -76,17 +77,22 @@ function drawFrame(all, cam, cols, prop) {
   const n1 = x => Math.round(x * 10) / 10;
   const parts = [];
   const seg = (a, b, w, c, bias = 0) => { const A = pr(a), B = pr(b); parts.push({ d: (A[2] + B[2]) / 2 + bias + fb, w, c, s: `M${n1(A[0])} ${n1(A[1])}L${n1(B[0])} ${n1(B[1])}` }); };
+  // a flat-ended stripe with no outline (signature singlet details), drawn at depth d (just above the singlet part it sits on)
+  const stripe = (a, b, w, c, d) => { const P = pr(a), Q = pr(b); parts.push({ d, raw: `<path d="M${n1(P[0])} ${n1(P[1])}L${n1(Q[0])} ${n1(Q[1])}" stroke="${c}" stroke-width="${w}" stroke-linecap="butt"/>` }); };
   let fb = 0;
   for (const n in all) {
     fb = n === 'a' ? 0.7 : 0;   // when the two are level in depth the clip's main figure is drawn in front
     const J = all[n], c = cols[n], ref = n === 'r', far = s => dot(J.lat, [-st, 0, ct]) * (s === 'R' ? 1 : -1) < -0.15;
     const sk = s => far(s) ? shade(SKIN, 0.8) : SKIN, sc = s => far(s) ? shade(c, 0.78) : c;
-    seg(J.hip, J.neck, 8, c);
+    const kTorso = parts.length; seg(J.hip, J.neck, 8, c);
     if (ref) for (const k of [-0.8, 0.8]) seg(add(J.hip, mul(J.lat, k)), add(J.neck, mul(J.lat, k)), 1.3, '#e8e8e8', 0.05);
     else if (cols.trim && cols.trim[n]) for (const k of [-0.85, 0.85]) seg(add(J.hip, mul(J.lat, k)), add(J.neck, mul(J.lat, k)), 1.8, cols.trim[n], 0.05);   // white singlet: team-colour side panels
+    const dec = !ref && cols.dec && cols.dec[n];
+    if (dec && dec.belt) stripe(mix3(J.hip, J.neck, 0.14), mix3(J.hip, J.neck, 0.21), 8, dec.belt, parts[kTorso].d + 0.03);   // signature singlet: belt stripe around the waist, just above the torso
     seg(J.shL, J.shR, 5, c, -0.02); seg(J.hpL, J.hpR, 5.4, ref ? '#30343a' : c, -0.02);
     for (const s of ['L', 'R']) {
-      seg(J['hp' + s], J['kn' + s], 4.6, ref ? '#30343a' : sk(s)); seg(J['hp' + s], mix3(J['hp' + s], J['kn' + s], 0.5), 5, ref ? '#30343a' : sc(s), 0.01); seg(J['kn' + s], J['ft' + s], 3.8, ref ? '#30343a' : sk(s)); seg(J['ft' + s], J['toe' + s], 3.6, far(s) ? shade(SHOE, 0.8) : SHOE, 0.02);
+      seg(J['hp' + s], J['kn' + s], 4.6, ref ? '#30343a' : sk(s)); const kLeg = parts.length; seg(J['hp' + s], mix3(J['hp' + s], J['kn' + s], 0.5), 5, ref ? '#30343a' : sc(s), 0.01);
+      if (dec && dec.legBand) for (const [u, v] of [[0.36, 0.39], [0.425, 0.455]]) stripe(mix3(J['hp' + s], J['kn' + s], u), mix3(J['hp' + s], J['kn' + s], v), 5, far(s) ? shade(dec.legBand, 0.78) : dec.legBand, parts[kLeg].d + 0.002);   // two thin stripes round the leg just above the hem (0.5)   // signature singlet: thin stripe round the leg, just above the hem seg(J['kn' + s], J['ft' + s], 3.8, ref ? '#30343a' : sk(s)); seg(J['ft' + s], J['toe' + s], 3.6, far(s) ? shade(SHOE, 0.8) : SHOE, 0.02);
       seg(J['sh' + s], J['el' + s], 3.6, sk(s)); seg(J['el' + s], J['ha' + s], 3.2, sk(s));
     }
     // ankle band (red or green) on the left ankle, unless he has taken it off
@@ -834,7 +840,7 @@ export function stage(res, last, col, opt = {}) {
   const champ = !opt.clip && end && opt.champ;   // NCAA title: one of three celebrations instead of the plain hand raise
   if (champ) name = CHAMP[((res.seed >>> 0) % 7919) % CHAMP.length];
   if (!known(name)) name = 'idleN';
-  const cols = { a: col[aSide], o: col[other(aSide)], r: '#1d2126', band: opt.band ? { a: opt.band[aSide], o: opt.band[other(aSide)] } : null, trim: { a: col['trim' + aSide], o: col['trim' + other(aSide)] } };
+  const cols = { a: col[aSide], o: col[other(aSide)], r: '#1d2126', band: opt.band ? { a: opt.band[aSide], o: opt.band[other(aSide)] } : null, trim: { a: col['trim' + aSide], o: col['trim' + other(aSide)] }, dec: { a: col['dec' + aSide], o: col['dec' + other(aSide)] } };
   const c0 = getClip(name); if (c0.noHg) cols.noHg = true;
   // opt.orient = { flip, h, cut } (orientAt) or opt.flip alone: which side of the mat, how far the pair is turned, which way this move cuts
   const ori = opt.orient || { flip: !!opt.flip, h: 0, cut: 0 }, mirror = MIRROR(aSide, c0, ori.flip);
@@ -870,14 +876,17 @@ export function clipTime(res, last) { return clipDur(clipFor(res, last)[0]); }
 // team colour per side: the wrestler's school -> team id -> logo colour. kit (tourney.js tourneyKit) = the event's fixed singlets: teams in kit.w
 // wear white. Without a kit (duals): avoid two near-identical singlets by putting B in white. A white singlet gets side panels in the team
 // colour (trimA / trimB).
+// SPECIAL_KITS (teamcolors.js): signature singlets always worn; their details go in decA / decB ({ legBand, belt }).
 export function singletColors(G, res, TEAM_COLORS, kit) {
   const idOf = name => Object.keys(G.teams || {}).find(id => G.teams[id].name === name);
   const tc = s => { const id = idOf(res.wrestlers[s].school); return id && TEAM_COLORS[id]; };
-  const W = '#e8e8e8', out = {};
+  const W = '#e8e8e8', out = {}, sp = s => SPECIAL_KITS[idOf(res.wrestlers[s].school)];
+  const special = () => { for (const s of ['A', 'B']) { const k = sp(s); if (k) { out[s] = k.body; out['dec' + s] = k; delete out['trim' + s]; } } return out; };
   if (kit) {
     for (const s of ['A', 'B']) { const id = idOf(res.wrestlers[s].school), c = tc(s); out[s] = c && !kit.w.includes(id) ? c : W; if (out[s] === W && c) out['trim' + s] = c; }
-    return out;
+    return special();
   }
+  if (sp('A') || sp('B')) { out.A = tc('A') || '#4ea1ff'; out.B = tc('B') || '#ff8a5c'; return special(); }   // a signature singlet never swaps; no clash rule needed
   const A = tc('A') || '#4ea1ff'; let B = tc('B') || '#ff8a5c';
   const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
   const d = rgb(A).reduce((s, v, i) => s + Math.abs(v - rgb(B)[i]), 0);
