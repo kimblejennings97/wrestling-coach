@@ -4,7 +4,8 @@ import { simulateBout } from '../engine/bout.js';
 import { makeRng } from '../engine/rng.js';
 import { WEIGHTS } from '../data/gen.js';
 import { CONF_BIDS, NCAA_FIELD } from '../data/tournaments.js';
-import { overall, wrestlerAt, sanitizeLineup, startEnergy, autoLineup, giveInjury, matchInjuryChance, FATIGUE } from './core.js';
+import { overall, wrestlerAt, sanitizeLineup, startEnergy, autoLineup, giveInjury, matchInjuryChance, FATIGUE, rankings, tournamentRankings } from './core.js';
+import { TEAM_COLORS } from '../data/teamcolors.js';
 import { runDual } from './dualtourney.js';
 import { recordBout, recordPlacement, seasonOf, eloOf, ELO_PER_OVR, ensurePolls } from './stats.js';
 
@@ -270,6 +271,25 @@ function settleWeight(G, spec, wt, W, fresh, keepUB, keepUP, sqOk, j) {
   for (const w2 of WEIGHTS) for (const m of R.weights[w2].matches || []) if (m.u >= 0) m.u = ix.get(w2 + ':' + m.i);
   finishEvent(G, spec, R, true);
   return R.userBouts[ix.get(wt + ':' + j)];
+}
+
+// ---------- singlets ----------
+// Each team wears ONE singlet for a whole tournament (bout viewer): its team colour, or white (with team-colour side panels) when that colour is
+// too close to a team ahead of it. Order: NCAAs by number of qualifiers, then tournament ranking; other events by tournament ranking; the
+// National Duals by dual ranking. Fixed on first use and stored on the event (t.kit.w = the teams in white). Clashes that remain (white vs
+// white) are told apart by the ankle bands and the panels.
+export const WHITE_KIT = '#e8e8e8', KIT_CLASH = 45;   // KIT_CLASH: min. RGB distance (sum of |diff|) between two colour singlets; 45 = only near-identical shades (NCAAs: ~18 of 67 teams in colour; 120 left 6)
+const rgbOf = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+export const kitDist = (x, y) => { const a = rgbOf(x), b = rgbOf(y); return a.reduce((s, v, i) => s + Math.abs(v - b[i]), 0); };
+export function tourneyKit(G, t, clash = KIT_CLASH) {
+  if (t.kit) return t.kit;
+  const rk = t.kind === 'dual' ? rankings(G) : tournamentRankings(G), pos = new Map(rk.map(x => [x.id, x.rank])), q = {};
+  if (t.kind === 'ncaa' && t.field) for (const wt in t.field) for (const e of t.field[wt]) q[e.team] = (q[e.team] || 0) + 1;
+  const order = (t.teams || []).filter(id => G.teams[id]).sort((a, b) => (q[b] || 0) - (q[a] || 0) || (pos.get(a) || 999) - (pos.get(b) || 999));
+  const colour = [], white = [];
+  for (const id of order) { const c = TEAM_COLORS[id]; (c && kitDist(c, WHITE_KIT) >= clash && colour.every(o => kitDist(c, TEAM_COLORS[o]) >= clash) ? colour : white).push(id); }
+  t.kit = { w: white };
+  return t.kit;
 }
 
 // ---------- conference -> NCAA ----------

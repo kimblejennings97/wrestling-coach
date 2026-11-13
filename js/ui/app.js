@@ -15,7 +15,7 @@ import * as L from '../game/live.js';
 import * as SEL from '../game/selection.js';
 import * as D from '../game/dualtourney.js';
 const D_NAME = D.DUAL_NAME;
-import { seedOrder, redoMatch } from '../game/tourney.js';
+import { seedOrder, redoMatch, tourneyKit } from '../game/tourney.js';
 import * as S from '../game/sched.js';
 import { TEAM_COLORS } from '../data/teamcolors.js';
 import { teamVenue, tourneyVenue, NEUTRAL_MAT } from '../data/venues.js';
@@ -77,7 +77,21 @@ const tag = (id, rm) => `#${rm[id]} ${tn(id)}`;
 const attrCell = v => `<td class="ac ${tier(v)}">${v}</td>`;
 const save = () => saveGame(G);
 const stopTimers = () => { clearInterval(ui.timer); clearInterval(ui.vtimer); ui.timer = ui.vtimer = null; };
-function go(screen) { if (!['profile', 'team', 'tprofile'].includes(screen)) ui.stack = []; stopTimers(); ui.screen = screen; ui.view = null; render(); }
+// The bout viewer survives a trip to another screen (profile links, the menu): leaving its screen parks it (ui.park, timers stopped); going back
+// to that screen for the same event (Back, Resume tournament, the dual) brings it back where it was and it keeps rolling. Dropped when another
+// event is opened there or the week moves on.
+function go(screen) {
+  if (!['profile', 'team', 'tprofile'].includes(screen)) ui.stack = [];
+  if (ui.view && screen !== ui.screen) { const v = ui.view; ui.park = { view: v, screen: ui.screen, tid: ui.tid, dual: ui.dual && ui.dual.id, week: G && G.week, run: v.playing && !v.paused && !v.asking }; }
+  stopTimers(); ui.screen = screen; ui.view = null;
+  const p = ui.park;
+  if (p && p.screen === screen) {
+    ui.park = null;
+    if (parkOk(p) && (screen === 'dual' ? !!ui.dual && ui.dual.id === p.dual : p.tid === ui.tid)) { ui.view = p.view; p.view.scrolled = false; if (p.run) { p.view.playing = true; return startFeed(); } }
+  }
+  render();
+}
+const parkOk = p => !!(p && G && p.week === G.week && G.phase === 'season' && (!p.view.tw || (t => t && L.isLive(t))(G.tournaments.find(x => x.id === p.view.tw))));
 
 // ---------- shell ----------
 function render() {
@@ -164,6 +178,7 @@ function act(a, d) {
       save(); const nxt = offStep(G); if (nxt === 'recruit') ui.rec.tab = 'portal';
       return go(nxt === 'recruit' ? 'recruit' : nxt === 'schedule' ? 'schedule' : 'offseason');
     }
+    if (ui.park && parkOk(ui.park) && ui.park.screen !== ui.screen) { const p = ui.park; ui.tid = p.tid; if (p.screen === 'dual' && (!ui.dual || ui.dual.id !== p.dual)) { const du = findDual(p.dual); if (du) ui.dual = { id: du.id, shown: du.result ? du.result.bouts.length : 0, live: !du.done, tid: p.tid && G.tournaments.find(x => x.id === p.tid && x.kind === 'dual') ? p.tid : undefined }; } return go(p.screen); }   // back to the match you were watching
     const ev = userEvent(G);
     if (ev && ev.type === 'tourney' && ev.ref.kind === 'dual' && D.inProgress(ev.ref)) { ui.tid = ev.ref.id; return go('dtourney'); }
     if (ev && !ev.done) return go(ev.type === 'dual' ? 'dualday' : 'tourneyday');
@@ -1384,7 +1399,8 @@ function boutView() {
   const res = v.res, log = res.log.slice(0, v.shown), last = log[log.length - 1];
   const done = v.shown >= res.log.length;
   const feed = log.map(ev => `<div class="ev ${ev.type}"><span class="t">${ev.period} ${ev.clock}</span>${ev.text}</div>`).join('');
-  const st = res.stats, col = singletColors(G, res, TEAM_COLORS), bd = bandSides(col, v.home);
+  const kt = ui.screen === 'tourney' ? G.tournaments.find(x => x.id === ui.tid) : ui.dual && ui.dual.tid ? G.tournaments.find(x => x.id === ui.dual.tid) : null;   // tournament: fixed singlets
+  const st = res.stats, col = singletColors(G, res, TEAM_COLORS, kt ? tourneyKit(G, kt) : null), bd = bandSides(col, v.home);
   return `<div class="card${v.paused ? ' vpaused' : ''}" id="boutcard" style="--spd:${SPEEDS[ui.speed].ms / 1000};--a:${BAND[bd.A]};--b:${BAND[bd.B]}"><div class="scoreboard"><div class="A"><div class="pts">${last ? last.a : 0}</div>${sbName(v, res, 'A')}${rtBox(last, 0)}</div>
     <div class="clock">${res.wrestlers.A.weight ? `<small class="cwt">${res.wrestlers.A.weight} lbs</small>` : ''}<span>${last ? last.clock : '3:00'}</span><small>${last ? last.period : ''}</small>${v.rnd ? `<small class="crd">${v.rnd}</small>` : ''}</div><div class="B"><div class="pts">${last ? last.b : 0}</div>${sbName(v, res, 'B')}${rtBox(last, 1)}</div></div>
     <div class="row">${done || v.asking ? '' : `<button data-act="viewpause">${v.paused ? '▶ Resume' : '⏸ Pause'}</button>`}<button class="secondary" data-act="viewjump" ${done ? 'disabled' : ''}>⏭ Jump to result</button><button class="secondary" data-act="viewclose">Close</button>

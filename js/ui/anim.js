@@ -83,6 +83,7 @@ function drawFrame(all, cam, cols, prop) {
     const sk = s => far(s) ? shade(SKIN, 0.8) : SKIN, sc = s => far(s) ? shade(c, 0.78) : c;
     seg(J.hip, J.neck, 8, c);
     if (ref) for (const k of [-0.8, 0.8]) seg(add(J.hip, mul(J.lat, k)), add(J.neck, mul(J.lat, k)), 1.3, '#e8e8e8', 0.05);
+    else if (cols.trim && cols.trim[n]) for (const k of [-0.85, 0.85]) seg(add(J.hip, mul(J.lat, k)), add(J.neck, mul(J.lat, k)), 1.8, cols.trim[n], 0.05);   // white singlet: team-colour side panels
     seg(J.shL, J.shR, 5, c, -0.02); seg(J.hpL, J.hpR, 5.4, ref ? '#30343a' : c, -0.02);
     for (const s of ['L', 'R']) {
       seg(J['hp' + s], J['kn' + s], 4.6, ref ? '#30343a' : sk(s)); seg(J['hp' + s], mix3(J['hp' + s], J['kn' + s], 0.5), 5, ref ? '#30343a' : sc(s), 0.01); seg(J['kn' + s], J['ft' + s], 3.8, ref ? '#30343a' : sk(s)); seg(J['ft' + s], J['toe' + s], 3.6, far(s) ? shade(SHOE, 0.8) : SHOE, 0.02);
@@ -833,7 +834,7 @@ export function stage(res, last, col, opt = {}) {
   const champ = !opt.clip && end && opt.champ;   // NCAA title: one of three celebrations instead of the plain hand raise
   if (champ) name = CHAMP[((res.seed >>> 0) % 7919) % CHAMP.length];
   if (!known(name)) name = 'idleN';
-  const cols = { a: col[aSide], o: col[other(aSide)], r: '#1d2126', band: opt.band ? { a: opt.band[aSide], o: opt.band[other(aSide)] } : null };
+  const cols = { a: col[aSide], o: col[other(aSide)], r: '#1d2126', band: opt.band ? { a: opt.band[aSide], o: opt.band[other(aSide)] } : null, trim: { a: col['trim' + aSide], o: col['trim' + other(aSide)] } };
   const c0 = getClip(name); if (c0.noHg) cols.noHg = true;
   // opt.orient = { flip, h, cut } (orientAt) or opt.flip alone: which side of the mat, how far the pair is turned, which way this move cuts
   const ori = opt.orient || { flip: !!opt.flip, h: 0, cut: 0 }, mirror = MIRROR(aSide, c0, ori.flip);
@@ -866,13 +867,20 @@ export const CLIP_NAMES = Object.keys(CLIPS);
 export const clipDur = name => { const c = getClip(known(name) ? name : 'idleN'); return c.kf.length ? c.dur : 0; };
 export function clipTime(res, last) { return clipDur(clipFor(res, last)[0]); }
 
-// team colour per side: the wrestler's school -> team id -> logo colour; avoid two near-identical singlets
-export function singletColors(G, res, TEAM_COLORS) {
+// team colour per side: the wrestler's school -> team id -> logo colour. kit (tourney.js tourneyKit) = the event's fixed singlets: teams in kit.w
+// wear white. Without a kit (duals): avoid two near-identical singlets by putting B in white. A white singlet gets side panels in the team
+// colour (trimA / trimB).
+export function singletColors(G, res, TEAM_COLORS, kit) {
   const idOf = name => Object.keys(G.teams || {}).find(id => G.teams[id].name === name);
-  const get = (s, fb) => { const w = res.wrestlers[s], id = idOf(w.school); return (id && TEAM_COLORS[id]) || fb; };
-  const A = get('A', '#4ea1ff'); let B = get('B', '#ff8a5c');
+  const tc = s => { const id = idOf(res.wrestlers[s].school); return id && TEAM_COLORS[id]; };
+  const W = '#e8e8e8', out = {};
+  if (kit) {
+    for (const s of ['A', 'B']) { const id = idOf(res.wrestlers[s].school), c = tc(s); out[s] = c && !kit.w.includes(id) ? c : W; if (out[s] === W && c) out['trim' + s] = c; }
+    return out;
+  }
+  const A = tc('A') || '#4ea1ff'; let B = tc('B') || '#ff8a5c';
   const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
   const d = rgb(A).reduce((s, v, i) => s + Math.abs(v - rgb(B)[i]), 0);
-  if (d < 120) B = A === '#ffffff' ? '#ff8a5c' : '#e8e8e8';
-  return { A, B };
+  if (d < 120) { if (A === '#ffffff') B = '#ff8a5c'; else { B = W; if (tc('B')) out.trimB = tc('B'); } }
+  return Object.assign(out, { A, B });
 }
