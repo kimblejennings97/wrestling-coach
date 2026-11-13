@@ -57,7 +57,7 @@ export function newGame(userTeam, coach = 'Coach', seed = (Math.random() * 42949
     }
     G.teams[s.id] = t;
   }
-  if (opts.real ?? REAL_NAMES_ENABLED) { applyRealTeams(G, rng); applyRealTop(G, rng); }
+  if (opts.real ?? REAL_NAMES_ENABLED) { applyRealTeams(G, rng, opts.edits || {}); applyRealTop(G, rng); }   // opts.edits: the player editor's rating edits (new careers only)
   for (const id in G.teams) distributeAid(G, id);
   for (const id in G.teams) G.teams[id].lineup = autoLineup(G, id);
   useCalendar(G);
@@ -69,7 +69,28 @@ export function newGame(userTeam, coach = 'Coach', seed = (Math.random() * 42949
 
 // Build whole rosters from real data (data/realteams.js: WrestleStat starters with ratings + official roster pages for depth).
 // Schools without data keep their generated roster (and still get the Flo top-16 overlay below).
-function applyRealTeams(G, rng) {
+// One real wrestler's ratings from his data line (also used by the player editor's preview). ov = hand-set rating { ovr?, set?, pot? }
+// (REAL_OVERRIDES or a player-editor edit): `ovr` = target overall, `set` = attributes pinned to exact values, the free ones are moved
+// until the overall hits the target; `pot` is applied after initDev by the caller. Same rng draws with or without ov.
+export function rateReal(rng, { name, wt, base, school, ov }) {
+  const target = ov && ov.ovr != null ? ov.ovr : Math.max(base, ncaaFloor(name, wt));   // 2026 NCAA placers are rated at least as high as their finish implies
+  const w = generateWrestler(rng, { weight: wt, quality: target, archetype: rng.pick(Object.keys(ARCHETYPES)), school, name });
+  const delta = target - overallLegacy(w);                // pull the generated attributes onto the target rating (legacy formula: attributes unchanged)
+  for (const k of ATTR_KEYS) w.attrs[k] = Math.max(1, Math.min(20, Math.round(w.attrs[k] + delta + rng.gauss() * 0.4)));
+  const fixed = (ov && ov.set) || {};
+  if (ov && (ov.ovr != null || Object.keys(fixed).length)) {   // hand-set rating: pin the listed attributes, then move the free ones until the overall hits the target (no rng, so nothing else shifts)
+    for (const k in fixed) w.attrs[k] = fixed[k];
+    const free = ATTR_KEYS.filter(k => !(k in fixed));
+    for (let it = 0; it < 400; it++) {
+      const diff = target - overall(w); if (Math.abs(diff) < 0.06) break;
+      const cand = free.filter(k => (diff > 0 ? w.attrs[k] < 20 : w.attrs[k] > 1)); if (!cand.length) break;
+      const k = cand.sort((x, y) => (diff > 0 ? w.attrs[x] - w.attrs[y] : w.attrs[y] - w.attrs[x]) || OVR_W[y] - OVR_W[x])[0];   // lift the lowest / lower the highest
+      w.attrs[k] += diff > 0 ? 1 : -1;
+    }
+  }
+  return { w, target };
+}
+function applyRealTeams(G, rng, edits = {}) {
   const archKeys = Object.keys(ARCHETYPES);
   for (const t of Object.values(G.teams)) {
     const raw = REAL_TEAMS[t.name]; if (!raw) continue;
@@ -77,22 +98,10 @@ function applyRealTeams(G, rng) {
     t.roster = [];
     const starters = {};
     for (const line of raw.split('\n')) {
-      const [name, wtS, clsS, ovrS, stS, hm] = line.split('|'), wt = +wtS, ov = REAL_OVERRIDES[name], target = ov ? ov.ovr : Math.max(+ovrS, ncaaFloor(name, +wtS));   // 2026 NCAA placers are rated at least as high as their finish implies
-      const w = generateWrestler(rng, { weight: wt, quality: target, archetype: rng.pick(archKeys), school: t.name, name });
-      const delta = target - overallLegacy(w);                // pull the generated attributes onto the target rating (legacy formula: attributes unchanged)
-      for (const k of ATTR_KEYS) w.attrs[k] = Math.max(1, Math.min(20, Math.round(w.attrs[k] + delta + rng.gauss() * 0.4)));
-      if (ov) {   // hand-set rating: pin the listed attributes, then move the free ones until the overall hits the target (no rng, so nothing else shifts)
-        const fixed = ov.set || {}; for (const k in fixed) w.attrs[k] = fixed[k];
-        const free = ATTR_KEYS.filter(k => !(k in fixed));
-        for (let it = 0; it < 400; it++) {
-          const diff = ov.ovr - overall(w); if (Math.abs(diff) < 0.06) break;
-          const cand = free.filter(k => (diff > 0 ? w.attrs[k] < 20 : w.attrs[k] > 1)); if (!cand.length) break;
-          const k = cand.sort((x, y) => (diff > 0 ? w.attrs[x] - w.attrs[y] : w.attrs[y] - w.attrs[x]) || OVR_W[y] - OVR_W[x])[0];   // lift the lowest / lower the highest
-          w.attrs[k] += diff > 0 ? 1 : -1;
-        }
-      }
+      const [name, wtS, clsS, ovrS, stS, hm] = line.split('|'), wt = +wtS, ov = edits[name] || REAL_OVERRIDES[name];   // a player-editor edit replaces the built-in override
+      const { w, target } = rateReal(rng, { name, wt, base: +ovrS, school: t.name, ov });
       w.id = 'w' + G.nextId++; w.team = t.id; w.natural = wt; w.cls = +clsS; w.real = true; if (hm) w.hm = hm; delete w.plan;
-      initDev(w, rng); G.wrestlers[w.id] = w; t.roster.push(w.id);
+      initDev(w, rng); if (ov && ov.pot) w.pot = ov.pot; G.wrestlers[w.id] = w; t.roster.push(w.id);
       if (stS === '1') starters[wt] = target;
     }
     // every weight needs at least two bodies: generated walk-ons just below the team's level

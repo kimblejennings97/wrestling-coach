@@ -21,6 +21,7 @@ import { TEAM_COLORS } from '../data/teamcolors.js';
 import { stage, singletColors, orientAt, clipTime } from './anim.js';
 import { seasonOf, careerOf, derived, KEYS, ensurePolls, flushStats, pendingStats } from '../game/stats.js';
 import * as LG from '../game/legacy.js';
+import * as PE from '../game/playeredit.js';
 
 import { initSaves, loadLast, loadSlot, saveGame, saveAs, copySlot, renameSlot, deleteSlot, listSaves, MAX_SLOTS } from '../game/saves.js';
 const $app = document.getElementById('app');
@@ -79,7 +80,7 @@ function go(screen) { if (!['profile', 'team', 'tprofile'].includes(screen)) ui.
 
 // ---------- shell ----------
 function render() {
-  if (!G) { $app.innerHTML = startScreen(); bind(); return; }
+  if (!G) { $app.innerHTML = ui.editor ? editorScreen() : startScreen(); bind(); return; }
   document.documentElement.style.setProperty('--tc', TEAM_COLORS[G.userTeam] || '#3fb27f');   // your team's colour, used to highlight your wrestlers
   const rec = records(G)[G.userTeam], ev = userEvent(G);
   const label = G.phase === 'seasonEnd' ? 'Begin offseason ▶' : G.phase === 'offseason' ? ({ cut: 'Done cutting → Progression ▶', progress: 'Continue → Recruiting ▶', recruit: 'Done recruiting → Schedule ▶' }[offStep(G)] || `Start ${G.season + 1} season ▶`) : ev && ev.type === 'tourney' && ev.ref.kind === 'dual' && D.inProgress(ev.ref) ? 'Resume tournament ▶' : ev && !ev.done ? (ev.type === 'dual' ? 'Go to dual day ▶' : 'Go to tournament ▶') : ev && liveTourney() ? 'Resume tournament ▶' : ev ? 'Finish week ▶' : G.week === G.cal.selWeek && SEL.selActive(G) ? 'Selection show ▶' : G.week === G.cal.selWeek ? 'Advance (selection week) ▶' : 'Advance (bye week) ▶';
@@ -127,6 +128,7 @@ function modalHtml() {
 
 // ---------- actions ----------
 function act(a, d) {
+  if (a.startsWith('ed') && edAct(a, d)) return;
   if (a === 'nav') return go(d.v);
   if (a === 'schedreset') { if (confirm('Throw away your changes and go back to the suggested schedule?')) { S.buildNext(G); save(); } return render(); }
   if (a === 'rec_auto') { const log = R.autoRecruit(G); ui.rec.autoMsg = log.actions ? R.describeAuto(log) : 'Nothing to do right now (no hours left, or no open recruits you can pursue).'; save(); return render(); }
@@ -171,7 +173,7 @@ function act(a, d) {
   if (a === 'save') { save(); const b = document.querySelector('[data-act=save]'); if (b) { b.textContent = 'Saved ✓'; setTimeout(() => b && (b.textContent = 'Save'), 1200); } return; }
   if (a === 'menu') { if (confirm('Return to the start screen? (Your game is saved first.)')) { stopTimers(); save(); G = null; render(); } return; }
   if (a === 'pickteam') { ui.pick = d.v; return render(); }
-  if (a === 'begin') { G = newGame(ui.pick, ui.coach || 'Coach', undefined, { real: ui.useReal !== false }); save(); ui.screen = 'home'; return render(); }
+  if (a === 'begin') { G = newGame(ui.pick, ui.coach || 'Coach', undefined, { real: ui.useReal !== false, edits: PE.loadEdits() }); save(); ui.screen = 'home'; return render(); }   // player-editor edits: new careers only
   if (a === 'loadsave') { loadSlot(d.v).then(g => { if (g) { G = g; ui.screen = 'home'; ui.dual = null; ui.live = false; } render(); }); return; }
   if (a === 'delsave') { if (confirm('Delete this save permanently?')) { deleteSlot(d.v); render(); } return; }
   if (a === 'copysave') { copySlot(d.v).then(() => render()); return; }
@@ -292,6 +294,7 @@ function startFeed() {
   ui.vtimer = setTimeout(tick, feedDelay());
 }
 function chg(k, el) {
+  if (['edschool', 'edwt', 'edq', 'edonly'].includes(k)) { const st = edState(); st[{ edschool: 'school', edwt: 'wt', edq: 'q', edonly: 'only' }[k]] = k === 'edonly' ? el.checked : el.value; return render(); }
   if (k === 'coach') { ui.coach = el.value; return; }
   if (k === 'usereal') { ui.useReal = el.checked; return; }
   if (k === 'recmode') { G.rec.mode = el.value; save(); return render(); }
@@ -337,11 +340,76 @@ function saveList() {
   return `<div class="card"><h2>Saved careers <small class="muted">(${L.length}/${MAX_SLOTS})</small></h2><table class="tbl dense"><tr><th>Save</th><th>Team</th><th>Season</th><th>Last played</th><th></th></tr>${L.map((m, i) => `<tr><td><b>${m.name.replace(/</g, '&lt;')}</b></td><td>${schoolLogo(m.school, sch(m.school), 18)} ${sch(m.school)}</td><td>${m.season}${m.phase === 'offseason' ? ' offseason' : m.phase === 'seasonEnd' ? ' (final)' : ' · wk ' + m.week}</td><td class="muted">${when(m.ts)}</td>
     <td style="white-space:nowrap"><button data-act="loadsave" data-v="${m.id}">${i === 0 ? 'Continue' : 'Load'}</button> <button class="secondary" data-act="rensave" data-v="${m.id}" data-n="${m.name.replace(/"/g, '&quot;')}">Rename</button> <button class="secondary" data-act="copysave" data-v="${m.id}">Duplicate</button> <button class="secondary" data-act="delsave" data-v="${m.id}">Delete</button></td></tr>`).join('')}</table></div>`;
 }
+// ---------- player editor (start screen; edits apply to NEW careers only) ----------
+const escA = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+function edState() { return (ui.ed ||= { school: '', wt: '', q: '', only: false, sel: null, draft: null, msg: '' }); }
+function edCollect() {   // the detail panel's inputs -> an edit (or null when everything is blank)
+  const num = el => { const v = el.value.trim(); if (v === '') return null; const n = +v; return Number.isFinite(n) ? Math.max(1, Math.min(20, n)) : null; };
+  const e = { set: {} };
+  document.querySelectorAll('[data-ed]').forEach(el => { const k = el.dataset.ed, v = num(el); if (v == null) return;
+    if (k === 'ovr') e.ovr = Math.round(v * 10) / 10; else if (k === 'pot') e.pot = Math.round(v); else e.set[k] = Math.round(v); });
+  if (!Object.keys(e.set).length) delete e.set;
+  return e.ovr != null || e.pot != null || e.set ? e : null;
+}
+function editorScreen() {
+  const st = edState(), edits = PE.loadEdits(), all = PE.realList(), q = st.q.trim().toLowerCase();
+  const schools = [...new Set(all.map(p => p.school))].sort();
+  const rows = all.filter(p => (!st.school || p.school === st.school) && (!st.wt || p.wt === +st.wt) && (!q || p.name.toLowerCase().includes(q)) && (!st.only || PE.effective(p.name, edits)))
+    .sort((a, b) => (st.school ? a.wt - b.wt : 0) || b.base - a.base);
+  const sid = name => (SCHOOLS.find(s => s.name === name) || {}).id;
+  const tag = p => (edits[p.name] ? '<b class="pos">edited</b>' : PE.builtIn(p.name) ? '<span class="muted">built-in</span>' : '');
+  const list = rows.slice(0, 80).map(p => { const ov = PE.effective(p.name, edits);
+    return `<tr data-act="edsel" data-v="${escA(p.name)}" class="${st.sel === p.name ? 'me' : ''}" style="cursor:pointer"><td>${escA(p.name)}${p.starter ? ' <small class="muted">starter</small>' : ''}</td><td>${schoolLogo(sid(p.school), p.school, 18)} ${p.school}</td><td>${p.wt}</td><td>${CLASS_NAMES[p.cls]}</td>
+      <td>${p.base.toFixed(1)}</td><td>${ov && ov.ovr != null ? `<b>${ov.ovr.toFixed(1)}</b>` : ov ? 'pins' : ''}</td><td>${tag(p)}</td></tr>`; }).join('');
+  let det = '<p class="hint">Click a wrestler to edit him.</p>';
+  const p = st.sel && all.find(x => x.name === st.sel);
+  if (p) {
+    const cur = st.draft != null ? st.draft : PE.effective(p.name, edits), pv = PE.preview(p, cur), set = (cur && cur.set) || {}, def = PE.preview(p, null);
+    det = `<h2 style="margin-top:0">${escA(p.name)} <small class="muted">${p.school} · ${p.wt} · ${CLASS_NAMES[p.cls]}</small></h2>
+      <p class="hint">Blank = automatic. Pinned attributes are exact; the others are generated around the overall you set and adjusted so the overall comes out on target (they vary a little from career to career). Default in-game OVR about ${def.ovr.toFixed(1)}.${PE.builtIn(p.name) ? ' He has a built-in hand-set rating; your edit replaces it.' : ''}</p>
+      <div class="row"><label>Overall (in-game OVR) <input type="number" step="0.1" min="1" max="20" style="width:80px" data-ed="ovr" value="${cur && cur.ovr != null ? cur.ovr : ''}" placeholder="${def.ovr.toFixed(1)}"></label>
+        <label>Potential <input type="number" min="1" max="20" style="width:70px" data-ed="pot" value="${cur && cur.pot != null ? cur.pot : ''}" placeholder="auto"></label></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:6px 14px;margin:10px 0">${ATTR_KEYS.map(k => `<label style="display:flex;justify-content:space-between;gap:6px;align-items:center">${ATTR_LABELS[k]}
+        <input type="number" min="1" max="20" style="width:58px${set[k] != null ? ';border:2px solid #f5b942' : ''}" data-ed="${k}" value="${set[k] ?? ''}" placeholder="${pv.attrs[k]}"></label>`).join('')}</div>
+      <p>Sample result: <b>OVR ${pv.ovr.toFixed(1)}</b> <span class="muted">(grey numbers = generated, gold boxes = pinned)</span></p>
+      <div class="row"><button class="secondary" data-act="edpreview">Preview</button><button data-act="edsave">Save edit</button><button class="secondary" data-act="edreset">Reset to default</button>${st.msg ? `<span class="pos">${st.msg}</span>` : ''}</div>`;
+  }
+  const n = Object.keys(edits).length;
+  return `<div class="start" style="max-width:1150px"><h1>Player editor</h1>
+    <p class="muted">Tune the ratings of real wrestlers. <b>Edits apply only to careers you start from now on</b> (with real names on); existing saves keep their wrestlers exactly as they are. Edits are stored in this browser only.</p>
+    <div class="row"><button class="secondary" data-act="edback">◀ Back to the menu</button><span class="muted">${n} edited</span>
+      <button class="secondary" data-act="edexport" ${n ? '' : 'disabled'}>Copy edits</button><button class="secondary" data-act="edclear" ${n ? '' : 'disabled'}>Clear all edits</button></div>
+    <div class="grid2"><div class="card" style="overflow-x:auto">
+      <div class="row"><label>School <select data-chg="edschool"><option value="">All</option>${schools.map(s => `<option ${s === st.school ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+        <label>Weight <select data-chg="edwt"><option value="">All</option>${WEIGHTS.map(w => `<option ${String(w) === String(st.wt) ? 'selected' : ''}>${w}</option>`).join('')}</select></label>
+        <label>Name <input data-chg="edq" value="${escA(st.q)}" placeholder="search" style="width:120px"></label>
+        <label><input type="checkbox" data-chg="edonly" ${st.only ? 'checked' : ''}> edited only</label></div>
+      <table class="tbl dense"><tr><th>Name</th><th>School</th><th>Wt</th><th>Cl</th><th>Data</th><th>Set</th><th></th></tr>${list}</table>
+      <p class="hint">${rows.length > 80 ? `Showing the top 80 of ${rows.length} by rating; narrow it with the filters.` : `${rows.length} wrestlers.`} "Data" = rating from the roster data (with the 2026 NCAA placer floor); "Set" = the overall you set.</p></div>
+      <div class="card">${det}</div></div></div>`;
+}
+function edAct(a, d) {
+  const st = edState();
+  if (a === 'editor') { ui.editor = true; st.msg = ''; render(); return true; }
+  if (a === 'edback') { ui.editor = false; render(); return true; }
+  if (a === 'edsel') { st.sel = d.v; st.draft = null; st.msg = ''; render(); return true; }
+  if (a === 'edpreview') { st.draft = edCollect(); st.msg = 'Preview (not saved)'; render(); return true; }
+  if (a === 'edsave') { const e = PE.loadEdits(), v = edCollect(); if (v) e[st.sel] = v; else delete e[st.sel]; st.draft = null; st.msg = PE.saveEdits(e) ? (v ? 'Saved ✓' : 'Nothing set: back to default') : 'Could not save (browser storage is blocked)'; render(); return true; }
+  if (a === 'edreset') { const e = PE.loadEdits(); delete e[st.sel]; PE.saveEdits(e); st.draft = null; st.msg = 'Back to default'; render(); return true; }
+  if (a === 'edclear') { if (confirm('Remove all your player edits? (New careers will use the default ratings.)')) { PE.saveEdits({}); st.draft = null; st.msg = ''; render(); } return true; }
+  if (a === 'edexport') {
+    const txt = 'Player editor edits:\n' + JSON.stringify(PE.loadEdits(), null, 1);
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject(new Error('no clipboard'))).then(() => { st.msg = 'Copied to the clipboard ✓'; render(); }, () => prompt('Copy this:', txt));
+    return true;
+  }
+  return false;
+}
 function startScreen() {
   const list = SCHOOLS.filter(s => s.conf === ui.pickConf).map(s =>
     `<tr data-act="pickteam" data-v="${s.id}" class="${ui.pick === s.id ? 'me' : ''}" style="cursor:pointer"><td>${schoolLogo(s.id, s.name, 22)} ${s.name}</td><td>${'★'.repeat(Math.max(1, Math.round(s.prestige / 20)))}</td><td class="muted">${s.prestige >= 85 ? 'Powerhouse' : s.prestige >= 65 ? 'Contender' : s.prestige >= 50 ? 'Mid-major' : 'Rebuilding'}</td></tr>`).join('');
   return `<div class="start"><h1>Wrestling Coach</h1><p class="muted">Take over a Division I program. Recruit, develop, schedule, and chase an NCAA title.</p>
     ${saveList()}
+    <p><button class="secondary" data-act="editor">Player editor</button> <span class="hint">Tweak real wrestlers' ratings for new careers (saved careers are not changed).</span></p>
     <div class="card"><h2>New career</h2>
       <div class="row"><label>Your name <input data-chg="coach" value="${ui.coach}"></label>
       <label>Conference <select data-chg="pickconf">${CONFERENCES.map(c => `<option ${c === ui.pickConf ? 'selected' : ''}>${c}</option>`).join('')}</select></label></div>
