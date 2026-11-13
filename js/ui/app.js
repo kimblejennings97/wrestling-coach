@@ -842,6 +842,35 @@ function dtourney() {
 
 // ---------- NCAA selection show ----------
 const ordinal = k => `${k}${['th', 'st', 'nd', 'rd'][(k % 100 > 10 && k % 100 < 14) ? 0 : (k % 10 < 4 ? k % 10 : 0)]}`;
+// March-Madness style bracket for the selection show: top half down the left, bottom half down the right (mirrored), names sitting on lines,
+// later rounds as empty lines joined by connectors, champion box in the middle, pigtail box under it. Absolute positions (px) so the lines meet.
+function selBracket(order, slot, pigBox) {
+  const P = order.length, half = P / 2, cols = Math.log2(half) + 1;          // columns per side hold half, half/2, ..., 1 lines
+  const H = 30, GAP = 8, HD = 22, W0 = 240, WR = 40, WF = 50, WC = 96, PW = 236;   // ~916 px wide: fits iPad landscape without scrolling
+  const w = r => (r === 0 ? W0 : r === cols - 1 ? WF : WR), xs = [0]; for (let r = 1; r < cols; r++) xs.push(xs[r - 1] + w(r - 1));
+  const sideW = xs[cols - 1] + w(cols - 1), TW = 2 * sideW + WC;
+  const ys = [[...Array(half)].map((_, k) => HD + (k + 1) * H + Math.floor(k / 2) * GAP)];
+  for (let r = 1; r < cols; r++) ys.push(ys[r - 1].filter((_, j) => j % 2 === 0).map((y, j) => (y + ys[r - 1][2 * j + 1]) / 2));
+  const ymid = ys[cols - 1][0], bottom = ys[0][half - 1];
+  const name = k => (k === half ? 'First round' : k === 1 ? 'Final' : k === 2 ? 'SF' : k === 4 ? 'QF' : `R${2 * k}`);
+  const out = [];
+  for (const right of [false, true]) {
+    const X = (r, ww = w(r)) => (right ? TW - xs[r] - ww : xs[r]);
+    for (let r = 0; r < cols; r++) {
+      out.push(`<div class="mmh" style="left:${X(r)}px;width:${w(r)}px">${name(ys[r].length)}</div>`);
+      ys[r].forEach((y, j) => {
+        const inner = r === 0 ? slot(order[(right ? half : 0) + j]) : '';
+        out.push(`<div class="mms${right ? ' mmr' : ''}" style="left:${X(r)}px;top:${y - H}px;width:${w(r)}px;height:${H}px">${inner}</div>`);
+        if (r < cols - 1 && j % 2 === 0) out.push(`<div class="mmv" style="left:${right ? X(r) : X(r) + w(r) - 1}px;top:${y}px;height:${ys[r][j + 1] - y + 1}px"></div>`);
+      });
+    }
+  }
+  out.push(`<div class="mmc" style="left:${sideW}px;top:${ymid - 22}px;width:${WC}px;height:44px">🏆<span>NCAA champion</span></div>`);
+  const pigTop = Math.max(ymid + 40, ys[cols - 2] ? ys[cols - 2][ys[cols - 2].length - 1] + 14 : ymid + 40);
+  if (pigBox) out.push(`<div style="left:${(TW - PW) / 2}px;top:${pigTop}px;width:${PW}px">${pigBox}</div>`);
+  const TH = Math.max(bottom + 6, pigBox ? pigTop + 104 : 0);
+  return `<div class="mmwrap"><div class="mm" style="width:${TW}px;height:${TH}px">${out.join('')}</div></div>`;
+}
 function selection() {
   const n = G.ncaa; if (!n || !n.show || G.phase !== 'season') return '<div class="card">No selection show right now.</div>';
   const rv = n.rv, cw = SEL.curWeight(G), wt = +ui.selwt && WEIGHTS.includes(+ui.selwt) ? +ui.selwt : (cw || WEIGHTS[0]);
@@ -852,7 +881,6 @@ function selection() {
     return `<div class="bs sel ${e.team === G.userTeam ? 'mine' : ''} ${i === last ? 'pop' : ''}"><span class="sd">${i + 1}</span><span class="nm">${wl(w)}<small class="tag ${e.via === 'auto' ? 'aq' : 'al'}">${e.via === 'auto' ? 'AQ' : 'AL'}</small></span><span class="rt">${schoolLogo(e.team, t.name, 16)} <span class="muted">${e.rec[0]}-${e.rec[1]}</span>${e.rk ? ` <b class="rk">#${e.rk}</b>` : ''}</span></div>`; };
   const blank = txt => `<div class="bs sel empty"><span class="sd"></span><span class="nm muted">${txt || ''}</span></div>`;
   const slot = sd => { if (sd == null) return blank('bye'); if (pig && sd === 32) return cnt >= 33 ? blank('winner of the pigtail') : blank(); const i = sd - 1; return i < cnt ? sub(f[i], i) : blank(); };
-  const boxes = []; for (let i = 0; i < order.length; i += 2) boxes.push(`<div class="bm">${slot(order[i])}${slot(order[i + 1])}</div>`);
   const pigBox = pig ? `<div class="bm pigbox"><div class="bd">Pigtail (play-in): the winner takes the 32 seed's place</div>${[31, 32].map(i => (i < cnt ? sub(f[i], i) : blank())).join('')}</div>` : '';
   const chips = WEIGHTS.map(w => { const c = rv.cnt[w], tot = n.field[w].length; return `<a data-act="selwt" data-v="${w}" class="chip ${w === wt ? 'on' : ''}">${w}${c >= tot ? ' ✓' : c ? ' …' : ''}</a>`; }).join('');
   const lastE = last >= 0 ? f[last] : null;
@@ -867,7 +895,7 @@ function selection() {
     <p class="muted">The committee fills 33 spots per weight: conference automatic qualifiers (AQ) plus at-large picks (AL) ranked by resume score (rating, win%, bonus points, conference finish). Seeds follow the resume score. ${rc} of ${tot} names revealed.</p>
     <div class="row" style="flex-wrap:wrap;gap:6px">${rv.done ? '<b class="tcwin">Selection complete.</b> <button data-act="continue">Continue ▶</button>' : '<button data-act="selnext">Reveal next name ▶</button><button class="secondary" data-act="selweek">Finish this weight ▶▶</button><button class="secondary" data-act="selall">Reveal everything</button>'}</div>
     <div class="chips" style="margin-top:10px">${chips}</div></div>
-    <div class="card"><h3 style="margin-top:0">${wt} lbs <span class="muted">${cnt} of ${N} revealed</span></h3>${ann}<div class="selgrid">${boxes.join('')}${pigBox}</div>
+    <div class="card"><h3 style="margin-top:0">${wt} lbs <span class="muted">${cnt} of ${N} revealed</span></h3>${ann}${selBracket(order, slot, pigBox)}
     ${full ? `<div class="cols2">${bub('Last four in', sh.lastIn)}${bub('First four out', sh.firstOut)}</div>` : ''}</div>
     ${mineRows ? `<div class="card"><h3 style="margin-top:0">Your wrestlers</h3><table class="tbl"><tr><th>Wt</th><th>Wrestler</th><th>Result</th></tr>${mineRows}</table></div>` : ''}${teams}`;
 }
