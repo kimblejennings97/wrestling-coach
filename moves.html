@@ -50,23 +50,31 @@
   </div>
 </div>
 <script type="module">
-import { stage, CLIP_NAMES } from './js/ui/anim.js';
+import { stage, clipDur, CLIP_NAMES as BASE, CHAIN_NAMES } from './js/ui/anim.js';
+const CLIP_NAMES = [...BASE, ...CHAIN_NAMES];
 // Move viewer: every bout-animation clip from js/ui/anim.js, playable one at a time. Test/QA tool (also deployed so it works on the iPad).
 const GROUPS = [
-  ['Hand fighting (neutral)', { idleN: 'Stance / feeling out', ties: 'Collar ties', club: 'Head club', wrist: 'Wrist control (2-on-1)', elbow: 'Elbow pass / slide-by', circle: 'Circling (swaps sides)', handfight: 'Hand fight after a shot', stall: 'Stalling (backing out)', brk: 'Between periods' }],
-  ['Takedowns', { double: 'Double leg', single: 'Single leg (also high-crotch)', sweep: 'Sweep single', trip: 'High single + trip', ankle: 'Ankle pick', snap: 'Snap and go-behind', duck: 'Duck-under', counter: 'Counter (sprawl, spin behind)', scr: 'Scramble takedown' }],
+  ['Hand fighting (neutral)', { idleN: 'Stance / feeling out', ties: 'Collar ties', club: 'Head club', wrist: 'Wrist control (2-on-1)', elbow: 'Elbow pass / slide-by', circle: 'Circling (swaps sides)', snapdn: 'Snap-down (hands to the mat)', handfight: 'Hand fight after a shot', stall: 'Stalling (backing out)', brk: 'Between periods' }],
+  ['Takedowns', { double: 'Double leg', single: 'Single leg', highc: 'High-crotch', itrip: 'Inside trip (off the collar tie)', sweep: 'Sweep single', trip: 'High single + trip', ankle: 'Ankle pick', snap: 'Snap and go-behind', duck: 'Duck-under', counter: 'Counter (sprawl, spin behind)', scr: 'Scramble takedown' }],
   ['Throws', { headlock: 'Headlock', armthrow: 'Arm throw', lateral: 'Lateral drop', fireman: "Fireman's carry", lift: 'High-amplitude lift' }],
   ['Shot defence', { sprawl: 'Sprawl', whizzer: 'Whizzer', hipout: 'Hip out', oob: 'Out of bounds', throw: 'Blocked throw', scramble: 'Scramble, no score' }],
-  ['Top / riding', { idleT: 'Referee position', breakdown: 'Breakdown', matret: 'Mat return', hips: 'Heavy hips', flat: 'Flattened out' }],
+  ['Top / riding', { idleT: 'Referee position', breakdown: 'Breakdown', matret: 'Mat return', hips: 'Heavy hips', flat: 'Flattened out', spiral: 'Spiral ride' }],
   ['Turns and pins', { half: 'Half nelson', cradle: 'Cradle', tilt: 'Tilt', turk: 'Leg ride / turk', wing: 'Chicken wing (also arm bar)' }],
   ['Escapes and reversals', { standup: 'Stand-up', sitout: 'Sit-out', granby: 'Granby roll', letup: 'Let up (cut)', rev: 'Reversal / switch' }],
-  ['Match end', { end: 'Hand raised', champJump: 'NCAA title: jumping', champCart: 'NCAA title: cartwheel', champToss: 'NCAA title: band toss' }],
+  ['Match end', { end: 'Hand raised', champJump: 'NCAA title: jumping', champCart: 'NCAA title: cartwheel', champToss: 'NCAA title: band toss', champFlex: 'NCAA title: flex', champBack: 'NCAA title: back flip', champKneel: 'NCAA title: kneel, lie back' }],
+  ['Chains (several moves in one exchange)', { 'sprawl+double': 'Shot, sprawl, re-shot double', 'club+double': 'Club and shoot double', 'whizzer+double': 'Single whizzered, re-shot double',
+    'sprawl+highc': 'Sprawled, re-shot high-crotch', 'club+highc': 'Club, high-crotch', 'handfight+single': 'Hand fight, single', 'sprawl+single': 'Sprawled, re-shot single',
+    'club+ankle': 'Club, ankle pick', 'ties+ankle': 'Collar tie, ankle pick', 'snapdn+ankle': 'Snap-down, ankle pick', 'handfight+sweep': 'Hand fight, sweep single', 'handfight+trip': 'Hand fight, high single trip',
+    'ties+snap': 'Collar tie, snap and go-behind', 'club+snap': 'Club, snap and go-behind', 'ties+duck': 'Collar tie, duck-under',
+    '~sprawl+double': 'Sprawl, counter-shot takedown', 'sprawl+sprawl': 'Shot, sprawl, re-shot, sprawl (no score)', 'sprawl+~sprawl': 'Shot, sprawl, counter-shot, sprawl (no score)',
+    'sprawl+~sprawl+sprawl': 'Flurry: shot, sprawl, counter-shot, sprawl, re-shot, sprawl', 'sprawl+scramble': 'Shot, sprawl, scramble (no score)', 'sprawl+whizzer': 'Shot, sprawl, re-shot, whizzer (no score)',
+    '!matret+standup': 'Stand-up, mat return, stands again: escape' }],
 ];
 const NAME = {}; GROUPS.forEach(([, m]) => Object.assign(NAME, m));
-const other = CLIP_NAMES.filter(n => !NAME[n] && !['highc', 'armbar'].includes(n));
+const other = CLIP_NAMES.filter(n => !NAME[n] && !['armbar'].includes(n));
 if (other.length) GROUPS.push(['Other', Object.fromEntries(other.map(n => [n, n]))]);
 const ORDER = GROUPS.flatMap(([, m]) => Object.keys(m)).filter(n => CLIP_NAMES.includes(n));
-const NOTES = { circle: 'Ends with the two on the opposite sides; the viewer then mirrors every following move until the next period.', aBottom: 'Bottom wrestler makes the move.' };
+const NOTES = { '!matret+standup': 'Red is the bottom man here: he stands, is returned to the mat, stands again and gets out.', circle: 'Ends with the two on the opposite sides; the viewer then mirrors every following move until the next period.', aBottom: 'Bottom wrestler makes the move.' };
 
 const store = (() => { try { return JSON.parse(localStorage.getItem('wc.moves') || '{}'); } catch (e) { return {}; } })();
 const persist = () => { try { localStorage.setItem('wc.moves', JSON.stringify(store)); } catch (e) { /* private mode */ } };
@@ -98,7 +106,7 @@ function show() {
 const go = n => { cur = n; stopAuto(); show(); };
 const step = d => go(ORDER[(ORDER.indexOf(cur) + d + ORDER.length) % ORDER.length]);
 function stopAuto() { clearTimeout(timer); timer = null; $('auto').textContent = '▶ Play all'; }
-function auto() { if (timer) return stopAuto(); $('scrub').checked = false; $('scrubl').style.display = 'none'; const tick = () => { show(); timer = setTimeout(() => { cur = ORDER[(ORDER.indexOf(cur) + 1) % ORDER.length]; tick(); }, 2600 * +$('spd').value / 1.7 + 900); }; $('auto').textContent = '⏸ Stop'; tick(); }
+function auto() { if (timer) return stopAuto(); $('scrub').checked = false; $('scrubl').style.display = 'none'; const tick = () => { show(); timer = setTimeout(() => { cur = ORDER[(ORDER.indexOf(cur) + 1) % ORDER.length]; tick(); }, Math.max(2600 * +$('spd').value / 1.7, (clipDur(cur) * +$('spd').value + 1.2) * 1000) + 900); }; $('auto').textContent = '⏸ Stop'; tick(); }
 $('list').onclick = e => { const it = e.target.closest('.mv-item'); if (it) go(it.dataset.n); };
 $('replay').onclick = () => { $('stage').innerHTML = ''; requestAnimationFrame(show); };
 $('prev').onclick = () => step(-1); $('next').onclick = () => step(1); $('auto').onclick = auto;

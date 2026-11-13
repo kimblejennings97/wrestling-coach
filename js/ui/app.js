@@ -18,7 +18,7 @@ const D_NAME = D.DUAL_NAME;
 import { seedOrder } from '../game/tourney.js';
 import * as S from '../game/sched.js';
 import { TEAM_COLORS } from '../data/teamcolors.js';
-import { stage, singletColors, orientAt } from './anim.js';
+import { stage, singletColors, orientAt, clipTime } from './anim.js';
 import { seasonOf, careerOf, derived, KEYS, ensurePolls, flushStats, pendingStats } from '../game/stats.js';
 import * as LG from '../game/legacy.js';
 
@@ -276,16 +276,20 @@ function revealWatched() { const v = ui.view; if (v && v.tw) { const t = G.tourn
 function openProf(screen, key, val) { (ui.stack ||= []).push({ screen: ui.screen, prof: ui.prof, tm: ui.tm, tp: ui.tp }); ui[key] = val; return go(screen); }
 const SPEEDS = [{ n: 'Slow', ms: 2600 }, { n: 'Normal', ms: 1700 }, { n: 'Fast', ms: 800 }];   // ms per play-by-play line; the animation scales with it (--spd = ms / 1000)
 if (ui.speed == null) { let raw = null; try { raw = localStorage.getItem('wc.speed'); } catch (e) {} ui.speed = raw != null && [0, 1, 2].includes(+raw) ? +raw : 1; }   // default Normal (a missing value must not read as 0 = Slow)
+// the next line waits for the current animation to finish (move chains run ~2x a single move); timers are timeouts, cleared with clearInterval too
+function feedDelay() { const v = ui.view, ms = SPEEDS[ui.speed].ms; if (!v || !v.shown) return ms; return Math.max(ms, Math.round((clipTime(v.res, v.res.log[v.shown - 1]) + 0.2) * ms)); }
 function startFeed() {
   clearInterval(ui.vtimer); render();
-  ui.vtimer = setInterval(() => {
+  const tick = () => {
     if (!ui.view) return clearInterval(ui.vtimer);
     const v = ui.view, nx = v.res.log[v.shown];
     if (v.live && nx && nx.ask && nx.ask.who === v.live.mySide && v.live.answers[nx.ask.key] === undefined) { clearInterval(ui.vtimer); v.asking = nx.ask; return render(); }   // your wrestler has a choice: wait for it
     ui.view.shown++;
-    if (ui.view.shown >= ui.view.res.log.length) { clearInterval(ui.vtimer); ui.view.playing = false; revealWatched(); }
+    if (ui.view.shown >= ui.view.res.log.length) { clearInterval(ui.vtimer); ui.view.playing = false; revealWatched(); return render(); }
     render();
-  }, SPEEDS[ui.speed].ms);
+    ui.vtimer = setTimeout(tick, feedDelay());
+  };
+  ui.vtimer = setTimeout(tick, feedDelay());
 }
 function chg(k, el) {
   if (k === 'coach') { ui.coach = el.value; return; }

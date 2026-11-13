@@ -132,7 +132,7 @@ export function simulateBout(wA, wB, opts = {}) {
     const opts = [
       ['a blast double', a.str * 1.2 + a.tdo * 0.5], ['a low single', a.speed + a.tdo * 0.6], ['a high-crotch', a.tdo + a.flex * 0.4],
       ['an ankle pick', a.flex * 1.1 + a.speed * 0.4], ['a double leg', a.tdo + a.str * 0.3], ['a snap and go-behind', a.hand * 1.2 + a.iq * 0.3], ['a duck-under', a.speed * 0.8 + a.hand * 0.7],
-      ['a sweep single', a.speed * 0.9 + a.tdo * 0.5], ['a high single and trip', a.str * 0.6 + a.tdo * 0.5 + a.big * 0.3],   // one rng draw whatever the list length: results unchanged, only the move named
+      ['a sweep single', a.speed * 0.9 + a.tdo * 0.5], ['a high single and trip', a.str * 0.6 + a.tdo * 0.5 + a.big * 0.3], ['an inside trip', a.str * 0.5 + a.hand * 0.7 + a.big * 0.2],   // one rng draw whatever the list length: results unchanged, only the move named
     ];
     return rng.weighted(opts, o => Math.pow(Math.max(1, o[1] - 5), 2))[0];
   };
@@ -145,11 +145,26 @@ export function simulateBout(wA, wB, opts = {}) {
     return rng.weighted(opts, o => Math.pow(Math.max(1, o[1] - 5), 2))[0];
   };
   // move name -> animation key (viewer only)
-  const MV = { 'a blast double': 'double', 'a low single': 'single', 'a high-crotch': 'highc', 'an ankle pick': 'ankle', 'a double leg': 'double', 'a snap and go-behind': 'snap', 'a duck-under': 'duck', 'a sweep single': 'sweep', 'a high single and trip': 'trip', 'out of a wild scramble': 'scr',
+  const MV = { 'a blast double': 'double', 'a low single': 'single', 'a high-crotch': 'highc', 'an ankle pick': 'ankle', 'a double leg': 'double', 'a snap and go-behind': 'snap', 'a duck-under': 'duck', 'a sweep single': 'sweep', 'a high single and trip': 'trip', 'an inside trip': 'itrip', 'out of a wild scramble': 'scr',
     'a huge arm throw': 'armthrow', 'a headlock': 'headlock', 'a lateral drop': 'lateral', "a fireman's carry": 'fireman', 'a high-amplitude lift': 'lift',
     'a half nelson': 'half', 'a cradle': 'cradle', 'a tilt': 'tilt', 'a leg ride and turk': 'turk', 'an arm bar': 'armbar', 'a cross-face cradle': 'cradle', 'a chicken wing': 'wing' };
   const BIG = ['a huge arm throw', 'a headlock', 'a lateral drop', "a fireman's carry", 'a high-amplitude lift'];
   const fmtRT = sec => fmtClock(Math.abs(sec));
+
+  // ---------- move chains (viewer only, 2026-11-12) ----------
+  // Some scoring and no-score exchanges are told (and animated) as a sequence: shot -> sprawl -> re-shot -> takedown, club and shoot, shot ->
+  // sprawl -> counter-shot -> sprawl, stand-up -> returned -> stands again. Which one is picked from the clock and the score, never the rng, so
+  // results are exactly what they were; only the text and the animation key (mv 'pre+move', see CHAIN_NAMES in js/ui/anim.js) change.
+  const vk = n => (Math.round(S.elapsed * 10) + S.score.A * 7 + S.score.B * 13) % n;
+  const TD_CHAIN = { double: ['sprawl', 'club', 'whizzer'], highc: ['sprawl', 'club'], single: ['handfight', 'sprawl'], ankle: ['club', 'ties', 'snapdn'], sweep: ['handfight'], trip: ['handfight'], snap: ['ties', 'club'], duck: ['ties'] };
+  const PRE_TXT = {
+    sprawl: (a, d, h) => `${nm(a)} gets sprawled on, but re-shoots right away and finishes ${h}!`,
+    club: (a, d, h) => `${nm(a)} clubs ${nm(d)}'s head and shoots ${h} as he comes up — takedown!`,
+    whizzer: (a, d, h) => `${nm(a)} gets whizzered off his first shot, then re-attacks with ${h} and finishes!`,
+    handfight: (a, d, h) => `${nm(a)} wins the hand fight, gets to his angle and hits ${h} — takedown!`,
+    ties: (a, d, h) => `${nm(a)} works off the collar tie and hits ${h} — takedown!`,
+    snapdn: (a, d, h) => `${nm(a)} snaps ${nm(d)} down and picks the ankle as he steps up — takedown!`,
+  };
 
   // ---------- neutral ----------
   function takedown(att, def, how) {
@@ -161,7 +176,10 @@ export function simulateBout(wA, wB, opts = {}) {
       `${nm(att)} drives through ${how} — takedown!`,
       `${nm(def)} can't stop ${how}. ${nm(att)} scores the takedown.`,
     ];
-    say('score', `${pick(T)} (${scoreLine()})`, 'td', att, null, MV[how]);
+    let txt = pick(T), mv = MV[how];
+    const L = TD_CHAIN[mv], v = vk(10);
+    if (L && v < 4) { const pre = L[v % L.length]; txt = PRE_TXT[pre](att, def, how); mv = pre + '+' + mv; }
+    say('score', `${txt} (${scoreLine()})`, 'td', att, null, mv);
   }
 
   function exposure(t, b, src) {
@@ -212,8 +230,9 @@ export function simulateBout(wA, wB, opts = {}) {
       const hf = e('A', 'hand') - e('B', 'hand');
       if (rng.chance(0.65)) {
         if (Math.abs(hf) > 3) {   // which tie-up wins it is picked from the clock, not the rng (viewer only: results unchanged)
-          const w = hf > 0 ? 'A' : 'B', k = Math.round(S.elapsed) % 3, o2 = nm(other(w));
-          say('info', [`${nm(w)} clubs ${o2}'s head and is winning the hand fight.`, `${nm(w)} gets wrist control on ${o2}, dominating the hand fight.`, `${nm(w)} slides by ${o2}'s elbow, controlling the ties in the center.`][k], 'hand', w, null, ['club', 'wrist', 'elbow'][k]);
+          const w = hf > 0 ? 'A' : 'B', k = Math.round(S.elapsed) % 4, o2 = nm(other(w));
+          say('info', [`${nm(w)} clubs ${o2}'s head and is winning the hand fight.`, `${nm(w)} gets wrist control on ${o2}, dominating the hand fight.`, `${nm(w)} slides by ${o2}'s elbow, controlling the ties in the center.`,
+            `${nm(w)} snaps ${o2} down to his hands; ${o2} pops right back up.`][k], 'hand', w, null, ['club', 'wrist', 'elbow', 'snapdn'][k]);
         } else {   // same two draws in the same order as before (the circler, then the line)
           const sc = pick(['A', 'B']), T = [`${nm('A')} and ${nm('B')} trade ties in the center.`, `Both wrestlers feel each other out — no one commits.`, `${nm(sc)} snaps and circles, looking for an opening.`], t = pick(T), j = T.indexOf(t);
           say('info', t, 'hand', j === 2 ? sc : 'A', null, ['ties', 'circle', 'circle'][j]);
@@ -244,7 +263,8 @@ export function simulateBout(wA, wB, opts = {}) {
     const r = rng();
     if (r < pCounter) {
       ST[def].counters++; ST[def].takedowns++; award(def, RULES.takedown); S.pos = 'top' + def;
-      say('score', `${nm(att)} goes for ${how}, but ${nm(def)} counters and gets behind! ${cap(WORDS[RULES.takedown])} for ${nm(def)}. (${scoreLine()})`, 'td', def, null, 'counter');
+      if (vk(3) === 0) say('score', `${nm(def)} sprawls on ${how} from ${nm(att)} and shoots right back — ${WORDS[RULES.takedown]} for ${nm(def)}! (${scoreLine()})`, 'td', def, null, '~sprawl+double');
+      else say('score', `${nm(att)} goes for ${how}, but ${nm(def)} counters and gets behind! ${cap(WORDS[RULES.takedown])} for ${nm(def)}. (${scoreLine()})`, 'td', def, null, 'counter');
     } else if (r < pCounter + 0.2) {
       if (rng.chance(sig(0.15 * (ss(att) - ss(def))) * 0.7 * Math.max(0.02, Math.min(1.3, pTD / 0.3)))) takedown(att, def, 'out of a wild scramble');   // a shot the defender shuts down rarely turns into a scramble takedown
       else say('info', `Scramble! ${nm(att)} and ${nm(def)} spin around, but neither can finish — back to the feet.`, 'scramble', att);
@@ -255,7 +275,16 @@ export function simulateBout(wA, wB, opts = {}) {
         `${nm(att)} goes for ${how} and they scramble out of bounds.`,
       ];
       const dTxt = pick(D);
-      say('info', dTxt, 'stuff', att, null, ['sprawl', 'handfight', 'hipout', 'whizzer', 'oob'][D.indexOf(dTxt)]);
+      let sTxt = dTxt, smv = ['sprawl', 'handfight', 'hipout', 'whizzer', 'oob'][D.indexOf(dTxt)];
+      if (smv === 'sprawl') {
+        const v = vk(8), A2 = nm(att), D2 = nm(def);   // half of the sprawls stay a single sprawl
+        const V = { 2: ['sprawl+sprawl', `${D2} sprawls on ${how}; ${A2} re-shoots and gets sprawled on again.`],
+          3: ['sprawl+~sprawl', `${D2} sprawls on ${how} and shoots right back — ${A2} sprawls too. Back to neutral.`],
+          4: ['sprawl+~sprawl+sprawl', `Flurry! ${A2} shoots, ${D2} sprawls and counter-shoots, ${A2} sprawls and re-shoots — stuffed again. Nobody scores.`],
+          5: ['sprawl+scramble', `${D2} sprawls on ${how}, they scramble on the edge of the circle, but neither can finish.`] }[v];
+        if (V) [smv, sTxt] = V;
+      } else if (smv === 'whizzer' && vk(3) === 0) { smv = 'sprawl+whizzer'; sTxt = `${nm(att)} is sprawled on, re-shoots and gets in deep on ${how}, but ${nm(def)} whizzers and blocks it.`; }
+      say('info', sTxt, 'stuff', att, null, smv);
     }
     tiredCheck();
   }
@@ -298,14 +327,17 @@ export function simulateBout(wA, wB, opts = {}) {
         ST[Bt].escapes++; award(Bt, 1); S.pos = 'neutral';
         const E2 = [`${nm(Bt)} stands up and breaks free — escape, one point. (${scoreLine()})`, `${nm(Bt)} hand-fights out of the bottom position. Escape! (${scoreLine()})`,
           `${nm(Bt)} hits a Granby roll and comes out the back door — escape, one point. (${scoreLine()})`], eTxt = pick(E2);
-        say('score', eTxt, 'esc', Bt, null, ['standup', 'sitout', 'granby'][E2.indexOf(eTxt)]);
+        const ei = E2.indexOf(eTxt);
+        if (ei === 0 && vk(3) === 0) say('score', `${nm(Bt)} stands, gets returned to the mat, comes right back up and breaks free — escape, one point. (${scoreLine()})`, 'esc', Bt, null, '!matret+standup');
+        else say('score', eTxt, 'esc', Bt, null, ['standup', 'sitout', 'granby'][ei]);
       }
     } else {
       S.ride[T] += dt * FLOW.rideK;
       if (rng.chance(0.55)) {
         const R2 = [`${nm(T)} rides tight, breaking ${nm(Bt)} down to the mat.`, `${nm(Bt)} tries to stand, but ${nm(T)} returns him to the mat.`,
-          `${nm(T)} keeps heavy hips on ${nm(Bt)}; the riding time clock is running.`, `${nm(Bt)} is flat to the mat as ${nm(T)} looks for a turn.`], rTxt = pick(R2);
-        say('info', rTxt, 'ride', T, null, ['breakdown', 'matret', 'hips', 'flat'][R2.indexOf(rTxt)]);
+          `${nm(T)} keeps heavy hips on ${nm(Bt)}; the riding time clock is running.`, `${nm(Bt)} is flat to the mat as ${nm(T)} looks for a turn.`,
+          `${nm(T)} spirals around ${nm(Bt)}'s hips, keeping him flat on the mat.`], rTxt = pick(R2);
+        say('info', rTxt, 'ride', T, null, ['breakdown', 'matret', 'hips', 'flat', 'spiral'][R2.indexOf(rTxt)]);
       }
     }
     tiredCheck();

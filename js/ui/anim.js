@@ -362,7 +362,7 @@ const CLIPS = {
     K(0.78, { p: [2.8, 4.2], z: 2.6, yaw: 290, lean: 58, fL: [1.4, 0.3, 5.6], fR: [2.8, 0.3, 6], hL: { o: 'belly', d: [0, 0.8, 0] }, hR: { o: 'chest', d: [0, 0.8, 0] } }, mirZ(RB({ p: [4.4, 3.2], lean: 82 })), [-125, 30]),
     K(1, { ...mirZ(RT()), yaw: 360 }, mirZ(RB()), [-180 - M[0], M[1]])] }),
 };
-CLIPS.highc = CLIPS.single; CLIPS.armbar = CLIPS.wing;
+CLIPS.armbar = CLIPS.wing;   // (highc got its own clip 2026-11-12)
 
 // ----- more takedowns (2026-11-12) -----
 // sweep single: level change low to the lead leg with the head outside, come up holding the leg out wide (shelved on the hip) and run round
@@ -484,6 +484,83 @@ CLIPS.champToss = () => {
   return { n: 30, dur: 2.4, noHg: true, cam: [0, 14], kf, loopDur: 0.9, loop: [{ a: VUP(x, 7.25, nb), o: KNEEL(7, -1), r: REF1() }, { a: VUP(x, 7.6, { ...nb, hL: { b: [4.7, 0.9, -1.6] }, hR: { b: [4.7, 0.9, 1.6] } }), o: KNEEL(7, -1), r: REF1() }] };
 };
 
+// ----- more celebrations (2026-11-12) -----
+// double-biceps flex to the crowd, then a crab flex with a roar, then the biceps again
+CLIPS.champFlex = () => {
+  const x = -4.4, bi = (y, k) => VUP(x, y, { hL: { b: [2.6, 0.2, -2.7] }, hR: { b: [2.6, 0.2, 2.7] }, pL: [1, -0.6, 0], pR: [-1, -0.6, 0], fL: [x + 1.3, 0], fR: [x - 1.3, 0], ...k });
+  const crab = k => VUP(x, 6.6, { lean: 22, hL: { b: [-3.6, 1.6, -0.7] }, hR: { b: [-3.6, 1.6, 0.7] }, pL: [1, 0, -0.4], pR: [-1, 0, -0.4], fL: [x + 1.6, 0], fR: [x - 1.6, 0], ...k });
+  const kf = [...champStart(), K(0.14, UP(x, 1, { yaw: 90, fL: [x + 1, 0], fR: [x - 1, 0] }), KNEEL(7, -1), [0, 14], { r: REF1() }),
+    K(0.3, bi(7.2)), K(0.42, bi(7.0, { lean: 4 })), K(0.56, crab()), K(0.68, crab({ p: [x, 6.4], lean: 26 })), K(0.82, bi(7.2)), K(1, bi(7.1, { lean: -4 }))];
+  return { n: 26, dur: 2.2, noHg: true, cam: [0, 14], kf, loopDur: 1.0, loop: [{ a: bi(7.2), o: KNEEL(7, -1), r: REF1() }, { a: bi(7.0, { lean: 5 }), o: KNEEL(7, -1), r: REF1() }] };
+};
+// standing back flip. Side-on (heading +x), lean = rotation in the screen plane, so the flip goes backwards over his head
+CLIPS.champBack = () => {
+  const x = 0, tuck = { fL: { b: [-2.6, 3.4, -0.7] }, fR: { b: [-2.6, 3.4, 0.7] }, hL: { b: [-3.4, 2.4, -0.9] }, hR: { b: [-3.4, 2.4, 0.9] } };
+  const air = (t, dx, y, lean, k) => K(t, { p: [x + dx, y], yaw: 0, lean, ...tuck, ...k });
+  const kf = [...champStart(),
+    K(0.12, UP(x, 1, { yaw: 0, fL: [x + 0.6, 0], fR: [x - 0.6, 0] }), KNEEL(8, -1), [0, 14], { r: REF1() }),
+    K(0.22, { p: [x, 5], yaw: 0, lean: 34, fL: [x + 0.8, 0], fR: [x - 0.4, 0], hL: { b: [-3, -2.2, -0.6] }, hR: { b: [-3, -2.2, 0.6] } }),
+    K(0.3, { p: [x - 0.2, 9.4], yaw: 0, lean: -12, fL: { b: [-7, -0.6, -0.4] }, fR: { b: [-7, -0.6, 0.4] }, hL: { b: [4.6, 0.2, -0.7] }, hR: { b: [4.6, 0.2, 0.7] } }),
+    air(0.38, -0.6, 12.4, -95), air(0.46, -1.1, 13, -185), air(0.54, -1.6, 11.8, -270),
+    air(0.62, -2, 9, -335, { fL: { b: [-6.4, 0.8, -0.5] }, fR: { b: [-6.4, 0.8, 0.5] }, hL: { b: [2, 2.6, -1] }, hR: { b: [2, 2.6, 1] } }),
+    K(0.7, { p: [x - 2, 5.4], yaw: 0, lean: -330, fL: [x - 1.4, 0], fR: [x - 2.8, 0], hL: { b: [0.6, 3, -1.2] }, hR: { b: [0.6, 3, 1.2] } }),
+    K(0.82, VUP(x - 2, 7.25, { yaw: 0, lean: -360, roll: 0, fL: [x - 1.2, 0], fR: [x - 2.8, 0] })),
+    K(1, VUP(x - 2, 7.25, { yaw: 90, lean: -360, fL: [x - 1, 0], fR: [x - 3, 0] }))];
+  return { n: 30, dur: 2.2, noHg: true, cam: [0, 14], kf, loopDur: 0.9, loop: [{ a: VUP(x - 2, 7.25, { fL: [x - 1, 0], fR: [x - 3, 0] }), o: KNEEL(8, -1), r: REF1() },
+    { a: VUP(x - 2, 7.6, { fL: [x - 1, 0], fR: [x - 3, 0], hL: { b: [4.7, 0.9, -1.6] }, hR: { b: [4.7, 0.9, 1.6] } }), o: KNEEL(8, -1), r: REF1() }] };
+};
+// drops to his knees, arms to the sky, then falls back flat on the mat, arms spread
+CLIPS.champKneel = () => {
+  const x = -0.6, kn = k => ({ p: [x, 3.7], yaw: 0, lean: -6, fL: [x - 3.2, 0.3, -0.7], fR: [x - 3, 0.3, 0.7], hL: { b: [4.4, 0.6, -2.1] }, hR: { b: [4.4, 0.6, 2.1] }, ...k });
+  const lie = k => ({ p: [x - 1.6, 1.3], yaw: 0, lean: -90, fL: { b: [-3, -3.2, -1.2] }, fR: { b: [-5.4, -1.6, 1.2] }, hL: { b: [4.2, 0, -2.6] }, hR: { b: [4.2, 0, 2.6] }, ...k });
+  const kf = [...champStart(),
+    K(0.14, UP(x, 1, { yaw: 0, fL: [x + 0.6, 0], fR: [x - 0.6, 0] }), KNEEL(7, -1), [0, 14], { r: REF1() }),
+    K(0.28, { p: [x, 4.8], yaw: 0, lean: 30, fL: [x + 1.6, 0], fR: [x - 2.6, 0.3], hL: { b: [-2, 1.6, -0.8] }, hR: { b: [-2, 1.6, 0.8] } }),
+    K(0.4, kn()), K(0.52, kn({ lean: -16, hL: { b: [4.6, 1.2, -1.2] }, hR: { b: [4.6, 1.2, 1.2] } })), K(0.62, kn({ lean: -10 })),
+    K(0.76, { p: [x - 0.8, 2.6], yaw: 0, lean: -58, fL: [x - 3.4, 0.3, -0.7], fR: [x - 3.2, 0.3, 0.7], hL: { b: [3.6, 1.6, -2.4] }, hR: { b: [3.6, 1.6, 2.4] } }),
+    K(0.9, lie()), K(1, lie({ p: [x - 1.6, 1.25] }))];
+  return { n: 28, dur: 2.3, noHg: true, cam: [0, 16], kf, loopDur: 1.4, loop: [{ a: lie(), o: KNEEL(7, -1), r: REF1() }, { a: lie({ p: [x - 1.6, 1.45], hL: { b: [4, 0.6, -2.6] }, hR: { b: [4, 0.6, 2.6] } }), o: KNEEL(7, -1), r: REF1() }] };
+};
+
+// ----- more moves (2026-11-12) -----
+// high-crotch: head inside on his chest, arms round the near leg high at the crotch, stands it up and runs the pipe so he falls to his seat
+CLIPS.highc = () => ({ kf: [
+  K(0, S(XA, 1), S(XO, -1), N), K(0.13, SHOT({ p: [-4, 4.6], lean: 34 }), S(XO, -1)),
+  K(0.27, { p: [2.2, 3.7], z: 0.9, lean: 48, fL: [4.2, 0], fR: [-2.2, 0.3], hL: { o: 'knL', d: [0.5, 1.4, 0] }, hR: { o: 'hip', d: [0.6, -0.4, -0.6] } },
+    { p: [6.8, 6], f: -1, lean: 30, fL: [4.8, 0], fR: [8.4, 0], hL: { o: 'shL', d: [0, 0.4, 0] }, hR: { o: 'head', d: [0, 0.6, 0] } }),
+  K(0.42, { p: [3.4, 5.6], z: 0.8, lean: 26, fL: [5, 0], fR: [1.6, 0], hL: { o: 'knL', d: [0.3, 0.5, 0] }, hR: { o: 'hip', d: [0.6, -0.4, -0.6] } },
+    { p: [8.2, 7.2], f: -1, lean: -6, fL: [5.4, 4.8, 0.6], fR: [9.4, 0.4], hL: { r: [1, 1.6] }, hR: { r: [0.4, 2.2] } }),
+  K(0.56, { p: [4, 5], lean: 34, fL: [5.6, 0], fR: [2, 0], hL: { o: 'knL', d: [0.3, 0.5, 0] }, hR: { o: 'ftL', d: [0.2, 0.5, 0] } },
+    { p: [9, 6.4], f: -1, lean: -30, fL: [5.8, 4.2, 0.4], fR: [10.4, 0.8], hL: { r: [1.6, 1.8] }, hR: { r: [0.8, 2.4] } }, N),
+  ...tail(0.7, SEAT({ fL: [5, 3.4] }), COVER({ hR: { o: 'knL' } }))] });
+// inside trip from the collar tie: chest to chest, hooks the inside of his leg and drives him straight back
+CLIPS.itrip = () => ({ n: 14, dur: 0.95, kf: [
+  K(0, S(XA, 1), S(XO, -1), N),
+  K(0.16, S(-4.4, 1, { lean: 32, hL: { o: 'neck', d: [0.3, 0.3, 0] }, hR: { o: 'elL' } }), S(4.4, -1, { lean: 32, hR: { o: 'neck', d: [-0.3, 0.3, 0] }, hL: { o: 'elR' } })),
+  K(0.34, UP(-0.4, 1, { lean: 12, p: [-0.4, 6.8], fL: [1.6, 0.6, 0.4], fR: [-1.6, 0], hL: { o: 'neck', d: [0.3, 0.2, 0] }, hR: { o: 'chest', d: [0.6, 0, 1] } }),
+    UP(3.4, -1, { lean: 6, fL: [2.6, 0], fR: [4.4, 0], hR: { o: 'neck', d: [-0.3, 0.3, 0] }, hL: { o: 'elR' } })),
+  K(0.48, UP(1, 1, { lean: 26, p: [1, 6.4], fL: [3.6, 1.6, 0.4], fR: [-0.8, 0], hL: { o: 'neck', d: [0.3, 0.2, 0] }, hR: { o: 'chest', d: [0.6, 0, 1] } }),
+    { p: [4.6, 6.6], f: -1, lean: -32, fL: [3.2, 2.2, 0.4], fR: [6.4, 0], hL: { r: [0.6, 2] }, hR: { r: [0, 2.4] } }),
+  K(0.62, { p: [3.6, 4.6], lean: 52, fL: [5.4, 0.6], fR: [0.6, 0], hL: { o: 'neck' }, hR: { o: 'chest' } },
+    { p: [7.6, 3.2], f: -1, lean: -74, fL: { b: [-6, 2.6, 0] }, fR: { b: [-6.6, 1.4, 0] }, hL: { r: [-2.6, 2] }, hR: { r: [-3, 1] } }, [-10, 18]),
+  ...tail(0.74, SEAT({ p: [8.4, 1.6], lean: -76 }), COVER())] });
+// snap-down in the hand fight: drags his head down so his hands touch the mat; he pops back up (no score)
+CLIPS.snapdn = () => ({ n: 12, dur: 0.9, kf: [
+  K(0, S(XA, 1), S(XO, -1), N),
+  K(0.22, S(-4.8, 1, { hL: { o: 'neck', d: [0.3, 0.3, 0] }, hR: { o: 'elL' } }), S(4.8, -1, { hR: { o: 'neck', d: [-0.3, 0.3, 0] } })),
+  K(0.42, { p: [-4.4, 5.4], lean: 44, fL: [-2.2, 0], fR: [-6.6, 0], hL: { o: 'head', d: [0.2, 0.5, 0] }, hR: { o: 'elL', d: [0, 0.3, 0] } },
+    { p: [3.6, 4.4], f: -1, lean: 80, fL: [6, 0], fR: [8.4, 0], hL: [-0.6, 0, -0.6], hR: [-0.4, 0, 0.6] }),
+  K(0.6, { p: [-4.8, 5.6], lean: 38, fL: [-2.6, 0], fR: [-7, 0], hL: { o: 'head', d: [0.2, 0.6, 0] }, hR: { o: 'elL', d: [0, 0.3, 0] } },
+    { p: [4.4, 5], f: -1, lean: 62, fL: [6.6, 0], fR: [8.8, 0], hL: { r: [3, -2.8] }, hR: { r: [2.8, -3.4] } }),
+  K(0.8, S(-5.4, 1), S(5.6, -1, { lean: 34 })),
+  K(1, S(XA, 1), S(XO, -1), N)] });
+// spiral ride: the top man walks round the bottom man's hips, near side to far side, keeping him flat
+CLIPS.spiral = () => ({ n: 13, dur: 1.0, kf: [
+  K(0, RT(), RB(), M), K(0.25, FT(), FB()),
+  K(0.5, { p: [3.8, 3.4], z: 2.4, yaw: -50, lean: 64, fL: [0.8, 0.3, 4.6], fR: [2.4, 0.3, 5.4], hL: { o: 'belly', d: [0, 0.6, 0] }, hR: { o: 'shR', d: [0, 0.4, 0] } }, FB({ roll: 12 })),
+  K(0.75, { p: [5.2, 3.4], z: -2.6, yaw: 50, lean: 64, fL: [2.6, 0.3, -5.4], fR: [4, 0.3, -4.6], hL: { o: 'shL', d: [0, 0.4, 0] }, hR: { o: 'belly', d: [0, 0.6, 0] } }, FB({ roll: -12 })),
+  K(1, FT(), FB(), M)], loop: [{ a: FT(), o: FB() }, { a: FT({ p: [2.6, 2.7] }), o: FB({ hR: [11.4, 0.9] }) }] });
+
 // hip throw (headlock / arm throw / lateral drop / fireman's carry): step in, turn the back, load him on the hip, over he goes, legs above the thrower's head
 function throwClip(grab, low) {
   const dy = low ? -2.2 : 0;
@@ -510,11 +587,62 @@ function roll() {
   return [K(0, S(XA, 1), S(XO, -1), N), K(0.1, SHOT(), S(XO, -1)), at(0, 0.2), at(90, 0.3), at(180, 0.41), at(270, 0.52), { ...last, a2: n(last.a), o2: m(last.o) }];
 }
 
+// ---------- chained clips (2026-11-12) ----------
+// 'sprawl+double' plays the sprawl (he shoots, gets sprawled on, both back to their feet), then the double. A part written '~name' is the same
+// move made by the OTHER wrestler from the other side (neutral clips: turned half a turn and the roles swapped, so 'sprawl+~sprawl' = shot,
+// sprawl, counter-shot, sprawl); '!name' swaps the roles without turning (mat clips are all authored in the top man's frame). Parts are
+// joined with a short beat; where one part ends in a different position than the next begins (e.g. flattened -> back on his base) the beat
+// is longer and the figures move between the two. The finish (turn, loop, label) is the LAST part's.
+export const CHAIN_NAMES = ['sprawl+double', 'club+double', 'whizzer+double', 'sprawl+highc', 'club+highc', 'handfight+single', 'sprawl+single', 'club+ankle', 'ties+ankle',
+  'handfight+sweep', 'handfight+trip', 'ties+snap', 'ties+duck', '~sprawl+double', 'sprawl+sprawl', 'sprawl+~sprawl', 'sprawl+~sprawl+sprawl', 'sprawl+scramble', 'sprawl+whizzer',
+  '!matret+standup', 'snapdn+ankle', 'club+snap'];
+const CHAIN_LBL = { sprawl: 'RE-SHOT', club: 'CLUB AND SHOOT', whizzer: 'RE-ATTACK', handfight: 'HAND FIGHT', ties: 'OFF THE TIE', snapdn: 'SNAP AND PICK',
+  '~sprawl+double': 'SPRAWL · COUNTER SHOT', 'sprawl+sprawl': 'SHOT · SPRAWL · RE-SHOT', 'sprawl+~sprawl': 'SHOT · SPRAWL · COUNTER SHOT', 'sprawl+~sprawl+sprawl': 'FLURRY',
+  'sprawl+scramble': 'SHOT · SPRAWL · SCRAMBLE', 'sprawl+whizzer': 'RE-SHOT · WHIZZER', '!matret+standup': 'STANDS AGAIN', 'club+snap': 'CLUB · SNAP' };
+const isChain = n => typeof n === 'string' && n.includes('+');
+const lastPart = n => n.split('+').pop().replace(/^[~!]/, '');
+export const known = n => !!(CLIPS[n] || (isChain(n) && n.split('+').every(p => CLIPS[p.replace(/^[~!]/, '')])));
+const turnDeg = n => TURN_DEG[n] ?? (isChain(n) ? TURN_DEG[lastPart(n)] || 0 : 0);
+const matEnd = n => MAT_END[n] || (isChain(n) && MAT_END[lastPart(n)]);
+function swapRoles(k, turn) {
+  const f = P => (P ? (turn ? rot180(P) : P) : P), out = { ...k, a: f(k.o), o: f(k.a) };
+  delete out.a2; delete out.o2;
+  if (k.o2) out.a2 = f(k.o2); if (k.a2) out.o2 = f(k.a2);
+  return out;
+}
+function chainClip(name) {
+  const parts = name.split('+').map(s => { const sw = s[0] === '~' ? 2 : s[0] === '!' ? 1 : 0, c = CLIPS[sw ? s.slice(1) : s](); return { sw, c, kf: (c.kf || []).map(k => (sw ? swapRoles(k, sw === 2) : { ...k })) }; });
+  // fill missing figures inside each part (a keyframe may leave a figure out = unchanged) so the swap and the joins see whole poses
+  for (const p of parts) { let pa = null, po = null; for (const k of p.kf) { for (const f of ['a', 'o', 'a2', 'o2']) if (k[f]) k[f] = norm(k[f]); k.a = k.a || pa; k.o = k.o || po; pa = k.a2 || k.a; po = k.o2 || k.o; } }
+  // keep each figure's heading continuous across a join (a turned part can start at yaw 360 where the last one ended at 0: no spin)
+  for (let i = 1; i < parts.length; i++) {
+    const E = parts[i - 1].kf.at(-1);
+    for (const f of ['a', 'o']) {
+      const prev = (E[f + '2'] || E[f]).yaw, off = Math.round((prev - parts[i].kf[0][f].yaw) / 360) * 360;
+      if (off) for (const k of parts[i].kf) for (const g of [f, f + '2']) if (k[g]) k[g] = { ...k[g], yaw: k[g].yaw + off };
+    }
+  }
+  const gapOf = (A, B) => { if (!A || !B) return 0.1; const a = norm(A.a2 || A.a), b = norm(B.a), o = norm(A.o2 || A.o), q = norm(B.o);
+    const d = Math.hypot(a.p[0] - b.p[0], a.p[1] - b.p[1]) + Math.hypot(o.p[0] - q.p[0], o.p[1] - q.p[1]) + Math.abs(a.lean - b.lean) / 20 + Math.abs(o.lean - q.lean) / 20;
+    return d < 0.5 ? 0.1 : 0.32; };
+  let at = 0; const spans = [];
+  parts.forEach((p, i) => { if (i) at += gapOf(parts[i - 1].kf[parts[i - 1].kf.length - 1], p.kf[0]); spans.push(at); at += p.c.dur || 0.85; });
+  const tot = at, kf = [];
+  parts.forEach((p, i) => { const d = p.c.dur || 0.85; for (const k of p.kf) kf.push({ ...k, t: (spans[i] + k.t * d) / tot }); });
+  const L = parts[parts.length - 1], d = L.c.dur || 0.85, t0 = spans[spans.length - 1];
+  const out = { kf, dur: tot, n: Math.round(parts.reduce((s, p) => s + (p.c.n || 12), 0) * 0.92), pin: L.c.pin, aBottom: !!L.c.aBottom !== (L.sw === 1),
+    tw: [(t0 + TURN_WIN[0] * d) / tot, (t0 + TURN_WIN[1] * d) / tot] };
+  if (L.c.loop) out.loop = L.sw ? L.c.loop.map(s => swapRoles(s, L.sw === 2)) : L.c.loop;
+  if (L.c.loopDur) out.loopDur = L.c.loopDur;
+  return out;
+}
+const chainLabel = n => CHAIN_LBL[n] || CHAIN_LBL[n.split('+')[0]] || '';
+
 // ---------- clip -> frames ----------
 const cache = {};
 function getClip(name) {
   if (cache[name]) return cache[name];
-  const c = (CLIPS[name] || CLIPS.idleN)(), kf = (c.kf || []).map(k => ({ ...k }));
+  const c = isChain(name) && known(name) ? chainClip(name) : (CLIPS[name] || CLIPS.idleN)(), kf = (c.kf || []).map(k => ({ ...k }));
   let cam = N, prev = {};
   for (const k of kf) {
     for (const f of ['a', 'o', 'r']) { if (k[f]) k[f] = norm(k[f]); else if (prev[f]) k[f] = prev[f]; if (k[f + '2']) k[f + '2'] = norm(k[f + '2']); if (k[f]) prev[f] = k[f + '2'] || k[f]; }
@@ -544,9 +672,9 @@ const FIGS = ['a', 'o', 'r'];
 // corner' (TURN_DEG: degrees it turns while it finishes, in the window TURN_WIN), and the orientation it ends in carries into the next event
 // (orientAt), so the wrestlers move round the circle instead of always resetting to the same line. The rotation is applied to the SOLVED
 // joints, so it is exact and costs nothing in the authoring.
-export const TURN_DEG = { double: 70, single: 60, highc: 60, ankle: 55, trip: 50, scr: 50, lift: 40, sweep: 30, standup: 40, sitout: 40, granby: 30, letup: 30, sprawl: 35, whizzer: 35, hipout: 45, matret: 30, breakdown: 15 };
+export const TURN_DEG = { double: 70, single: 60, highc: 60, ankle: 55, trip: 50, itrip: 40, spiral: 0, scr: 50, lift: 40, sweep: 30, standup: 40, sitout: 40, granby: 30, letup: 30, sprawl: 35, whizzer: 35, hipout: 45, matret: 30, breakdown: 15 };
 const TURN_WIN = [0.42, 0.95];
-const MAT_END = { double: 1, single: 1, highc: 1, ankle: 1, trip: 1, scr: 1, lift: 1, sweep: 1, matret: 1, breakdown: 1 };   // moves that finish on the mat
+const MAT_END = { double: 1, single: 1, highc: 1, ankle: 1, trip: 1, itrip: 1, scr: 1, lift: 1, sweep: 1, matret: 1, breakdown: 1 };   // moves that finish on the mat
 const DIRS = ['F', 'Z', 'u', 'fr', 'lat'];
 function rotAll(all, ang, cx, cz = 0) {
   if (!ang) return all;
@@ -561,7 +689,7 @@ function pivotOf(c) {   // midpoint of the two hips in the clip's final pose
   const L = c.kf.length ? c.kf[c.kf.length - 1] : c.loop && c.loop[0]; if (!L) return [0, 0];
   const A = L.a2 || L.a, B = L.o2 || L.o; return A && B ? [(A.p[0] + B.p[0]) / 2, ((A.z || 0) + (B.z || 0)) / 2] : [0, 0];
 }
-const turnAt = (tn, t) => tn.h + tn.d * ease((t - TURN_WIN[0]) / (TURN_WIN[1] - TURN_WIN[0]));
+const turnAt = (tn, t) => { const w = tn.w || TURN_WIN; return tn.h + tn.d * ease((t - w[0]) / (w[1] - w[0])); };
 const still = (set, cam, cols, tn) => { const all = solve(Object.fromEntries(FIGS.filter(f => set[f]).map(f => [f, lerpPose(set[f], set[f], 1)]))); if (tn) rotAll(all, tn.h + tn.d, tn.px, tn.pz); return drawFrame(all, cam, cols, set._pr ? propAt(all, [set._pr, set._pr, 0], cols, 20) : null); };
 function loopSets(c) {   // the poses the clip settles into: given explicitly, or the last keyframe plus a slightly lower copy of it ("breathing"; a harder squeeze for pins)
   const L = c.kf[c.kf.length - 1];
@@ -578,9 +706,9 @@ function frames(name, cols, camO, tn) {   // tn = { h: orientation at the start,
 }
 
 // which clip an event plays, and which wrestler is its 'a' figure
-const TD = { double: 1, single: 1, highc: 1, ankle: 1, snap: 1, duck: 1, scr: 1, counter: 1, sweep: 1, trip: 1 }, THROW = { headlock: 1, armthrow: 1, lateral: 1, fireman: 1, lift: 1 };
-const TURN = { half: 1, cradle: 1, tilt: 1, turk: 1, armbar: 1, wing: 1 }, STUFF = { sprawl: 1, handfight: 1, hipout: 1, whizzer: 1, oob: 1, throw: 1 }, RIDE = { breakdown: 1, matret: 1, hips: 1, flat: 1 };
-const HAND = { club: 1, wrist: 1, elbow: 1, ties: 1, circle: 1 };
+const TD = { double: 1, single: 1, highc: 1, ankle: 1, snap: 1, duck: 1, scr: 1, counter: 1, sweep: 1, trip: 1, itrip: 1 }, THROW = { headlock: 1, armthrow: 1, lateral: 1, fireman: 1, lift: 1 };
+const TURN = { half: 1, cradle: 1, tilt: 1, turk: 1, armbar: 1, wing: 1 }, STUFF = { sprawl: 1, handfight: 1, hipout: 1, whizzer: 1, oob: 1, throw: 1 }, RIDE = { breakdown: 1, matret: 1, hips: 1, flat: 1, spiral: 1 };
+const HAND = { club: 1, wrist: 1, elbow: 1, ties: 1, circle: 1, snapdn: 1 };
 const other = s => (s === 'A' ? 'B' : 'A');
 // Which side of the mat the pair is on when event i starts: every 'circle' clip ends with the two swapped, so from then on every clip
 // (takedowns, mat work, escapes) is shown mirrored until they circle back; a period break resets it (they walk back to the centre).
@@ -595,12 +723,12 @@ export function orientAt(log, i) {
   for (let k = 0; k < log.length; k++) {
     const e = log[k];
     if (e.fx === 'break' || e.type === 'end') { h = 0; f = 0; }
-    const [name, side] = clipFor({ winner: 'A' }, e), deg = TURN_DEG[name] || 0;
+    const [name, side] = clipFor({ winner: 'A' }, e), deg = turnDeg(name);
     // pick the way the move cuts so it FINISHES at a readable angle: on the mat (camera already looking from the side) roughly -75..+25 deg in
     // the clip's own frame, standing +-60; when both ways read fine, alternate
     let cut = 0;
     if (deg) {
-      const m = MIRROR(side, getClip(name), f), onMat = MAT_END[name], ctr = onMat ? -25 : 0, wid = onMat ? 50 : 60;
+      const m = MIRROR(side, getClip(name), f), onMat = matEnd(name), ctr = onMat ? -25 : 0, wid = onMat ? 50 : 60;
       const end = cu => (h + cu * deg) * m, ok = cu => Math.abs(end(cu) - ctr) <= wid, pref = k % 2 ? 1 : -1;
       cut = ok(pref) ? pref : ok(-pref) ? -pref : Math.abs(end(1) - ctr) < Math.abs(end(-1) - ctr) ? 1 : -1;
     }
@@ -616,11 +744,11 @@ export function clipFor(res, last) {
   const { pos, fx, who, mv } = last, top = pos === 'topA' ? 'A' : pos === 'topB' ? 'B' : null;
   if (last.type === 'end') return ['end', res.winner || 'A'];
   if (fx === 'break') return ['brk', 'A'];
-  if (fx === 'td' && who) return [TD[mv] || THROW[mv] ? mv : 'double', who];
+  if (fx === 'td' && who) return [TD[mv] || THROW[mv] || (isChain(mv) && known(mv)) ? mv : 'double', who];
   if ((fx === 'nf' || fx === 'fall') && who) return [THROW[mv] || TURN[mv] ? mv : /takedown plus|hits/.test(last.text || '') ? 'headlock' : 'half', who];
-  if (fx === 'esc' && who) return [mv === 'sitout' || mv === 'letup' || mv === 'granby' ? mv : 'standup', who];
+  if (fx === 'esc' && who) return [mv === 'sitout' || mv === 'letup' || mv === 'granby' || (isChain(mv) && known(mv)) ? mv : 'standup', who];
   if (fx === 'rev' && who) return ['rev', who];
-  if (fx === 'stuff' && who) return [STUFF[mv] ? mv : 'sprawl', who];
+  if (fx === 'stuff' && who) return [STUFF[mv] || (isChain(mv) && known(mv)) ? mv : 'sprawl', who];
   if (fx === 'scramble' && who) return ['scramble', who];
   if (fx === 'hand' && !top) return [HAND[mv] ? mv : 'idleN', who || 'A'];
   if (fx === 'stall' && who && !top) return ['stall', who];
@@ -630,8 +758,9 @@ export function clipFor(res, last) {
 
 const LABEL = { td: 'TAKEDOWN!', esc: 'ESCAPE', rev: 'REVERSAL!', nf: 'NEAR FALL!', fall: 'FALL!', stall: 'STALLING', scramble: 'SCRAMBLE' };
 const MOVE = { headlock: 'HEADLOCK', armthrow: 'ARM THROW', lateral: 'LATERAL DROP', fireman: "FIREMAN'S CARRY", lift: 'BIG LIFT', cradle: 'CRADLE', tilt: 'TILT', wing: 'CHICKEN WING', armbar: 'ARM BAR', half: 'HALF NELSON', turk: 'TURK',
-  club: 'HEAD CLUB', wrist: 'WRIST CONTROL', elbow: 'ELBOW PASS', ties: 'COLLAR TIES', matret: 'MAT RETURN', counter: 'COUNTER', duck: 'DUCK-UNDER', granby: 'GRANBY ROLL', switch: 'SWITCH', ankle: 'ANKLE PICK', snap: 'GO-BEHIND', scr: 'SCRAMBLE', sweep: 'SWEEP SINGLE', trip: 'SINGLE LEG TRIP' };
-const CHAMP = ['champJump', 'champCart', 'champToss'];
+  club: 'HEAD CLUB', wrist: 'WRIST CONTROL', elbow: 'ELBOW PASS', ties: 'COLLAR TIES', matret: 'MAT RETURN', counter: 'COUNTER', duck: 'DUCK-UNDER', granby: 'GRANBY ROLL', switch: 'SWITCH', ankle: 'ANKLE PICK', snap: 'GO-BEHIND', scr: 'SCRAMBLE', sweep: 'SWEEP SINGLE', trip: 'SINGLE LEG TRIP',
+  highc: 'HIGH-CROTCH', itrip: 'INSIDE TRIP', snapdn: 'SNAP-DOWN', spiral: 'SPIRAL RIDE' };
+const CHAMP = ['champJump', 'champCart', 'champToss', 'champFlex', 'champBack', 'champKneel'];
 
 // opt.still (0..1): draw one frozen moment of the clip (used by test pages); opt.clip / opt.a: force a clip
 export function stage(res, last, col, opt = {}) {
@@ -639,13 +768,13 @@ export function stage(res, last, col, opt = {}) {
   let [name, aSide] = opt.clip ? [opt.clip, opt.a || 'A'] : clipFor(res, last);
   const champ = !opt.clip && end && opt.champ;   // NCAA title: one of three celebrations instead of the plain hand raise
   if (champ) name = CHAMP[((res.seed >>> 0) % 7919) % CHAMP.length];
-  if (!CLIPS[name]) name = 'idleN';
+  if (!known(name)) name = 'idleN';
   const cols = { a: col[aSide], o: col[other(aSide)], r: '#1d2126', band: opt.band ? { a: opt.band[aSide], o: opt.band[other(aSide)] } : null };
   const c0 = getClip(name); if (c0.noHg) cols.noHg = true;
   // opt.orient = { flip, h, cut } (orientAt) or opt.flip alone: which side of the mat, how far the pair is turned, which way this move cuts
   const ori = opt.orient || { flip: !!opt.flip, h: 0, cut: 0 }, mirror = MIRROR(aSide, c0, ori.flip);
   const [px, pz] = pivotOf(c0), straight = end || c0.noHg;   // a mirrored clip turns the other way round in its own coordinates
-  const tn = straight ? null : { h: (ori.h || 0) * mirror, d: (ori.cut || 0) * (TURN_DEG[name] || 0) * mirror, px, pz };
+  const tn = straight ? null : { h: (ori.h || 0) * mirror, d: (ori.cut || 0) * turnDeg(name) * mirror, px, pz, w: c0.tw };
   const { c, seq, loop } = frames(name, cols, opt.cam, tn);
   let body;
   if (opt.still !== undefined) {
@@ -657,7 +786,7 @@ export function stage(res, last, col, opt = {}) {
       + `<g class="fr last" style="animation-delay:${cs(n * slot)};animation-duration:${cs(0.05)}">${loop.map((f, j) => `<g class="lp lp${loop.length}" style="animation-duration:${cs(ld)};animation-delay:${cs(-j * ld / loop.length)}">${f}</g>`).join('')}</g>`;
   }
   let label = fx ? LABEL[fx] || '' : '';
-  const mvName = last && MOVE[last.mv];
+  const mvName = last && (isChain(last.mv) ? chainLabel(last.mv) : MOVE[last.mv]);
   if (fx === 'nf') { const m = (last.text || '').match(/(\d) points/); label = m ? 'NEAR FALL +' + m[1] : label; if (/takedown plus/.test(last.text || '')) label = 'TD + NEAR FALL'; }
   if (mvName) label = label ? `${mvName} · ${label}` : mvName;
   const lblCol = fx && who ? col[who] : '#f5b942';
@@ -669,6 +798,9 @@ export function stage(res, last, col, opt = {}) {
     ${endTxt ? `<text class="lbl end" x="100" y="-3" text-anchor="middle" fill="#3fb27f">${endTxt}</text>` : ''}</svg>`;
 }
 export const CLIP_NAMES = Object.keys(CLIPS);
+// how long the event's animation runs (in clip seconds, x --spd on screen): the bout viewer waits at least this long before the next line
+export const clipDur = name => { const c = getClip(known(name) ? name : 'idleN'); return c.kf.length ? c.dur : 0; };
+export function clipTime(res, last) { return clipDur(clipFor(res, last)[0]); }
 
 // team colour per side: the wrestler's school -> team id -> logo colour; avoid two near-identical singlets
 export function singletColors(G, res, TEAM_COLORS) {
