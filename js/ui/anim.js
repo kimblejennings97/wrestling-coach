@@ -866,7 +866,23 @@ export function stage(res, last, col, opt = {}) {
     ${matSvg(opt.venue)}
     <g transform="translate(100,${GY}) scale(${mirror},1)" fill="none" stroke-linecap="round">${body}</g>
     ${label && !end ? `<text class="lbl ${fx}" x="100" y="-3" text-anchor="middle" fill="${lblCol}"${label.length > 24 ? ' style="font-size:8px;letter-spacing:.5px"' : ''}>${label}</text>` : ''}
+    ${champ ? confetti(res, col) : ''}
     ${endTxt ? `<text class="lbl end" x="100" y="-3" text-anchor="middle" fill="#3fb27f">${endTxt}</text>` : ''}</svg>`;
+}
+// NCAA title: confetti in the champion's colours falls over the celebration (CSS animation, looping). Colours: a signature singlet's body + detail (a near-black body is left out: gold + white for Iowa),
+// else the team colour (also when he wore white: the trim) + white; no team colour -> white + gold. Positions come from the bout seed (stable across re-renders).
+function confetti(res, col) {
+  const w = res.winner || 'A', dec = col['dec' + w], base = col['trim' + w] || col[w];
+  const lum = c => [1, 3, 5].reduce((s, i, k) => s + parseInt(c.slice(i, i + 2), 16) * [0.3, 0.59, 0.11][k], 0), acc = dec && (dec.legBand || dec.belt);
+  const pal = dec ? (lum(dec.body) < 50 ? [acc, acc, '#ffffff'] : [dec.body, dec.body, acc]) : base && base.toLowerCase() !== '#e8e8e8' ? [base, base, '#ffffff'] : ['#ffffff', '#f5b942'];
+  let h = (res.seed >>> 0) || 7;
+  const rnd = () => { h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) ^ Math.imul(h ^ (h >>> 13), 0x297a2d39); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+  let out = '';
+  for (let i = 0; i < 46; i++) {
+    const x = 4 + rnd() * 192, dur = 2.6 + rnd() * 2.2, del = -rnd() * dur, dx = (rnd() - 0.5) * 24, sp = 0.5 + rnd() * 0.9, c = pal[i % pal.length], wd = 2 + rnd() * 1.6, ht = 1.1 + rnd() * 1;
+    out += `<g class="cfall" style="--dx:${dx.toFixed(1)}px;animation-duration:${dur.toFixed(2)}s;animation-delay:${del.toFixed(2)}s"><rect class="cspin" x="${(x - wd / 2).toFixed(1)}" y="${(-ht / 2).toFixed(1)}" width="${wd.toFixed(1)}" height="${ht.toFixed(1)}" fill="${c}" style="animation-duration:${sp.toFixed(2)}s;animation-delay:${(-rnd() * sp).toFixed(2)}s"/></g>`;
+  }
+  return `<g class="confetti" aria-hidden="true">${out}</g>`;
 }
 export const CLIP_NAMES = Object.keys(CLIPS);
 // how long the event's animation runs (in clip seconds, x --spd on screen): the bout viewer waits at least this long before the next line
