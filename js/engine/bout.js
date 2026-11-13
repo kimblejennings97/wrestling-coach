@@ -263,8 +263,14 @@ export function simulateBout(wA, wB, opts = {}) {
     const r = rng();
     if (r < pCounter) {
       ST[def].counters++; ST[def].takedowns++; award(def, RULES.takedown); S.pos = 'top' + def;
-      if (vk(3) === 0) say('score', `${nm(def)} sprawls on ${how} from ${nm(att)} and shoots right back — ${WORDS[RULES.takedown]} for ${nm(def)}! (${scoreLine()})`, 'td', def, null, '~sprawl+double');
-      else say('score', `${nm(att)} goes for ${how}, but ${nm(def)} counters and gets behind! ${cap(WORDS[RULES.takedown])} for ${nm(def)}. (${scoreLine()})`, 'td', def, null, 'counter');
+      // which counter is shown depends on the shot (viewer only, no rng): pancake vs a double / high-crotch, sit-and-switch vs a high-crotch,
+      // kickstand vs a single; otherwise a spin behind or sprawl-and-shoot-back
+      const cb = MV[how], cv = vk(6), A3 = nm(att), D3 = nm(def), sc = `(${scoreLine()})`;
+      if ((cb === 'double' || cb === 'highc') && cv < 2) say('score', `${D3} crossfaces hard on ${how}, locks up the head and arm and pancakes ${A3} to his back! ${cap(WORDS[RULES.takedown])} for ${D3}. ${sc}`, 'td', def, null, 'pancake');
+      else if (cb === 'highc' && cv < 4) say('score', `${D3} sits to his hip against the high-crotch, hits a switch and comes out on top! ${cap(WORDS[RULES.takedown])} for ${D3}. ${sc}`, 'td', def, null, 'hcswitch');
+      else if ((cb === 'single' || cb === 'sweep' || cb === 'trip') && cv < 3) say('score', `${A3} stands up with the leg between his legs, but ${D3} kickstands: foot hooked on the far knee, arm behind the near knee, and sits him to his back! ${cap(WORDS[RULES.takedown])} for ${D3}. ${sc}`, 'td', def, null, 'kickstand');
+      else if (cv === 5) say('score', `${D3} sprawls on ${how} from ${A3} and shoots right back — ${WORDS[RULES.takedown]} for ${D3}! ${sc}`, 'td', def, null, '~sprawl+double');
+      else say('score', `${A3} goes for ${how}, but ${D3} counters and gets behind! ${cap(WORDS[RULES.takedown])} for ${D3}. ${sc}`, 'td', def, null, 'counter');
     } else if (r < pCounter + 0.2) {
       if (rng.chance(sig(0.15 * (ss(att) - ss(def))) * 0.7 * Math.max(0.02, Math.min(1.3, pTD / 0.3)))) takedown(att, def, 'out of a wild scramble');   // a shot the defender shuts down rarely turns into a scramble takedown
       else say('info', `Scramble! ${nm(att)} and ${nm(def)} spin around, but neither can finish — back to the feet.`, 'scramble', att);
