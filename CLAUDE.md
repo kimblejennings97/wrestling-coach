@@ -12,12 +12,13 @@ Football-Manager-style college wrestling coach game (NCAA D1 men's folkstyle), t
 | Schedule, duals + dual coaching, tournaments, live brackets, selection show, national duals, rankings | `docs/season.md` |
 | Stats, record books, Hall of Fame, archive | `docs/stats-legacy.md` |
 | Screens, links, profiles, bout viewer, saves, player editor, iPad layout | `docs/ui.md` |
-| Real rosters pipeline, rating overrides, logos, team colours | `docs/data.md` |
+| Real rosters pipeline, rating overrides, logos, team colours, conference alignment, custom leagues | `docs/data.md` |
 
 Keep these files current: when you change a system, update its topic file (current design + knobs + measured results), not a dated log. Add a new topic file if a new area grows big. The pre-split CLAUDE.md (dated session logs with every past measurement) is in git history at commit `193d11b`.
 
-## Where things stand (2026-11-12)
-- Playable end to end: preseason -> duals/tournaments -> selection show -> NCAAs -> 4-step offseason -> next season, multiple save slots, player editor.
+## Where things stand (2026-11-13)
+- Playable end to end: preseason -> duals/tournaments -> selection show -> NCAAs -> 5-step offseason -> next season, multiple save slots, player editor, custom leagues (upload).
+- 2026-11-13: conferences realigned to 2026-27 (Ivy League, Pac-12, SoCon added; old saves realign at their next offseason); custom league upload (JSON league file + roster CSV); offseason "Wrestlers leaving" step; last recruiting class kept through the offseason; OVR column in Training.
 - Almost everything was verified **headlessly** (sim harnesses, DOM click-throughs, Edge screenshots). The user has hand-tested little of it; the iPad is their test device. `dist/` must be rebuilt (`deploy.bat`) before iPad testing.
 - Bout viewer mat follows the venue (2026-11-12): host team colour + logo in duals, organisation mat + logo at conference tournaments / NCAAs, neutral green elsewhere (`js/data/venues.js`, animation.md). Not yet checked on the iPad.
 - Open ideas: export/import save file; auto-taper option for the user; top-position stalling / stall ladder; escapes and league-mix MD probably high; coach/staff, facilities, NIL; redshirts; women's / other divisions / freestyle mode; Match Lab has no animation.
@@ -44,7 +45,7 @@ Works autonomously and reports briefly; concise answers with a recommendation an
 ## Layout
 - `index.html` + `js/ui/app.js` (all screens), `css/style.css`, `js/ui/anim.js` (bout animation), `js/ui/match.js` + `lab.html` (Match Lab), `moves.html` (Move Viewer).
 - `js/engine/bout.js` (+ rng.js): bout sim and tunables.
-- `js/game/`: `core.js` (state G, new game, real rosters, lineups, duals, finishWeek, training, injuries, rankings, save/migrate), `tourney.js`, `live.js`, `selection.js`, `dualtourney.js`, `dualcoach.js`, `sched.js`, `recruit.js`, `offseason.js`, `prestige.js`, `stats.js`, `legacy.js`, `saves.js`, `playeredit.js`.
+- `js/game/`: `core.js` (state G, new game, real rosters, lineups, duals, finishWeek, training, injuries, rankings, save/migrate), `tourney.js`, `live.js`, `selection.js`, `dualtourney.js`, `dualcoach.js`, `sched.js`, `recruit.js`, `offseason.js`, `prestige.js`, `stats.js`, `legacy.js`, `saves.js`, `playeredit.js`, `league.js` (custom leagues).
 - `js/data/`: gen, schools, practice, tournaments, realteams (generated), realtop, overrides, ncaa2026, states, logos, teamcolors, venues (bout viewer mat). `assets/logos/` school logos, `assets/logos/org/` conference + NCAA logos.
 - Tools/tests kept: `animsheet.html`, `harness.html`, `diag.html`, `sim_balance.html`, `longrun.html`, `tools/*.py`.
 

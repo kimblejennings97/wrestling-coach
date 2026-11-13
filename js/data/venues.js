@@ -14,7 +14,12 @@ const ORG = {
   ACC:       { logo: 'acc',     text: 'ACC',     mat: '#0e1d45', line: '#3a64d8' },
   MAC:       { logo: 'mac',     text: 'MAC',     mat: '#0d2140', line: '#1fa75a' },
   EIWA:      { logo: null,      text: 'EIWA',    mat: '#14213d', line: '#d4a73a' },
+  'Ivy League': { logo: null,    text: 'IVY',     mat: '#0f2a1d', line: '#3f9a5c' },
+  'Pac-12':  { logo: null,      text: 'PAC-12',  mat: '#10213b', line: '#4b7bd1' },
+  SoCon:     { logo: null,      text: 'SOCON',   mat: '#2a1d0e', line: '#c99a3a' },
 };
+// a conference without its own mat (custom leagues): neutral blue mat with its name as the badge
+const orgOf = conf => ORG[conf] || (conf ? { logo: null, text: conf.toUpperCase().slice(0, 12), mat: '#16243a', line: '#5b86c4' } : null);
 const dark = (hex, k) => '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
 
 // host school (team id = school id): mat = its colour darkened (its own wrestler's singlet stays readable on it), circles in the full colour
@@ -26,7 +31,7 @@ export function teamVenue(id, name = '') {
 }
 // tournament spec (G.tournaments entry) -> venue
 export function tourneyVenue(t) {
-  const o = !t ? null : t.kind === 'ncaa' ? ORG.ncaa : t.kind === 'conf' ? ORG[t.conf] : null;
+  const o = !t ? null : t.kind === 'ncaa' ? ORG.ncaa : t.kind === 'conf' ? orgOf(t.conf) : null;
   if (!o) return NEUTRAL_MAT;
-  return { mat: o.mat, line: o.line, logo: LOGOS_ENABLED && o.logo ? `assets/logos/org/${o.logo}.png` : null, text: LOGOS_ENABLED && o.logo ? null : o.text };
+  return { mat: o.mat, line: o.line, logo: LOGOS_ENABLED && o.logo ? `assets/logos/org/${o.logo}.png` : null, text: LOGOS_ENABLED && o.logo ? null : o.text };   // text badges show even with logos off
 }

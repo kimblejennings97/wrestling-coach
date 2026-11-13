@@ -1,7 +1,8 @@
 // Game shell: Football-Manager-style screens over the game core.
 import { ATTR_KEYS, ATTR_LABELS, fmtClock } from '../engine/bout.js';
 import { WEIGHTS, ARCHETYPES } from '../data/gen.js';
-import { SCHOOLS, CONFERENCES } from '../data/schools.js';
+import { SCHOOLS, CONFERENCES, confsOf, isIndependent } from '../data/schools.js';
+import * as LEA from '../game/league.js';
 import { PRACTICE, INTENSITY, FOCUS_SHARES } from '../data/practice.js';
 import * as R from '../game/recruit.js';
 import { beginOffseason, startNewSeason, advanceOffseason, offStep, OFF_STEPS } from '../game/offseason.js';
@@ -95,10 +96,10 @@ const parkOk = p => !!(p && G && p.week === G.week && G.phase === 'season' && (!
 
 // ---------- shell ----------
 function render() {
-  if (!G) { $app.innerHTML = ui.editor ? editorScreen() : startScreen(); bind(); return; }
+  if (!G) { $app.innerHTML = ui.editor ? editorScreen() : ui.leagueScr ? leagueScreen() : startScreen(); bind(); return; }
   document.documentElement.style.setProperty('--tc', TEAM_COLORS[G.userTeam] || '#3fb27f');   // your team's colour, used to highlight your wrestlers
   const rec = records(G)[G.userTeam], ev = userEvent(G);
-  const label = G.phase === 'seasonEnd' ? 'Begin offseason ▶' : G.phase === 'offseason' ? ({ cut: 'Done cutting → Progression ▶', progress: 'Continue → Recruiting ▶', recruit: 'Done recruiting → Schedule ▶' }[offStep(G)] || `Start ${G.season + 1} season ▶`) : ev && ev.type === 'tourney' && ev.ref.kind === 'dual' && D.inProgress(ev.ref) ? 'Resume tournament ▶' : ev && !ev.done ? (ev.type === 'dual' ? 'Go to dual day ▶' : 'Go to tournament ▶') : ev && liveTourney() ? 'Resume tournament ▶' : ev ? 'Finish week ▶' : G.week === G.cal.selWeek && SEL.selActive(G) ? 'Selection show ▶' : G.week === G.cal.selWeek ? 'Advance (selection week) ▶' : 'Advance (bye week) ▶';
+  const label = G.phase === 'seasonEnd' ? 'Begin offseason ▶' : G.phase === 'offseason' ? ({ leaving: 'Continue → Cut players ▶', cut: 'Done cutting → Progression ▶', progress: 'Continue → Recruiting ▶', recruit: 'Done recruiting → Schedule ▶' }[offStep(G)] || `Start ${G.season + 1} season ▶`) : ev && ev.type === 'tourney' && ev.ref.kind === 'dual' && D.inProgress(ev.ref) ? 'Resume tournament ▶' : ev && !ev.done ? (ev.type === 'dual' ? 'Go to dual day ▶' : 'Go to tournament ▶') : ev && liveTourney() ? 'Resume tournament ▶' : ev ? 'Finish week ▶' : G.week === G.cal.selWeek && SEL.selActive(G) ? 'Selection show ▶' : G.week === G.cal.selWeek ? 'Advance (selection week) ▶' : 'Advance (bye week) ▶';
   const body = { home, roster, lineup, schedule, standings, rankings: rankingsScreen, stats: statsScreen, profile, team: teamProfile, tprofile: tournamentProfile, offseason: offseasonScreen, dualday, dual, recruit: recruiting, train: training, injuries, tourneyday, tourney, selection, dtourney }[ui.screen]();
   $app.innerHTML = `
   <div class="top"><b>${tn(G.userTeam, 28)}</b><span class="muted">Coach ${G.coach}</span><span class="muted">${G.phase === 'seasonEnd' ? `Season over · ${seasonLbl(G.season)}` : G.phase === 'offseason' ? `Offseason ${G.season}` : `Week ${G.week} · ${fmtDate(G.week, true)}`}</span>
@@ -144,6 +145,7 @@ function modalHtml() {
 // ---------- actions ----------
 function act(a, d) {
   if (a.startsWith('ed') && edAct(a, d)) return;
+  if (a.startsWith('lg') && lgAct(a, d)) return;
   if (a === 'nav') return go(d.v);
   if (a === 'schedreset') { if (confirm('Throw away your changes and go back to the suggested schedule?')) { S.buildNext(G); save(); } return render(); }
   if (a === 'rec_auto') { const log = R.autoRecruit(G); ui.rec.autoMsg = log.actions ? R.describeAuto(log) : 'Nothing to do right now (no hours left, or no open recruits you can pursue).'; save(); return render(); }
@@ -189,7 +191,7 @@ function act(a, d) {
   if (a === 'save') { save(); const b = document.querySelector('[data-act=save]'); if (b) { b.textContent = 'Saved ✓'; setTimeout(() => b && (b.textContent = 'Save'), 1200); } return; }
   if (a === 'menu') { if (confirm('Return to the start screen? (Your game is saved first.)')) { stopTimers(); save(); G = null; render(); } return; }
   if (a === 'pickteam') { ui.pick = d.v; return render(); }
-  if (a === 'begin') { G = newGame(ui.pick, ui.coach || 'Coach', undefined, { real: ui.useReal !== false, edits: PE.loadEdits() }); save(); ui.screen = 'home'; return render(); }   // player-editor edits: new careers only
+  if (a === 'begin') { const lg = activeLeague(); G = newGame(ui.pick, ui.coach || 'Coach', undefined, { real: ui.useReal !== false, edits: PE.loadEdits(), ...(lg ? { league: lg } : {}) }); save(); ui.screen = 'home'; return render(); }   // player-editor edits: new careers only
   if (a === 'loadsave') { loadSlot(d.v).then(g => { if (g) { G = g; ui.screen = 'home'; ui.dual = null; ui.live = false; } render(); }); return; }
   if (a === 'delsave') { if (confirm('Delete this save permanently?')) { deleteSlot(d.v); render(); } return; }
   if (a === 'copysave') { copySlot(d.v).then(() => render()); return; }
@@ -325,6 +327,8 @@ function chg(k, el) {
   if (k === 'recmode') { G.rec.mode = el.value; save(); return render(); }
   if (k === 'nowarn') { G.rec.noWarn = el.checked; save(); return; }
   if (k === 'pickconf') { ui.pickConf = el.value; ui.pick = null; return render(); }
+  if (k === 'pickleague') { ui.useCustom = el.value === 'custom'; ui.pick = null; ui.pickConf = null; return render(); }
+  if (k === 'lgfile' || k === 'lgcsv') { const f = el.files && el.files[0]; if (f) f.text().then(txt => lgUpload(k, txt, f.name)); return; }
   if (k === 'conf') { ui.conf = el.value; return render(); }
   if (k === 'hofteam') { ui.stat.hteam = el.value; return render(); }
   if (k === 'alt') { const tid = el.dataset.t; G.entries[tid] = G.entries[tid] || {}; G.entries[tid][el.dataset.wt] = el.value ? [el.value] : []; save(); return; }
@@ -367,9 +371,9 @@ function chg(k, el) {
 const b2 = msg => { const b = document.querySelector('[data-act=saveas]'); if (b) { const o = b.textContent; b.textContent = msg; setTimeout(() => b && (b.textContent = o), 1800); } };
 function saveList() {
   const L = listSaves(); if (!L.length) return '';
-  const sch = id => (SCHOOLS.find(x => x.id === id) || {}).name || id, when = ts => new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  return `<div class="card"><h2>Saved careers <small class="muted">(${L.length}/${MAX_SLOTS})</small></h2><table class="tbl dense"><tr><th>Save</th><th>Team</th><th>Season</th><th>Last played</th><th></th></tr>${L.map((m, i) => `<tr><td><b>${m.name.replace(/</g, '&lt;')}</b></td><td>${schoolLogo(m.school, sch(m.school), 18)} ${sch(m.school)}</td><td>${m.season}${m.phase === 'offseason' ? ' offseason' : m.phase === 'seasonEnd' ? ' (final)' : ' · wk ' + m.week}</td><td class="muted">${when(m.ts)}</td>
-    <td style="white-space:nowrap"><button data-act="loadsave" data-v="${m.id}">${i === 0 ? 'Continue' : 'Load'}</button> <button class="secondary" data-act="rensave" data-v="${m.id}" data-n="${m.name.replace(/"/g, '&quot;')}">Rename</button> <button class="secondary" data-act="copysave" data-v="${m.id}">Duplicate</button> <button class="secondary" data-act="delsave" data-v="${m.id}">Delete</button></td></tr>`).join('')}</table></div>`;
+  const sch = (id, m) => (m && m.tname) || (SCHOOLS.find(x => x.id === id) || {}).name || id, when = ts => new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return `<div class="card"><h2>Saved careers <small class="muted">(${L.length}/${MAX_SLOTS})</small></h2><table class="tbl saves"><tr><th>Save</th><th>Team</th><th>Season</th><th>Last played</th></tr>${L.map((m, i) => `<tr class="info"><td><b>${m.name.replace(/</g, '&lt;')}</b>${m.league ? ` <span class="muted">· ${m.league.replace(/</g, '&lt;')}</span>` : ''}</td><td>${schoolLogo(m.school, sch(m.school, m), 18)} ${sch(m.school, m)}</td><td>${m.season}${m.phase === 'offseason' ? ' offseason' : m.phase === 'seasonEnd' ? ' (final)' : ' · wk ' + m.week}</td><td class="muted">${when(m.ts)}</td></tr>
+    <tr class="acts"><td colspan="4"><div class="row"><button data-act="loadsave" data-v="${m.id}">${i === 0 ? 'Continue' : 'Load'}</button><button class="secondary" data-act="rensave" data-v="${m.id}" data-n="${m.name.replace(/"/g, '&quot;')}">Rename</button><button class="secondary" data-act="copysave" data-v="${m.id}">Duplicate</button><button class="secondary" data-act="delsave" data-v="${m.id}">Delete</button></div></td></tr>`).join('')}</table></div>`;
 }
 // ---------- player editor (start screen; edits apply to NEW careers only) ----------
 const escA = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -435,19 +439,77 @@ function edAct(a, d) {
   }
   return false;
 }
+// the league a new career will use: the uploaded custom league when it is selected, else null (default)
+function activeLeague() { if (!ui.useCustom) return null; const lg = LEA.loadLeague(); if (!lg) ui.useCustom = false; return lg; }
 function startScreen() {
-  const list = SCHOOLS.filter(s => s.conf === ui.pickConf).map(s =>
+  const custom = LEA.loadLeague(), lg = activeLeague(), schools = lg ? LEA.leagueSchools(lg) : SCHOOLS;
+  const confs = lg ? lg.conferences.map(c => c.name) : CONFERENCES;
+  if (!confs.includes(ui.pickConf)) ui.pickConf = confs[0];
+  const list = schools.filter(s => s.conf === ui.pickConf).map(s =>
     `<tr data-act="pickteam" data-v="${s.id}" class="${ui.pick === s.id ? 'me' : ''}" style="cursor:pointer"><td>${schoolLogo(s.id, s.name, 22)} ${s.name}</td><td>${'★'.repeat(Math.max(1, Math.round(s.prestige / 20)))}</td><td class="muted">${s.prestige >= 85 ? 'Powerhouse' : s.prestige >= 65 ? 'Contender' : s.prestige >= 50 ? 'Mid-major' : 'Rebuilding'}</td></tr>`).join('');
   return `<div class="start"><h1>Wrestling Coach</h1><p class="muted">Take over a Division I program. Recruit, develop, schedule, and chase an NCAA title.</p>
     ${saveList()}
-    <p><button class="secondary" data-act="editor">Player editor</button> <span class="hint">Tweak real wrestlers' ratings for new careers (saved careers are not changed).</span></p>
+    <div class="row"><button class="secondary" data-act="editor">Player editor</button> <span class="hint">Tweak real wrestlers' ratings for new careers (saved careers are not changed).</span></div>
+    <div class="row"><button class="secondary" data-act="lgopen">Custom league</button> <span class="hint">Upload your own teams, rosters, conferences and tournaments${custom ? ` · loaded: <b>${escA(custom.name)}</b>` : ''}.</span></div>
     <div class="card"><h2>New career</h2>
       <div class="row"><label>Your name <input data-chg="coach" value="${ui.coach}"></label>
-      <label>Conference <select data-chg="pickconf">${CONFERENCES.map(c => `<option ${c === ui.pickConf ? 'selected' : ''}>${c}</option>`).join('')}</select></label></div>
+      ${custom ? `<label>League <select data-chg="pickleague"><option value="default" ${lg ? '' : 'selected'}>Default (2026-27 D1)</option><option value="custom" ${lg ? 'selected' : ''}>${escA(custom.name)}</option></select></label>` : ''}
+      <label>Conference <select data-chg="pickconf">${confs.map(c => `<option ${c === ui.pickConf ? 'selected' : ''}>${escA(c)}</option>`).join('')}</select></label></div>
       <table class="tbl"><tr><th>School</th><th>Prestige</th><th></th></tr>${list}</table>
       <p><label><input type="checkbox" data-chg="usereal" ${ui.useReal !== false ? 'checked' : ''}> Use real wrestler names and rosters (2026-27 rosters from team sites, ratings from WrestleStat). Uncheck to play with fully generated names.</label></p>
-      <p>${ui.pick ? `Selected: <b>${(sc => schoolLogo(sc.id, sc.name, 24) + ' ' + sc.name)(SCHOOLS.find(s => s.id === ui.pick))}</b>` : 'Pick a school.'} <button data-act="begin" ${ui.pick ? '' : 'disabled'}>Start career</button></p>
-      <p class="hint">Real names and starters come from public 2026-27 roster and ranking data; each wrestler's ratings are estimated for the game, and backups are placed below their team's starter. Schools, prestige and conference alignment are approximate (js/data/schools.js).</p></div></div>`;
+      <p>${ui.pick ? `Selected: <b>${(sc => schoolLogo(sc.id, sc.name, 24) + ' ' + sc.name)(schools.find(s => s.id === ui.pick))}</b>` : 'Pick a school.'} <button data-act="begin" ${ui.pick ? '' : 'disabled'}>Start career</button></p>
+      <p class="hint">Real names and starters come from public 2026-27 roster and ranking data; each wrestler's ratings are estimated for the game, and backups are placed below their team's starter. ${lg ? ' Custom league: teams with a roster in the league file use it; the others use real rosters (when the name matches and real names are on) or generated ones.' : ' Prestige is approximate; conference alignment follows the 2026-27 season (js/data/schools.js).'}</p></div></div>`;
+}
+
+// ---------- custom league screen (start screen; applies to NEW careers only) ----------
+function download(name, text, type = 'application/json') {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function lgUpload(kind, text, fname) {
+  const st = (ui.lg ||= {});
+  const r = kind === 'lgfile' ? LEA.parseLeague(text) : LEA.mergeRosterCsv(text, LEA.loadLeague());
+  st.res = { file: fname, errors: r.errors, warnings: r.warnings || [], summary: r.summary };
+  if (r.pack) { if (LEA.saveLeague(r.pack)) ui.useCustom = true; else st.res.errors = ['Could not store the league (browser storage is full or blocked).']; }
+  render();
+}
+function lgAct(a) {
+  const st = (ui.lg ||= {});
+  if (a === 'lgopen') { ui.leagueScr = true; st.res = null; render(); return true; }
+  if (a === 'lgback') { ui.leagueScr = false; render(); return true; }
+  if (a === 'lgtpl') { download('wrestling-league-template.json', JSON.stringify(LEA.templateLeague(true), null, 1)); return true; }
+  if (a === 'lgtplsmall') { download('wrestling-league-no-rosters.json', JSON.stringify(LEA.templateLeague(false), null, 1)); return true; }
+  if (a === 'lgcsvtpl') { download('wrestling-rosters.csv', LEA.rosterCsv(LEA.loadLeague() ? LEA.leagueToFile(LEA.loadLeague()) : LEA.templateLeague(true)), 'text/csv'); return true; }
+  if (a === 'lgdl') { const lg = LEA.loadLeague(); if (lg) download(lg.name.replace(/[^\w-]+/g, '_') + '.json', JSON.stringify(LEA.leagueToFile(lg), null, 1)); return true; }
+  if (a === 'lgclear') { if (confirm('Remove the custom league? New careers will use the default league. Careers already started with it are not affected.')) { LEA.clearLeague(); ui.useCustom = false; st.res = null; render(); } return true; }
+  return false;
+}
+function leagueScreen() {
+  const st = (ui.lg ||= {}), lg = LEA.loadLeague(), r = st.res;
+  const res = r ? `<div class="card"><h2>${r.errors.length ? 'Upload rejected' : 'Upload accepted'} <small class="muted">${escA(r.file || '')}</small></h2>
+    ${r.errors.length ? `<ul class="neg">${r.errors.slice(0, 30).map(e => `<li>${escA(e)}</li>`).join('')}${r.errors.length > 30 ? `<li>… ${r.errors.length - 30} more</li>` : ''}</ul>` : `<p class="pos">${escA(r.summary || '')}</p>`}
+    ${r.warnings.length ? `<p class="hint">Warnings (fixed automatically):</p><ul class="hint">${r.warnings.slice(0, 20).map(e => `<li>${escA(e)}</li>`).join('')}${r.warnings.length > 20 ? `<li>… ${r.warnings.length - 20} more</li>` : ''}</ul>` : ''}</div>` : '';
+  let cur = '<p class="muted">No custom league loaded: new careers use the default 2026-27 league.</p>';
+  if (lg) {
+    const rows = lg.conferences.map(c => { const ts = lg.teams.filter(t => t.conference === c.name), nr = ts.filter(t => t.roster).length;
+      return `<tr><td><b>${escA(c.name)}</b></td><td>${ts.length}</td><td>${isIndependent(c.name) || ts.length < 2 ? '<span class="muted">none (at-large only)</span>' : c.bids}</td><td>${nr}</td><td class="muted" style="white-space:normal;text-align:left">${ts.map(t => escA(t.name)).join(', ')}</td></tr>`; }).join('');
+    cur = `<p><b>${escA(lg.name)}</b> · ${lg.teams.length} teams · ${lg.tournaments ? lg.tournaments.length + ' custom tournaments' : 'default tournaments'}</p>
+      <table class="tbl dense"><tr><th>Conference</th><th>Teams</th><th>NCAA bids / wt</th><th>Rosters</th><th class="l">Teams</th></tr>${rows}</table>
+      <div class="row"><button class="secondary" data-act="lgdl">Download this league</button><button class="secondary" data-act="lgclear">Remove custom league</button></div>`;
+  }
+  return `<div class="start" style="max-width:900px"><h1>Custom league</h1>
+    <p class="muted">Build your own league: team names, conferences, NCAA bids per conference, in-season tournaments and rosters. <b>It applies to careers you start from now on</b> (pick it under New career); saved careers keep their league. Stored in this browser only.</p>
+    <div class="row"><button class="secondary" data-act="lgback">◀ Back to the menu</button></div>
+    ${res}
+    <div class="card"><h2>Current custom league</h2>${cur}</div>
+    <div class="card"><h2>1. Download a template</h2>
+      <div class="row"><button class="secondary" data-act="lgtpl">League file with rosters (.json)</button><button class="secondary" data-act="lgtplsmall">League file without rosters (.json)</button><button class="secondary" data-act="lgcsvtpl">Rosters (.csv)</button></div>
+      <p class="hint">The templates hold the default league. Edit them in any text editor or spreadsheet. The league file's "about" field explains every setting; teams need only a name and a conference.</p></div>
+    <div class="card"><h2>2. Upload</h2>
+      <p><label>League file (.json): <input type="file" accept=".json,application/json" data-chg="lgfile"></label></p>
+      <p class="hint">Replaces the custom league: teams, conference alignment, bids, tournaments and any rosters in it. At least ${LEA.MIN_TEAMS} teams.</p>
+      <p><label>Rosters (.csv): <input type="file" accept=".csv,text/csv" data-chg="lgcsv"></label></p>
+      <p class="hint">Columns <code>${LEA.CSV_HEAD.join(',')}</code>. Replaces the rosters of the teams it lists, in the custom league (or, if none is loaded, in a copy of the default league). Weights: ${WEIGHTS.join(', ')}. Rating = in-game overall (about 9 walk-on, 12.6 average D1 starter, 15 All-American, 18+ title contender); blank = the team's level. Weights with fewer than 2 wrestlers get generated walk-ons.</p></div></div>`;
 }
 
 // ---------- screens ----------
@@ -455,7 +517,7 @@ function home() {
   const rm = rankMap(), t = me(), du = userDual(G), rk = rankings(G);
   let next;
   const ev = userEvent(G);
-  if (G.phase === 'offseason') next = `<b>Offseason ${G.season}</b> — step ${Math.max(1, OFF_STEPS.findIndex(s => s[0] === offStep(G)) + 1)} of 4: <b>${(OFF_STEPS.find(s => s[0] === offStep(G)) || [])[1]}</b>. Go to the <a data-act="nav" data-v="offseason">Offseason</a> page, and use the top-right button to move to the next step. Roster has scholarships, Training has weight moves.`;
+  if (G.phase === 'offseason') next = `<b>Offseason ${G.season}</b> — step ${Math.max(1, OFF_STEPS.findIndex(s => s[0] === offStep(G)) + 1)} of ${OFF_STEPS.length}: <b>${(OFF_STEPS.find(s => s[0] === offStep(G)) || [])[1]}</b>. Go to the <a data-act="nav" data-v="offseason">Offseason</a> page, and use the top-right button to move to the next step. Roster has scholarships, Training has weight moves.`;
   else if (G.phase === 'seasonEnd') {
     const h = G.history[G.history.length - 1], rec = records(G)[G.userTeam];
     next = `<b>Season complete.</b> Dual record ${rec.w}-${rec.l}.` + (h ? `<br>NCAA champion: <b>${tn(h.champion)}</b>. ${h.userFinish ? `You finished <b>#${h.userFinish}</b> (${h.userPts} pts) with ${h.userAA} All-American${h.userAA === 1 ? '' : 's'} and ${h.userChamps} national champion${h.userChamps === 1 ? '' : 's'}.` : 'You had no NCAA qualifiers.'}` : '');
@@ -578,7 +640,7 @@ function standings() {
   const rows = Object.values(G.teams).filter(t => t.conf === conf).map(t => ({ t, r: rec[t.id] }))
     .sort((a, b) => (b.r.cw - b.r.cl) - (a.r.cw - a.r.cl) || b.r.cw - a.r.cw || (b.r.w - b.r.l) - (a.r.w - a.r.l) || rm[a.t.id] - rm[b.t.id])
     .map(({ t, r }) => `<tr class="${t.id === G.userTeam ? 'me' : ''}"><td>${tn(t.id)}</td><td>${r.cw}-${r.cl}</td><td>${r.w}-${r.l}</td><td>${r.pf}-${r.pa}</td><td>#${rm[t.id]}</td></tr>`).join('');
-  return `<div class="card"><h2>Standings</h2><label>Conference <select data-chg="conf">${CONFERENCES.map(c => `<option ${c === conf ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+  return `<div class="card"><h2>Standings</h2><label>Conference <select data-chg="conf">${confsOf(G).map(c => `<option ${c === conf ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
     <table class="tbl"><tr><th>Team</th><th>Conf</th><th>Overall</th><th>Pts F-A</th><th>Rank</th></tr>${rows}</table></div>`;
 }
 
@@ -777,7 +839,7 @@ function training() {
   const trained = {};
   tr.focus.forEach((k, i) => { for (const [at, aw] of Object.entries(PRACTICE[k].attrs)) trained[at] = (trained[at] || 0) + FOCUS_SHARES[i] * aw; });
   const attrNote = Object.entries(trained).sort((a, b) => b[1] - a[1]).map(([at, v]) => `${ATTR_LABELS[at]} ${Math.round(v * 100)}%`).join(' · ') || 'none (recovery only)';
-  const rows = ws.map(w => `<tr><td>${wl(w)}</td><td>${w.natural}</td><td>${wstat(w)}</td><td>${CLASS_NAMES[w.cls]}</td><td>${potLabel(w)}</td>
+  const rows = ws.map(w => `<tr><td>${wl(w)}</td><td>${w.natural}</td><td>${wstat(w)}</td><td>${CLASS_NAMES[w.cls]}</td><td><b>${ovr(w).toFixed(1)}</b></td><td>${potLabel(w)}</td>
     <td style="width:110px"><div class="bar"><i class="${w.fatigue > 60 ? 't1' : w.fatigue > 35 ? 't2' : 't3'}" style="width:${Math.max(3, w.fatigue)}%"></i></div></td><td>${w.injury ? `<span class="neg">🩹 ${w.injury.what} (${w.injury.weeks}w)</span>` : ''}</td>
     <td><select data-chg="wfocus" data-w="${w.id}"><option value="">Team plan</option>${opts(w.focus)}</select></td>
     <td>${w.move ? `${w.move.dir === 'down' ? 'Cutting' : 'Gaining'} to ${w.move.to} (${w.move.weeks} wk) <a data-act="cancelmove" data-v="${w.id}">cancel</a>` : w.movedSeason === G.season ? '<span class="muted">moved this season</span>' : canMove(G, w) ? `<select data-chg="wmove" data-w="${w.id}"><option value="">Hold ${w.natural}</option>${WEIGHTS.indexOf(w.natural) > 0 ? `<option value="down">Cut to ${WEIGHTS[WEIGHTS.indexOf(w.natural) - 1]}</option>` : ''}${WEIGHTS.indexOf(w.natural) < 9 ? `<option value="up">Gain to ${WEIGHTS[WEIGHTS.indexOf(w.natural) + 1]}</option>` : ''}</select>` : '<span class="muted">—</span>'}</td></tr>`).join('');
@@ -789,7 +851,7 @@ function training() {
     <p class="muted">Gain rate ×${I.gain} · fatigue load +${I.fat}/week before recovery · Coaching staff factor ×${coachFactor(t).toFixed(2)} · Team fatigue ${Math.round(avgFat)} · ${inj} injured</p>
     <p class="hint"><b>Periodization:</b> hard weeks build skills faster but pile up fatigue (lower starting energy in matches) and injury risk. Switch to Light or add Recovery before big duals and, later, the conference and NCAA tournaments. Younger, high-potential, hard-working wrestlers improve fastest; attributes near a wrestler's potential grow slowly. Live wrestling and big-move drills carry the most injury risk; film study and flexibility the least.<br><b>Weight moves:</b> a cut or gain takes about 5 weeks (extra fatigue, small attribute shifts) and each wrestler can make only one move per season.</p></div>
     <div class="card" style="overflow-x:auto"><h2>Individual focus <small class="muted">override the plan for one wrestler</small></h2>
-    <table class="tbl dense"><tr><th>Name</th><th>Wt</th><th>Record</th><th>Cl</th><th>Potential</th><th>Fatigue</th><th>Status</th><th>Focus</th><th>Weight move</th></tr>${rowsFixed}</table></div>`;
+    <table class="tbl dense"><tr><th>Name</th><th>Wt</th><th>Record</th><th>Cl</th><th>OVR</th><th>Potential</th><th>Fatigue</th><th>Status</th><th>Focus</th><th>Weight move</th></tr>${rowsFixed}</table></div>`;
 }
 
 function tourneyday() {
@@ -1079,13 +1141,18 @@ function autoControls() {
     ${msg ? `<p class="hint">${msg}</p>` : ''}
     <p class="hint">Auto-recruit ranks recruits the way the AI does (star level, fit, how realistic your prestige is), then pitches, calls, visits and DMs them with your hours and offers a scholarship once his interest is high enough. Set "Every week" to run a plan automatically when you advance, so no hours are lost.</p>`;
 }
+const offClass = () => (G.phase === 'offseason' && G.lastClass ? G.lastClass : null);
+const recPool = () => { const lc = offClass(); return lc ? lc.recs : Object.values(G.recruits); };
 function recruiting() {
-  const rc = ui.rec, tabs = [['targets', `My target board (${R.boardOf(G).length}/${R.BOARD_MAX})`], ['board', 'All recruits'], ['commits', 'Commits & classes'], ['portal', G.phase === 'offseason' ? `Transfer portal (${G.portal.length})` : 'Transfer portal']]
+  const rc = ui.rec, lc = offClass();
+  if (lc && (rc.tab === 'targets' || rc.tab === 'board')) rc.tab = 'commits';
+  const tabs = (lc ? [['commits', `Class of ${lc.season + 1}: signings & rankings`], ['portal', `Transfer portal (${G.portal.length})`]]
+    : [['targets', `My target board (${R.boardOf(G).length}/${R.BOARD_MAX})`], ['board', 'All recruits'], ['commits', 'Commits & classes'], ['portal', G.phase === 'offseason' ? `Transfer portal (${G.portal.length})` : 'Transfer portal']])
     .map(([k, n]) => `<button class="${rc.tab === k ? '' : 'secondary'}" data-act="rectab" data-v="${k}">${n}</button>`).join(' ');
   const aidFree = R.aidAvailable(G, G.userTeam), pend = R.pendingOffers(G, G.userTeam);
   const head = `<div class="card"><h2>Recruiting <small class="muted">class of ${G.season + 1}</small></h2>
     <div class="row">${tabs}</div>
-    <p class="muted">Recruiting hours this week: <b style="color:var(--text)">${G.rec.hours}</b> of ${R.WEEKLY_HOURS} · Scholarship room: <b style="color:var(--text)">${aidFree.toFixed(2)}</b> of ${R.AID_CAP} (pending offers ${pend.toFixed(2)}, free to offer ${Math.max(0, aidFree - pend).toFixed(2)})</p>${autoControls()}</div>`;
+    <p class="muted">${lc ? '' : `Recruiting hours this week: <b style="color:var(--text)">${G.rec.hours}</b> of ${R.WEEKLY_HOURS} · `}Scholarship room: <b style="color:var(--text)">${aidFree.toFixed(2)}</b> of ${R.AID_CAP} (pending offers ${pend.toFixed(2)}, free to offer ${Math.max(0, aidFree - pend).toFixed(2)})</p>${lc ? '' : autoControls()}</div>`;
   const bar = G.phase === 'offseason' ? offBar() : '';
   if (rc.tab === 'portal') return bar + head + portalTab();
   if (rc.tab === 'commits') return bar + head + commitsTab();
@@ -1162,14 +1229,26 @@ function recruitDetail(r) {
     <p class="hint">Your pitch score right now: <b>${pitch.toFixed(0)}</b>. He commits when his best-scoring school (among those who offered) reaches about 30 after his decision week, so keep building interest and match what he cares about.</p>` : `<p><b>${r.status === 'committed' ? `Committed to ${G.teams[r.team].name}` : 'Unsigned'}</b></p>`}</div>`;
 }
 function commitsTab() {
-  const mine = Object.values(G.recruits).filter(r => r.team === G.userTeam).sort((a, b) => a.rank - b.rank);
-  const rows = mine.map(r => `<tr><td>${r.rank}</td><td>${r.name}</td><td>${r.weight}</td><td>${r.state}</td><td style="color:var(--gold)">${starStr(r.stars)}</td><td>${Math.round((r.offers[G.userTeam] || 0) * 100)}%</td></tr>`).join('');
-  const pts = {}; for (const r of Object.values(G.recruits)) if (r.team) pts[r.team] = (pts[r.team] || 0) + ({ 5: 10, 4: 6, 3: 3, 2: 1, 1: 0.3 }[r.stars]);
-  const cls = Object.entries(pts).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([t, v], i) => `<tr class="${t === G.userTeam ? 'me' : ''}"><td>${i + 1}</td><td>${tn(t)}</td><td>${v.toFixed(1)}</td><td>${Object.values(G.recruits).filter(r => r.team === t).length}</td></tr>`).join('');
-  return `<div class="grid2"><div class="card"><h2>Your commits <small class="muted">${mine.length}</small></h2><table class="tbl"><tr><th>Rank</th><th>Name</th><th>Wt</th><th>St</th><th>★</th><th>Aid</th></tr>${rows || '<tr><td colspan="6" class="muted">No commits yet.</td></tr>'}</table></div>
-    <div class="card"><h2>Recruiting class rankings</h2><table class="tbl"><tr><th>#</th><th>Team</th><th>Pts</th><th>Commits</th></tr>${cls || '<tr><td colspan="4" class="muted">No commits yet.</td></tr>'}</table></div></div>`;
+  const lc = offClass(), pool = recPool(), aidOf = r => (lc ? r.aid : r.offers[G.userTeam]) || 0;
+  const mine = pool.filter(r => r.team === G.userTeam).sort((a, b) => a.rank - b.rank);
+  const rows = mine.map(r => `<tr><td>${r.rank}</td><td>${r.name}</td><td>${r.weight}</td><td>${r.state}</td><td style="color:var(--gold)">${starStr(r.stars)}</td><td>${Math.round(aidOf(r) * 100)}%</td></tr>`).join('');
+  const pts = {}, n = {}; for (const r of pool) if (r.team) { pts[r.team] = (pts[r.team] || 0) + ({ 5: 10, 4: 6, 3: 3, 2: 1, 1: 0.3 }[r.stars]); n[r.team] = (n[r.team] || 0) + 1; }
+  const order = Object.entries(pts).sort((a, b) => b[1] - a[1]), myRank = order.findIndex(([t]) => t === G.userTeam) + 1;
+  const show = order.slice(0, lc ? 25 : 15);
+  const cls = show.map(([t, v], i) => `<tr class="${t === G.userTeam ? 'me' : ''}"><td>${i + 1}</td><td>${tn(t)}</td><td>${v.toFixed(1)}</td><td>${n[t]}</td><td class="muted">${pool.filter(r => r.team === t && r.stars >= 4).length || ''}</td></tr>`).join('')
+    + (myRank > show.length ? `<tr class="me"><td>${myRank}</td><td>${tn(G.userTeam)}</td><td>${pts[G.userTeam].toFixed(1)}</td><td>${n[G.userTeam]}</td><td></td></tr>` : '');
+  let top = '';
+  if (lc) {   // the finished class: where the top prospects signed
+    const best = pool.slice().sort((a, b) => a.rank - b.rank).slice(0, 50);
+    top = `<div class="card" style="overflow-x:auto"><h2>Top 50 recruits <small class="muted">final signings, class of ${lc.season + 1}</small></h2><table class="tbl dense"><tr><th>#</th><th>Name</th><th>Wt</th><th>St</th><th>★</th><th class="l">Signed with</th></tr>
+      ${best.map(r => `<tr class="${r.team === G.userTeam ? 'me' : ''}"><td>${r.rank}</td><td>${r.team ? wl(G.wrestlers[r.id] ? r.id : '', r.name) : r.name}</td><td>${r.weight}</td><td>${r.state}</td><td style="color:var(--gold)">${starStr(r.stars)}</td><td class="l">${r.team ? tn(r.team, 16) + (r.late ? ' <span class="muted">(late)</span>' : '') : '<span class="muted">unsigned</span>'}</td></tr>`).join('')}</table></div>`;
+  }
+  const title = lc ? `Your signed class <small class="muted">${mine.length} · #${myRank || '—'} nationally</small>` : `Your commits <small class="muted">${mine.length}</small>`;
+  return `<div class="grid2"><div class="card"><h2>${title}</h2><table class="tbl"><tr><th>Rank</th><th>Name</th><th>Wt</th><th>St</th><th>★</th><th>Aid</th></tr>${rows || `<tr><td colspan="6" class="muted">${lc ? 'No signings.' : 'No commits yet.'}</td></tr>`}</table>
+      ${lc ? '<p class="hint">Last cycle\'s final results, kept here until the new season starts. A new recruiting class opens in week 1.</p>' : ''}</div>
+    <div class="card"><h2>${lc ? 'Final recruiting class rankings' : 'Recruiting class rankings'}</h2><table class="tbl"><tr><th>#</th><th>Team</th><th>Pts</th><th>Signed</th><th>4★+</th></tr>${cls || '<tr><td colspan="5" class="muted">No commits yet.</td></tr>'}</table></div></div>${top}`;
 }
-// ---------- offseason (4 steps: cut, progression, recruiting, schedule) ----------
+// ---------- offseason (5 steps: wrestlers leaving, cut, progression, recruiting, schedule) ----------
 function offBar() {
   const idx = OFF_STEPS.findIndex(s => s[0] === offStep(G));
   return `<div class="card"><div class="row"><b>Offseason ${G.season}</b> ${OFF_STEPS.map(([k, n], i) => `<span class="${i === idx ? '' : 'muted'}" style="${i === idx ? 'font-weight:700;color:var(--tc)' : ''}">${i < idx ? '✓' : i + 1}. ${n}</span>`).join(' <span class="muted">›</span> ')}</div></div>`;
@@ -1177,10 +1256,26 @@ function offBar() {
 function offseasonScreen() {
   const step = offStep(G);
   let body;
-  if (step === 'cut') body = cutPanel(Math.max(0, me().roster.length - R.ROSTER_MAX));
+  if (step === 'leaving') body = leavingPanel();
+  else if (step === 'cut') body = cutPanel(Math.max(0, me().roster.length - R.ROSTER_MAX));
   else if (step === 'progress') body = progressPanel();
   else body = `<div class="card"><p>This step happens on the <a data-act="nav" data-v="${step === 'recruit' ? 'recruit' : 'schedule'}">${step === 'recruit' ? 'Recruiting' : 'Schedule'}</a> page.</p></div>`;
   return offBar() + body;
+}
+// Step 1: who is gone (your graduating seniors and transfers out) and the best seniors leaving the sport. Nothing to decide here.
+function leavingPanel() {
+  const lv = (G.off && G.off.leaving) || { grads: [], transfers: [], notable: [] }, ut = me();
+  const rec = x => `${x.w}-${x.l}${x.ch ? ` · <b style="color:var(--gold)">${x.ch}× champ</b>` : ''}${x.aa ? ` · ${x.aa}× AA` : ''}`;
+  const row = (x, why) => `<tr><td>${wl(x.id, x.name)}</td><td>${x.wt}</td><td><b>${x.ovr.toFixed(1)}</b></td><td>${rec(x)}</td><td class="muted">${why}</td></tr>`;
+  const mine = lv.grads.map(x => row(x, 'graduated')).concat(lv.transfers.map(x => row(x, 'entered the transfer portal'))).join('');
+  const lost = WEIGHTS.filter(wt => lv.grads.concat(lv.transfers).some(x => x.wt === wt) && !ut.roster.some(id => G.wrestlers[id] && G.wrestlers[id].natural === wt && !lv.transfers.some(x => x.id === id)));
+  const fresh = ut.roster.filter(id => G.wrestlers[id] && G.wrestlers[id].fresh).length;
+  const nota = lv.notable.map((x, i) => `<tr class="${x.team === G.userTeam ? 'me' : ''}"><td>${i + 1}</td><td>${wl(x.id, x.name)}</td><td>${tn(x.team, 16)}</td><td>${x.wt}</td><td>${rec(x)}</td></tr>`).join('');
+  return `<div class="grid2"><div class="card" style="overflow-x:auto"><h2>Wrestlers leaving ${ut.name} <small class="muted">${lv.grads.length} graduated · ${lv.transfers.length} transferring</small></h2>
+    <table class="tbl dense"><tr><th>Name</th><th>Wt</th><th>OVR</th><th>Career</th><th></th></tr>${mine || '<tr><td colspan="5" class="muted">Nobody is leaving this year.</td></tr>'}</table>
+    <p class="muted">${fresh} signed freshm${fresh === 1 ? 'a' : 'e'}n join the roster.${lost.length ? ` <span class="neg">No one left at ${lost.join(', ')}</span>: look at the transfer portal in the Recruiting step.` : ''}</p>
+    <p class="hint">Transfers can still be won back in the portal (Recruiting step). Next: cut your roster to the limit.</p></div>
+    <div class="card" style="overflow-x:auto"><h2>Top seniors leaving the sport</h2><table class="tbl dense"><tr><th>#</th><th>Name</th><th>Team</th><th>Wt</th><th>Career</th></tr>${nota || '<tr><td colspan="5" class="muted">None.</td></tr>'}</table></div></div>`;
 }
 function progressPanel() {
   const off = G.off || {}, log = off.prog || [], kept = log.filter(x => !x.released).sort((a, b) => (b.o1 - b.o0) - (a.o1 - a.o0)), rel = log.filter(x => x.released);
@@ -1208,7 +1303,7 @@ function cutPanel(need) {
 }
 function portalTab() {
   if (G.phase !== 'offseason') return `<div class="card"><p>The transfer portal opens after the NCAA Championships. Wrestlers who are buried on their depth chart (and the occasional starter) enter it each offseason; you see their true ratings.</p></div>`;
-  if (['cut', 'progress'].includes(offStep(G))) return `<div class="card"><p>The transfer portal opens in the Recruiting step, after you cut your roster and see wrestler progression. Go to the <a data-act="nav" data-v="offseason">Offseason</a> page.</p></div>`;
+  if (['leaving', 'cut', 'progress'].includes(offStep(G))) return `<div class="card"><p>The transfer portal opens in the Recruiting step, after you cut your roster and see wrestler progression. Go to the <a data-act="nav" data-v="offseason">Offseason</a> page.</p></div>`;
   const list = G.portal.slice().sort((a, b) => overall(G.wrestlers[b.id]) - overall(G.wrestlers[a.id]));
   const rows = list.map(p => {
     const w = G.wrestlers[p.id], off = p.offers[G.userTeam];

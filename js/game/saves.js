@@ -17,7 +17,7 @@ const idbPut = (k, v) => tx('readwrite', s => s.put(v, k));
 const idbGet = k => tx('readonly', s => s.get(k));
 const idbDel = k => tx('readwrite', s => s.delete(k));
 const queue = fn => (writing = writing.then(fn).catch(e => console.warn('save failed', e)));
-const meta = G => ({ id: G.slot, name: G.slotName || `${G.coach} · ${G.teams[G.userTeam].name}`, school: G.userTeam, season: G.season, week: G.week, phase: G.phase, ts: Date.now() });
+const meta = G => ({ id: G.slot, name: G.slotName || `${G.coach} · ${G.teams[G.userTeam].name}`, school: G.userTeam, tname: G.teams[G.userTeam].name, ...(G.league ? { league: G.league.name } : {}), season: G.season, week: G.week, phase: G.phase, ts: Date.now() });
 const saveIndex = () => queue(() => idbPut('index', index));
 
 export async function initSaves() {

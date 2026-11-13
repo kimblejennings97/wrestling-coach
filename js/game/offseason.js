@@ -5,10 +5,10 @@ import { generateWrestler, WEIGHTS } from '../data/gen.js';
 import { PRACTICE, FOCUS_SHARES } from '../data/practice.js';
 import { seasonCalendar } from '../data/tournaments.js';
 import { syncDualField } from './dualtourney.js';
-import { overall, overallLegacy, sanitizeLineup, autoLineup, aiPlan, coachFactor, initDev, makeSchedule, useCalendar, rankings } from './core.js';
+import { overall, overallLegacy, sanitizeLineup, autoLineup, aiPlan, coachFactor, initDev, makeSchedule, useCalendar, rankings, realign } from './core.js';
 import { applyPrestige } from './prestige.js';
 import { buildNext } from './sched.js';
-import { rollSeasonStats, updatePolls, careerOf, flushStats } from './stats.js';
+import { rollSeasonStats, updatePolls, careerOf, flushStats, IDX } from './stats.js';
 import { closeSeasonRecords, retire, pruneArchive } from './legacy.js';
 import { finalizeRecruits, buildPortal, resolvePortal, generateRecruitClass, aidAvailable, AID_CAP, ROSTER_MAX, autoCut, cutsNeeded, pruneGone } from './recruit.js';
 
@@ -48,24 +48,27 @@ function growWrestler(G, w, tid, rng, plan) {
   return { gained, d: overall(w) - before, event };
 }
 
-// ---------- the offseason is 4 steps: cut -> progress -> recruit -> schedule ----------
-export const OFF_STEPS = [['cut', 'Cut players'], ['progress', 'Wrestler progression'], ['recruit', 'Recruiting'], ['schedule', 'Customize schedule']];
+// ---------- the offseason is 5 steps: leaving -> cut -> progress -> recruit -> schedule ----------
+export const OFF_STEPS = [['leaving', 'Wrestlers leaving'], ['cut', 'Cut players'], ['progress', 'Wrestler progression'], ['recruit', 'Recruiting'], ['schedule', 'Customize schedule']];
 export const offStep = G => (G.phase === 'offseason' ? (G.off && G.off.step) || 'recruit' : null);   // old saves (no G.off) land on recruiting
 
 // Step 1 setup: seniors graduate, signed recruits join as freshmen, the portal fills with random transfers, AI programs cut to the roster limit.
-// Ratings do NOT change yet (that is step 2), so cut decisions are made on last season's numbers.
+// Step 1 (Wrestlers leaving) only shows who left (G.off.leaving); step 2 is the cut. Ratings do NOT change until progression, so cuts use last season's numbers.
+// The finished recruiting class is kept in G.lastClass (signings + class rankings) until the new season starts.
 export function beginOffseason(G) {
   const rng = makeRng(G.seed + G.season * 131 + 5);
   flushStats(G);
   closeSeasonRecords(G);   // single-season record books close before the seniors leave
   finalizeRecruits(G);
-  const stats = { grads: 0, freshmen: 0 }, gradNames = [];
+  const stats = { grads: 0, freshmen: 0 }, gradNames = [], leaving = { grads: [], transfers: [], notable: [] };
+  const brief = w => { const c = careerOf(w), o = Math.round(overall(w) * 10) / 10; return { id: w.id, name: w.name, team: w.team, wt: w.natural, ovr: o, w: c[IDX.w], l: c[IDX.l], aa: c[IDX.aa], ch: c[IDX.ch] }; };
   G.alumni = G.alumni || [];
   for (const tid in G.teams) {
     const t = G.teams[tid], keep = [];
     for (const id of t.roster) {
       const w = G.wrestlers[id];
       if (w.cls >= 4) {
+        const b = brief(w); leaving.notable.push(b); if (tid === G.userTeam) leaving.grads.push(b);
         retire(G, w);   // career record books, Halls of Fame, archive (keeps his profile reachable)
         if (tid === G.userTeam) { G.alumni.push({ id: w.id, name: w.name, season: G.season, weight: w.natural, ovr: Math.round(overall(w) * 10) / 10, car: careerOf(w) }); stats.grads++; gradNames.push(`${w.name} (${w.natural})`); }
         delete G.wrestlers[id]; continue;
@@ -82,16 +85,20 @@ export function beginOffseason(G) {
     }
     t.roster = keep; t.incoming = [];
   }
+  const team = r => r.team || null;   // keep the signed class (rankings, where everyone went) for the offseason recruiting page
+  G.lastClass = { season: G.season, recs: Object.values(G.recruits).map(r => ({ id: r.id, name: r.name, weight: r.weight, state: r.state, stars: r.stars, rank: r.rank, team: team(r), status: r.status, late: !!r.late, aid: r.team ? r.offers[r.team] || 0 : 0 })) };
   G.recruits = {};
   G.portal = buildPortal(G, rng);
+  for (const p of G.portal) if (p.from === G.userTeam) { const w = G.wrestlers[p.id]; if (w) leaving.transfers.push({ ...brief(w), team: G.userTeam }); }
+  leaving.notable = leaving.notable.sort((a, b) => b.ovr - a.ovr).slice(0, 25);
   let aiCuts = 0;
   for (const id in G.teams) if (id !== G.userTeam) aiCuts += autoCut(G, id).length;
   for (const id in G.teams) G.teams[id].lineup = autoLineup(G, id);
   G.phase = 'offseason';
-  G.off = { step: 'cut', grads: gradNames, freshmen: stats.freshmen, aiCuts, prog: null };
+  G.off = { step: 'leaving', grads: gradNames, leaving, freshmen: stats.freshmen, aiCuts, prog: null };
   buildNext(G);   // next season's schedule, editable in step 4
   const mustCut = cutsNeeded(G);
-  G.inbox.unshift({ week: G.week, title: 'Offseason', body: `${stats.grads} senior${stats.grads === 1 ? '' : 's'} graduated; ${stats.freshmen} freshmen joined. ${gradNames.length ? 'Graduated: ' + gradNames.join(', ') + '. ' : ''}Step 1 of 4: ${mustCut ? `your roster is ${G.teams[G.userTeam].roster.length} and the limit is ${ROSTER_MAX}, so you must cut ${mustCut}.` : 'your roster is within the limit; cut anyone else you want to release.'} Cut wrestlers enter the transfer portal (${G.portal.length} in it now${aiCuts ? `, ${aiCuts} of them AI roster cuts` : ''}).` });
+  G.inbox.unshift({ week: G.week, title: 'Offseason', body: `${stats.grads} senior${stats.grads === 1 ? '' : 's'} graduated; ${stats.freshmen} freshmen joined. ${gradNames.length ? 'Graduated: ' + gradNames.join(', ') + '. ' : ''}Next step: cut players. ${mustCut ? `your roster is ${G.teams[G.userTeam].roster.length} and the limit is ${ROSTER_MAX}, so you must cut ${mustCut}.` : 'your roster is within the limit; cut anyone else you want to release.'} Cut wrestlers enter the transfer portal (${G.portal.length} in it now${aiCuts ? `, ${aiCuts} of them AI roster cuts` : ''}).` });
   return stats;
 }
 
@@ -126,6 +133,7 @@ export function runProgression(G) {
 // Move to the next offseason step. Returns { ok, msg } (msg when blocked); after the last step the caller starts the season.
 export function advanceOffseason(G) {
   const step = offStep(G);
+  if (step === 'leaving') { G.off.step = 'cut'; return { ok: true }; }
   if (step === 'cut') {
     const need = cutsNeeded(G);
     if (need) return { ok: false, msg: `Your roster is ${G.teams[G.userTeam].roster.length}; the limit is ${ROSTER_MAX}. Cut ${need} more wrestler${need === 1 ? '' : 's'} first.` };
@@ -148,6 +156,7 @@ function autoAid(G, tid) {
 
 export function startNewSeason(G) {
   const rng = makeRng(G.seed + G.season * 977 + 11);
+  if (offStep(G) === 'leaving') G.off.step = 'cut';
   if (offStep(G) === 'cut') { if (cutsNeeded(G)) autoCut(G, G.userTeam); runProgression(G); G.off.step = 'progress'; }   // safety net (UI walks the steps; headless sims skip them): trim, then progress
   resolvePortal(G);
   // prestige drift from this season's result
@@ -175,7 +184,8 @@ export function startNewSeason(G) {
   ut.lineup = lu; sanitizeLineup(G, G.userTeam);
   rollSeasonStats(G);
   G.season++; G.cal = seasonCalendar(G.season); useCalendar(G);
-  G.week = 1; G.phase = 'season'; G.entries = {}; G.portal = []; G.off = null;
+  G.week = 1; G.phase = 'season'; G.entries = {}; G.portal = []; G.off = null; G.lastClass = null;
+  if (realign(G).length) G.next = null;   // a draft made under the old alignment is rebuilt
   if (G.next && G.next.season === G.season) { G.schedule = G.next.schedule; G.tournaments = G.next.tournaments; } else G.schedule = makeSchedule(G, rng);   // the (possibly customized) draft
   syncDualField(G);   // National Dual Tournament field = top 16 by the NEW prestige (the draft predates the drift)
   G.next = null;

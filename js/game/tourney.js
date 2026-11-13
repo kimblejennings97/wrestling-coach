@@ -3,7 +3,7 @@
 import { simulateBout } from '../engine/bout.js';
 import { makeRng } from '../engine/rng.js';
 import { WEIGHTS } from '../data/gen.js';
-import { CONF_BIDS, NCAA_FIELD } from '../data/tournaments.js';
+import { confBids, NCAA_FIELD } from '../data/tournaments.js';
 import { overall, wrestlerAt, sanitizeLineup, startEnergy, autoLineup, giveInjury, matchInjuryChance, FATIGUE, rankings, tournamentRankings } from './core.js';
 import { TEAM_COLORS, SPECIAL_KITS } from '../data/teamcolors.js';
 import { runDual } from './dualtourney.js';
@@ -313,15 +313,21 @@ export function resumeScore(G, id, confPlace) {
 export function computeNcaaField(G) {
   const field = {}, show = {}, teamsIn = new Set(), polls = ensurePolls(G);
   const confTs = G.tournaments.filter(t => t.kind === 'conf' && t.done);
+  const inConf = new Set(G.tournaments.filter(t => t.kind === 'conf').flatMap(t => t.teams)), indep = Object.keys(G.teams).filter(id => !inConf.has(id));
   for (const wt of WEIGHTS) {
     const autos = [], pool = [];
     for (const t of confTs) {
-      const bids = CONF_BIDS[t.conf] ?? 1, w = t.result.weights[wt];
+      const bids = confBids(G, t.conf), w = t.result.weights[wt];
       for (const e of w.all) {
         const st = seasonOf(G.wrestlers[e.id]), rk = (polls[wt] || []).indexOf(e.id) + 1;
         const entry = { id: e.id, team: e.team, ss: Math.round(resumeScore(G, e.id, e.place) * 1000) / 1000, rec: [st[0], st[1]], rk, cp: e.place };
         if (e.place <= bids && e.place <= 8) autos.push({ ...entry, via: 'auto' }); else pool.push({ ...entry, via: 'at-large' });
       }
+    }
+    for (const tid of indep) {   // teams with no conference tournament (Independents): their starter can only get an at-large bid
+      const id = G.teams[tid].lineup[wt], w = id && G.wrestlers[id]; if (!w || w.team !== tid) continue;
+      const st = seasonOf(w), rk = (polls[wt] || []).indexOf(id) + 1;
+      pool.push({ id, team: tid, ss: Math.round(resumeScore(G, id, 99) * 1000) / 1000, rec: [st[0], st[1]], rk, cp: 0, via: 'at-large' });
     }
     pool.sort((a, b) => b.ss - a.ss);
     const room = Math.max(0, NCAA_FIELD - autos.length), picked = pool.slice(0, room), rest = pool.slice(room);

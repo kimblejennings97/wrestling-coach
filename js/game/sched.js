@@ -3,7 +3,7 @@
 // startNewSeason adopts the draft. All checks keep the schedule consistent for the other teams too (no team is ever double-booked).
 import { makeRng } from '../engine/rng.js';
 import { seasonCalendar } from '../data/tournaments.js';
-import { makeSchedule } from './core.js';
+import { makeSchedule, realign } from './core.js';
 
 export const MAX_USER_EVENTS = 5;        // open/major tournaments you may enter (conference tournament and NCAAs are extra)
 export const MAJOR_PRESTIGE_RANK = 40;   // majors only invite the top-40 programs
@@ -12,6 +12,7 @@ export const TARGET = [18, 35];
 
 // Draft next season's schedule (same builder the game uses, so it is balanced).
 export function buildNext(G) {
+  realign(G);   // pre-2026-27 careers move to the current conference alignment before next season is drafted
   const saved = { cal: G.cal, season: G.season, tournaments: G.tournaments, schedule: G.schedule };
   try {
     G.season = saved.season + 1; G.cal = seasonCalendar(G.season);

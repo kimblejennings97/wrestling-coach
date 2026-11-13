@@ -63,6 +63,10 @@ td.ac { color: #0f1620; font-weight: 600; } td.ac.t4 { font-weight: 800; }   /* 
 a[data-act] { color: var(--accent); cursor: pointer; }
 .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; } @media (max-width: 700px) { .cols2 { grid-template-columns: 1fr; } }
 .start { max-width: 640px; margin: 30px auto; padding: 0 16px; display: flex; flex-direction: column; gap: 14px; }
+.tbl.saves td, .tbl.saves th { font-size: 13px; }
+.tbl.saves tr.info td { border-bottom: none; padding-bottom: 2px; }
+.tbl.saves tr.acts td { padding-top: 0; }
+.tbl.saves tr.acts .row { margin: 2px 0 4px; }
 .start input, .tbl select { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; }
 
 /* school logos */

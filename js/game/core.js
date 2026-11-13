@@ -2,9 +2,10 @@
 import { simulateBout, ATTR_KEYS, OVR_W, OVR_W_LEGACY } from '../engine/bout.js';
 import { makeRng } from '../engine/rng.js';
 import { generateWrestler, WEIGHTS, ARCHETYPES } from '../data/gen.js';
-import { SCHOOLS, CONFERENCES } from '../data/schools.js';
+import { SCHOOLS, tourneyConfs } from '../data/schools.js';
+import { leagueSchools, leagueRosters, careerLeague } from './league.js';
 import { PRACTICE, INTENSITY, FOCUS_SHARES } from '../data/practice.js';
-import { seasonCalendar, resolveTournaments } from '../data/tournaments.js';
+import { seasonCalendar, resolveTournaments, tourRules } from '../data/tournaments.js';
 import { pickDualField, makeDualSpec, DUAL_WEEK } from './dualtourney.js';
 import { coachMoves } from './dualcoach.js';
 import { REAL_TOP, TIER_OVR, REAL_NAMES_ENABLED } from '../data/realtop.js';
@@ -41,9 +42,10 @@ function shuffle(arr, rng) { const a = arr.slice(); for (let i = a.length - 1; i
 // ---------- new game ----------
 export function newGame(userTeam, coach = 'Coach', seed = (Math.random() * 4294967296) >>> 0, opts = {}) {
   const rng = makeRng(seed);
-  const G = { version: 4, recruits: {}, rec: { hours: 20, board: [] }, portal: [], nextRid: 0, alumni: [], cal: seasonCalendar(2026), tournaments: [], entries: {}, history: [], training: { focus: ['shots', 'tdd', 'conditioning'], intensity: 'normal' }, report: [], seed, coach, userTeam, season: 2026, week: 1, phase: 'season', teams: {}, wrestlers: {}, schedule: [], inbox: [], nextId: 1 };
+  const G = { version: 4, align: 2, recruits: {}, rec: { hours: 20, board: [] }, portal: [], nextRid: 0, alumni: [], cal: seasonCalendar(2026), tournaments: [], entries: {}, history: [], training: { focus: ['shots', 'tdd', 'conditioning'], intensity: 'normal' }, report: [], seed, coach, userTeam, season: 2026, week: 1, phase: 'season', teams: {}, wrestlers: {}, schedule: [], inbox: [], nextId: 1 };
   const archKeys = Object.keys(ARCHETYPES);
-  for (const s of SCHOOLS) {
+  if (opts.league) G.league = careerLeague(opts.league);   // custom league (js/game/league.js): its schools, conferences, bids, tournaments, rosters
+  for (const s of opts.league ? leagueSchools(opts.league) : SCHOOLS) {
     const t = { id: s.id, name: s.name, conf: s.conf, prestige: s.prestige, region: s.region, acad: s.acad, state: s.state, incoming: [], roster: [], lineup: {}, plan: 'balanced' };
     const q0 = 9 + s.prestige / 100 * 6.5; // prestige 98 -> ~15.4, 40 -> ~11.6
     for (const wt of WEIGHTS) {
@@ -57,7 +59,10 @@ export function newGame(userTeam, coach = 'Coach', seed = (Math.random() * 42949
     }
     G.teams[s.id] = t;
   }
-  if (opts.real ?? REAL_NAMES_ENABLED) { applyRealTeams(G, rng, opts.edits || {}); applyRealTop(G, rng); }   // opts.edits: the player editor's rating edits (new careers only)
+  const custom = opts.league ? leagueRosters(opts.league) : {}, useReal = opts.real ?? REAL_NAMES_ENABLED;   // custom-league rosters are always used; real ones only with real names on
+  const src = name => custom[name] || (useReal ? REAL_TEAMS[name] : null);
+  if (useReal || Object.keys(custom).length) applyRealTeams(G, rng, opts.edits || {}, src);   // opts.edits: the player editor's rating edits (new careers only)
+  if (useReal) applyRealTop(G, rng, src);
   for (const id in G.teams) distributeAid(G, id);
   for (const id in G.teams) G.teams[id].lineup = autoLineup(G, id);
   useCalendar(G);
@@ -90,10 +95,10 @@ export function rateReal(rng, { name, wt, base, school, ov }) {
   }
   return { w, target };
 }
-function applyRealTeams(G, rng, edits = {}) {
+function applyRealTeams(G, rng, edits = {}, src = name => REAL_TEAMS[name]) {
   const archKeys = Object.keys(ARCHETYPES);
   for (const t of Object.values(G.teams)) {
-    const raw = REAL_TEAMS[t.name]; if (!raw) continue;
+    const raw = src(t.name); if (!raw) continue;
     for (const id of t.roster) delete G.wrestlers[id];
     t.roster = [];
     const starters = {};
@@ -118,10 +123,10 @@ function applyRealTeams(G, rng, edits = {}) {
 }
 
 // Overlay real ranked wrestlers (data/realtop.js) onto each school's best wrestler at that weight: real name + class, rating from rank tier.
-function applyRealTop(G, rng) {
+function applyRealTop(G, rng, src = name => REAL_TEAMS[name]) {
   const byName = Object.fromEntries(Object.values(G.teams).map(t => [t.name, t]));
   for (const r of REAL_TOP) {
-    const t = byName[r.school]; if (!t || REAL_TEAMS[r.school]) continue;   // schools with full real rosters were built above
+    const t = byName[r.school]; if (!t || src(r.school)) continue;   // schools with full real rosters were built above
     const w = t.roster.map(id => G.wrestlers[id]).filter(x => x.natural === r.weight && !x.real).sort((a, b) => overall(b) - overall(a))[0];
     if (!w) continue;
     const delta = TIER_OVR[r.tier] - overallLegacy(w);
@@ -156,7 +161,7 @@ export function makeSchedule(G, rng) {
   const prank = {}; [...ids].sort((a, b) => G.teams[b].prestige - G.teams[a].prestige).forEach((id, i) => { prank[id] = i + 1; });
   // elite programs (top-10 prestige) enter 2-3 events, everyone else 3-4
   const budget = {}, used = {}; for (const id of ids) { budget[id] = prank[id] <= 10 ? 2 + rng.int(0, 1) : 3 + rng.int(0, 1); used[id] = 0; }
-  const defs = resolveTournaments(G.season, cal), built = new Array(defs.length);
+  const defs = resolveTournaments(G.season, cal, tourRules(G)), built = new Array(defs.length);
   const order = shuffle(defs.map((_, i) => i), rng);
   for (const i of order) {
     const r = defs[i], att = (attending[r.week] = attending[r.week] || new Set());
@@ -181,7 +186,7 @@ export function makeSchedule(G, rng) {
       t.x.teams.push(id); attending[t.x.week].add(id); used[id]++;
     }
   }
-  G.tournaments.push(...makeConfTournaments(G, CONFERENCES), makeDualSpec(G, dualField, cal));
+  G.tournaments.push(...makeConfTournaments(G, tourneyConfs(G)), makeDualSpec(G, dualField, cal));
   for (let week = 1; week <= cal.lastDualWeek; week++) {
     const pool = shuffle(ids.filter(id => !(attending[week] && attending[week].has(id)) && rng.chance(0.88)), rng), used = new Set();
     for (const t of pool) {
@@ -493,13 +498,29 @@ export function tournamentRankings(G) {
     .sort((a, b) => b.proj - a.proj || b.drate - a.drate).map((x, i) => ({ ...x, rank: i + 1 }));
 }
 
+// ---------- conference realignment (default league only) ----------
+// Careers started before the 2026-27 alignment (data/schools.js) move to it when their next season is drafted (offseason). Returns the changes.
+export function realign(G) {
+  if (G.league || G.align === 2) return [];
+  const moved = [];
+  for (const s of SCHOOLS) { const t = G.teams[s.id]; if (t && t.conf !== s.conf) { moved.push({ id: s.id, from: t.conf, to: s.conf }); t.conf = s.conf; } }
+  G.align = 2;
+  if (moved.length) {
+    const mine = moved.find(m => m.id === G.userTeam), by = {};
+    for (const m of moved) (by[m.to] ||= []).push(G.teams[m.id].name);
+    G.inbox.unshift({ week: G.week, title: 'Conference realignment', body: `${mine ? `${G.teams[G.userTeam].name} moves from the ${mine.from} to the ${mine.to}. ` : ''}New homes from next season: `
+      + Object.entries(by).map(([c, ns]) => `${c}: ${ns.join(', ')}`).join('; ') + '.' });
+  }
+  return moved;
+}
+
 // ---------- save / load ----------
 export function saveGame(G) { try { localStorage.setItem(SAVE_KEY, JSON.stringify(G)); return true; } catch (e) { return false; } }
 export function hydrate(raw) { const G = migrate(raw); for (const id in G.teams) sanitizeLineup(G, id); useCalendar(G); return G; }
 export function loadGame() { try { const s = localStorage.getItem(SAVE_KEY); return s ? hydrate(JSON.parse(s)) : null; } catch (e) { return null; } }
 function migrate(G) {
   if (G.version < 3) {
-    G.cal = seasonCalendar(G.season || 2026); G.tournaments = makeConfTournaments(G, CONFERENCES); G.entries = {}; G.history = []; G.version = 3;
+    G.cal = seasonCalendar(G.season || 2026); G.tournaments = makeConfTournaments(G, tourneyConfs(G)); G.entries = {}; G.history = []; G.version = 3;
     if (G.phase === 'seasonEnd' && G.week <= G.cal.lastWeek) G.phase = 'season';
   }
   if (G.version < 4) {

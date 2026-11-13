@@ -5,17 +5,17 @@
 const SAT = 6;
 // { name, tier, loc, confs (regional bias), m: month 0-11, nth: 1-5 or -1 (last), dow: 0=Sun..6=Sat, days: length in days }
 export const TOURNAMENT_RULES = [
-  { name: 'Daktronics Open',                   tier: 'open',  loc: 'Brookings, SD',   confs: ['Big 12', 'Big Ten'],                 m: 10, nth: 1,  dow: SAT, days: 1 },
-  { name: 'Mid-Atlantic Open',                 tier: 'open',  loc: 'Mid-Atlantic',    confs: ['EIWA', 'ACC'],                       m: 10, nth: 1,  dow: 0,   days: 1 },
+  { name: 'Daktronics Open',                   tier: 'open',  loc: 'Brookings, SD',   confs: ['Pac-12', 'Big 12', 'Big Ten'],       m: 10, nth: 1,  dow: SAT, days: 1 },
+  { name: 'Mid-Atlantic Open',                 tier: 'open',  loc: 'Mid-Atlantic',    confs: ['EIWA', 'Ivy League', 'ACC'],         m: 10, nth: 1,  dow: 0,   days: 1 },
   { name: 'Great Lakes Open',                  tier: 'open',  loc: 'Great Lakes',     confs: ['Big Ten', 'MAC'],                    m: 10, nth: 2,  dow: SAT, days: 1 },
-  { name: 'Southeast Open',                    tier: 'open',  loc: 'Southeast',       confs: ['ACC', 'Independent / Other'],        m: 10, nth: 3,  dow: SAT, days: 1 },
-  { name: 'Pacific Open',                      tier: 'open',  loc: 'West Coast',      confs: ['Big 12', 'Independent / Other'],     m: 10, nth: 3,  dow: 0,   days: 1 },
+  { name: 'Southeast Open',                    tier: 'open',  loc: 'Southeast',       confs: ['ACC', 'SoCon'],                      m: 10, nth: 3,  dow: SAT, days: 1 },
+  { name: 'Pacific Open',                      tier: 'open',  loc: 'West Coast',      confs: ['Pac-12', 'Big 12'],                  m: 10, nth: 3,  dow: 0,   days: 1 },
   { name: 'Cliff Keen Las Vegas Invitational', tier: 'major', loc: 'Las Vegas, NV',   confs: [],                                    m: 11, nth: 1,  dow: 5,   days: 2 },
-  { name: 'Eastern Open',                      tier: 'open',  loc: 'Northeast',       confs: ['EIWA', 'ACC'],                       m: 11, nth: 2,  dow: SAT, days: 1 },
+  { name: 'Eastern Open',                      tier: 'open',  loc: 'Northeast',       confs: ['EIWA', 'Ivy League', 'MAC'],         m: 11, nth: 2,  dow: SAT, days: 1 },
   { name: 'Reno Tournament of Champions',      tier: 'major', loc: 'Reno, NV',        confs: [],                                    m: 11, nth: 3,  dow: SAT, days: 1 },
   { name: 'Midlands Championships',            tier: 'major', loc: 'Evanston, IL',    confs: [],                                    m: 11, nth: -1, dow: 2,   days: 2 },
   { name: 'Southern Scuffle',                  tier: 'major', loc: 'Chattanooga, TN', confs: [],                                    m: 0,  nth: 1,  dow: SAT, days: 2, yearOffset: 1 },
-  { name: 'Rocky Mountain Open',               tier: 'open',  loc: 'Mountain West',   confs: ['Big 12'],                            m: 0,  nth: 4,  dow: SAT, days: 1, yearOffset: 1 },
+  { name: 'Rocky Mountain Open',               tier: 'open',  loc: 'Mountain West',   confs: ['Big 12', 'Pac-12'],                  m: 0,  nth: 4,  dow: SAT, days: 1, yearOffset: 1 },
   { name: 'Midwest Classic',                   tier: 'open',  loc: 'Midwest',         confs: ['Big Ten', 'Big 12', 'MAC'],          m: 1,  nth: 1,  dow: SAT, days: 1, yearOffset: 1 },
   { name: 'Last Chance Open',                  tier: 'open',  loc: 'Neutral site',    confs: [],                                    m: 1,  nth: 4,  dow: SAT, days: 1, yearOffset: 1 },
 ];
@@ -43,8 +43,10 @@ export function seasonCalendar(season) {
 }
 
 // Resolve the rules into concrete events for a season.
-export function resolveTournaments(season, cal = seasonCalendar(season)) {
-  return TOURNAMENT_RULES.map(r => {
+// rules: a custom league's list (G.league.tournaments, same shape as TOURNAMENT_RULES) or the default.
+export const tourRules = G => (G && G.league && G.league.tournaments) || TOURNAMENT_RULES;
+export function resolveTournaments(season, cal = seasonCalendar(season), rules = TOURNAMENT_RULES) {
+  return rules.map(r => {
     const ms = nthWeekday(season + (r.yearOffset || 0), r.m, r.dow, r.nth);
     const week = Math.max(1, Math.min(cal.lastDualWeek, Math.round((ms - cal.start) / (7 * DAY)) + 1));
     const dates = r.days > 1 ? `${fmt(ms)}-${fmt(ms + (r.days - 1) * DAY).split(' ')[1]}` : fmt(ms);
@@ -52,6 +54,15 @@ export function resolveTournaments(season, cal = seasonCalendar(season)) {
   });
 }
 
-// Automatic NCAA berths per weight class by conference (APPROXIMATE; real allocation depends on conference strength). 23 + 10 at-large = 33.
-export const CONF_BIDS = { 'Big Ten': 7, 'Big 12': 6, 'ACC': 3, 'EIWA': 4, 'MAC': 2, 'Independent / Other': 1 };
+// Automatic NCAA berths per weight class by conference (APPROXIMATE; real allocation depends on conference strength). 25 + 8 at-large = 33.
+// Re-split for the 2026-27 alignment (Ivy League, Pac-12 and SoCon added; Big 12 down to 9 teams). Independents have no tournament (at-large only).
+export const CONF_BIDS = { 'Big Ten': 8, 'Big 12': 5, 'ACC': 3, 'EIWA': 2, 'Ivy League': 2, 'MAC': 2, 'Pac-12': 2, 'SoCon': 1 };
+// a career's bids: its custom league's numbers, else the default table, else 1
+// careers saved before the 2026-27 realignment (G.align !== 2) keep the old table until their next offseason realigns them (core.js realign)
+const OLD_BIDS = { 'Big Ten': 7, 'Big 12': 6, 'ACC': 3, 'EIWA': 4, 'MAC': 2, 'Independent / Other': 1 };
+export const confBids = (G, conf) => {
+  const c = G && G.league && G.league.confs && G.league.confs.find(x => x.name === conf);
+  if (c && c.bids != null) return c.bids;
+  return ((G && !G.league && G.align !== 2) ? OLD_BIDS[conf] : CONF_BIDS[conf]) ?? 1;
+};
 export const NCAA_FIELD = 33;
