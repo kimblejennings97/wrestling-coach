@@ -91,7 +91,7 @@ a[data-act] { color: var(--accent); cursor: pointer; }
 .bm { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; background: var(--panel2); font-size: 12.5px; }
 .bs { padding: 4px 8px; border-bottom: 1px solid var(--line); min-height: 24px; }
 .bs.w { font-weight: 700; color: var(--green); } .bs.l { color: var(--muted); } .bs.mine { background: #1d3350; } .bs.tbd { opacity: .6; }
-.bd { padding: 3px 8px; font-size: 11px; color: var(--muted); }
+.bd { padding: 3px 8px; font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; align-items: center; gap: 6px; } .bd .bplay { flex: none; font-weight: 600; cursor: pointer; }
 
 /* wrestler names: calm light text with a dotted underline instead of loud link-blue; your wrestlers use YOUR team colour (--tc) */
 a.wlink[data-act] { color: inherit; border-bottom: 1px dotted rgba(200, 210, 225, .35); }

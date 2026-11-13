@@ -222,10 +222,10 @@ function act(a, d) {
     const t = G.tournaments.find(x => x.id === ui.tid), b = t.result.userBouts[+d.v], m = (t.result.weights[b.wt].matches || []).find(x => x.u === +d.v);
     ui.view = { idx: +d.v, res: replayBout(b), shown: 0, playing: true, rnd: m ? tRound(t, b.wt, m) : b.label, ids: { A: b.a, B: b.b }, title: t.kind === 'ncaa' && b.label === 'Final', venue: tourneyVenue(t) }; return startFeed();
   }
-  if (a === 'watchtm') {   // a revealed match from the Other teams tab
+  if (a === 'watchtm') {   // replay a revealed match (Other teams tab, bracket boxes); replaces an open replay, never a live watch that still has to reveal its match
     const t = G.tournaments.find(x => x.id === ui.tid), m = t && t.result.weights[+d.wt]?.matches?.find(x => x.i === +d.v), b = m && (m.u >= 0 ? t.result.userBouts[m.u] : m.bt);
-    if (!b || !b.seed || ui.view) return render();
-    ui.view = { idx: -1, res: replayBout(b), shown: 0, playing: true, rnd: tRound(t, +d.wt, m), ids: { A: m.a, B: m.b }, title: t.kind === 'ncaa' && !!m.c && m.rl === 'Finals', venue: tourneyVenue(t) }; return startFeed();
+    if (!b || !b.seed || (ui.view && (ui.view.tw || ui.view.live))) return render();
+    clearInterval(ui.vtimer); ui.view = { idx: -1, res: replayBout(b), shown: 0, playing: true, rnd: tRound(t, +d.wt, m), ids: { A: m.a, B: m.b }, title: t.kind === 'ncaa' && !!m.c && m.rl === 'Finals', venue: tourneyVenue(t) }; return startFeed();
   }
   if (a === 'cancelmove') { cancelWeightMove(G, d.v); save(); return render(); }
   if (a === 'rectab') { ui.rec.tab = d.v; return render(); }
@@ -933,7 +933,8 @@ function bracketHtml(t, wt) {
     const w = G.wrestlers[id], done = rev.has(m.i), win = done && m.w === side, lose = done && m.w !== side;
     return `<div class="bs ${win ? 'w' : lose ? 'l' : ''} ${w.team === G.userTeam ? 'mine' : ''}"><span class="tn">${schoolLogo(w.team, G.teams[w.team].name, 14)}<span><small class="muted">${seed}</small> ${wl(id)}</span></span></div>`;
   };
-  const box = m => `<div class="bm">${slot(m, 'A')}${slot(m, 'B')}<div class="bd">${rev.has(m.i) ? `${m.lb} · ${m.d}` : `<span class="muted">${m.lb}</span>`}</div></div>`;
+  const canPlay = m => { const b = m.u >= 0 ? t.result.userBouts[m.u] : m.bt; return !!(b && b.seed); };   // replay data is kept until the week moves on
+  const box = m => `<div class="bm">${slot(m, 'A')}${slot(m, 'B')}<div class="bd">${rev.has(m.i) ? `<span>${m.lb} · ${m.d}</span>${canPlay(m) ? `<a class="bplay" data-act="watchtm" data-wt="${wt}" data-v="${m.i}" title="Watch the replay">▶ Watch</a>` : ''}` : `<span class="muted">${m.lb}</span>`}</div></div>`;
   const sect = (champ, title) => {
     const lv = [...new Set(ms.filter(m => !!m.c === champ).map(m => m.l))].sort((x, y) => x - y);
     return lv.length ? `<h4 style="margin:12px 0 6px">${title}</h4><div class="bkt">${lv.map(l => `<div class="bcol"><div class="bhead">${rname(t, l, wt)}</div>${ms.filter(m => !!m.c === champ && m.l === l).map(box).join('')}</div>`).join('')}</div>` : '';
