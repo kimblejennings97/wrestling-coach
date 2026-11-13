@@ -11,6 +11,7 @@
 
 ## Logos and colours
 - `py tools/fetch_logos.py` -> `assets/logos/<id>.png` + `js/data/logos.js` (`LOGOS_ENABLED`, `LOGO_IDS`). Trademarks: fine privately, turn off before sharing.
+- `py tools/fetch_orglogos.py` -> `assets/logos/org/` (NCAA from Wikimedia, Big Ten / Big 12 / ACC / MAC from ESPN) for the bout viewer's mat centre (`js/data/venues.js`). No EIWA logo source (text badge).
 - `tools/teamcolors.html` + `tools/make_teamcolors.py` -> `js/data/teamcolors.js` (dominant logo colour, lightened; overrides for Iowa, Minnesota).
 
 ## Recruit geography

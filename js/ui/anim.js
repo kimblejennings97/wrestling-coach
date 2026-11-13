@@ -813,6 +813,19 @@ const MOVE = { headlock: 'HEADLOCK', armthrow: 'ARM THROW', lateral: 'LATERAL DR
   highc: 'HIGH-CROTCH', itrip: 'INSIDE TRIP', pancake: 'PANCAKE', kickstand: 'KICKSTAND', hcswitch: 'SIT AND SWITCH', snapdn: 'SNAP-DOWN', spiral: 'SPIRAL RIDE' };
 const CHAMP = ['champJump', 'champCart', 'champToss', 'champFlex', 'champBack', 'champKneel'];
 
+// The mat (drawn under the wrestlers, never mirrored): opt.venue = { mat, line, logo, text } from js/data/venues.js; none = the neutral green mat.
+// A logo or text badge sits on a light centre disc (so dark logos still read), flattened like the mat but less than true perspective would.
+const MAT_CY = GY + 2, MAT_LOGO_SQ = 0.4;
+function matSvg(v) {
+  const m = v && v.mat || '#1c3b2c', l = v && v.line || '#2c5a43', esc = s => String(s).replace(/[&<>"]/g, ch => `&#${ch.charCodeAt(0)};`);
+  const ring = `<ellipse cx="100" cy="${MAT_CY}" rx="99" ry="15" fill="${m}"/><ellipse cx="100" cy="${MAT_CY}" rx="93" ry="12.5" fill="none" stroke="${l}" stroke-width="1.5"/>`;
+  if (!v || (!v.logo && !v.text)) return ring + `<ellipse cx="100" cy="${MAT_CY}" rx="26" ry="4" fill="none" stroke="${l}" stroke-width="1.5"/>`;
+  const mark = v.logo ? `<image href="${esc(v.logo)}" x="-30" y="-30" width="60" height="60"/>`
+    : `<text x="0" y="0" text-anchor="middle" dominant-baseline="central" fill="${m}" style="font:900 ${v.text.length > 4 ? 14 : 19}px system-ui, sans-serif;letter-spacing:.5px">${esc(v.text)}</text>`;
+  return ring + `<ellipse cx="100" cy="${MAT_CY}" rx="46" ry="9.5" fill="#d3d8de" stroke="${l}" stroke-width="1.5"/>`
+    + `<clipPath id="matdisc"><ellipse cx="100" cy="${MAT_CY}" rx="45" ry="8.8"/></clipPath><g clip-path="url(#matdisc)"><g transform="translate(100,${MAT_CY}) scale(1,${MAT_LOGO_SQ})">${mark}</g></g>`;   // same id in every stage: identical definitions, harmless
+}
+
 // opt.still (0..1): draw one frozen moment of the clip (used by test pages); opt.clip / opt.a: force a clip
 export function stage(res, last, col, opt = {}) {
   const fx = last ? last.fx : null, who = last ? last.who : null, end = last && last.type === 'end';
@@ -843,7 +856,7 @@ export function stage(res, last, col, opt = {}) {
   const lblCol = fx && who ? col[who] : '#f5b942';
   const endTxt = end ? `${res.wrestlers[res.winner].name.split(' ').slice(-1)[0].toUpperCase()}${champ ? ' · NCAA CHAMPION!' : ` WINS${res.method === 'Fall' ? ' BY FALL' : ''}`}` : '';
   return `<svg class="stage" viewBox="0 -14 200 106" preserveAspectRatio="xMidYMid meet">
-    <ellipse cx="100" cy="${GY + 2}" rx="99" ry="15" fill="#1c3b2c"/><ellipse cx="100" cy="${GY + 2}" rx="93" ry="12.5" fill="none" stroke="#2c5a43" stroke-width="1.5"/><ellipse cx="100" cy="${GY + 2}" rx="26" ry="4" fill="none" stroke="#2c5a43" stroke-width="1.5"/>
+    ${matSvg(opt.venue)}
     <g transform="translate(100,${GY}) scale(${mirror},1)" fill="none" stroke-linecap="round">${body}</g>
     ${label && !end ? `<text class="lbl ${fx}" x="100" y="-3" text-anchor="middle" fill="${lblCol}"${label.length > 24 ? ' style="font-size:8px;letter-spacing:.5px"' : ''}>${label}</text>` : ''}
     ${endTxt ? `<text class="lbl end" x="100" y="-3" text-anchor="middle" fill="#3fb27f">${endTxt}</text>` : ''}</svg>`;

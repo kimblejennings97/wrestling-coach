@@ -33,7 +33,8 @@ Name with `+` = parts played in turn (`chainClip`): `sprawl+double` = shot, spra
 Bout feed is a timeout chain: `feedDelay()` (app.js) waits max(line time, (clipTime + 0.2) x line time), so long chains (flurry 2.75 s x --spd) aren't cut off. Speeds Slow/Normal/Fast = 2600/1700/800 ms per line (`--spd` = ms/1000).
 
 ## Other visuals
-Red/green ankle band on the left shin (home team green in duals; at neutral sites the singlet nearer red is red: `bandSides`), headgear (`HEADGEAR`), singlet colours from team colours (`singletColors`, B goes white/grey when too close).
+- Mat (`matSvg`, drawn under the wrestlers, never mirrored): `opt.venue = { mat, line, logo, text }` from `js/data/venues.js`. Duals at a school: the host (`du.a`) colour darkened x0.36 (`teamVenue`), circles in the full colour, its logo; conference tournaments / NCAAs: the organisation's colours and logo (`tourneyVenue`, `ORG` table; EIWA = text badge, no logo source); opens, majors, national duals, Independent: the neutral green mat. The logo sits on a light centre disc (rx 46, ry 9.5; dark logos like B1G / Big 12 still read), flattened by `MAT_LOGO_SQ` 0.4 (less than true perspective, so it reads around the wrestlers' feet) and clipped to the disc. `LOGOS_ENABLED` false -> text badges (school initials / org name). Test pages (moves.html, animsheet) pass no venue and get the neutral mat.
+- Red/green ankle band on the left shin (home team green in duals; at neutral sites the singlet nearer red is red: `bandSides`), headgear (`HEADGEAR`), singlet colours from team colours (`singletColors`, B goes white/grey when too close).
 
 ## Tools and checks
 - `moves.html` (deployed): every clip + Chains group (77 entries), prev/next, replay, play all (waits per clip), speed, mirrored, other side of the mat, cut the corner, start turned, freeze frame, Works / Needs work + notes (localStorage `wc.moves`), Copy report.

@@ -18,6 +18,7 @@ const D_NAME = D.DUAL_NAME;
 import { seedOrder } from '../game/tourney.js';
 import * as S from '../game/sched.js';
 import { TEAM_COLORS } from '../data/teamcolors.js';
+import { teamVenue, tourneyVenue, NEUTRAL_MAT } from '../data/venues.js';
 import { stage, singletColors, orientAt, clipTime } from './anim.js';
 import { seasonOf, careerOf, derived, KEYS, ensurePolls, flushStats, pendingStats } from '../game/stats.js';
 import * as LG from '../game/legacy.js';
@@ -196,7 +197,7 @@ function act(a, d) {
     const p = d.v === 'user' ? L.advanceToUser(t) : L.peekNext(t); if (!p) { save(); return render(); }
     const b = p.m.u >= 0 ? t.result.userBouts[p.m.u] : p.m.bt;
     if (!b) { L.advanceLive(t, 'match'); save(); return render(); }   // no replay data (older save): just reveal it
-    save(); ui.view = { idx: -1, res: replayBout(b), shown: 0, playing: true, tw: t.id, ids: { A: p.m.a, B: p.m.b }, title: t.kind === 'ncaa' && !!p.m.c && p.m.rl === 'Finals' }; return startFeed();
+    save(); ui.view = { idx: -1, res: replayBout(b), shown: 0, playing: true, tw: t.id, ids: { A: p.m.a, B: p.m.b }, title: t.kind === 'ncaa' && !!p.m.c && p.m.rl === 'Finals', venue: tourneyVenue(t) }; return startFeed();
   }
   if (a === 'tadv') { stopTimers(); if (ui.view && ui.view.tw) ui.view = null; const t = G.tournaments.find(x => x.id === ui.tid); if (t && L.isLive(t)) { L.advanceLive(t, d.v, +ui.rwt || WEIGHTS[0]); save(); } return render(); }
   if (a === 'skipgo') {
@@ -218,7 +219,7 @@ function act(a, d) {
   if (a === 'tview') { ui.tview = d.v; return render(); }
   if (a === 'watchtb') {
     const t = G.tournaments.find(x => x.id === ui.tid), b = t.result.userBouts[+d.v];
-    ui.view = { idx: +d.v, res: replayBout(b), shown: 0, playing: true, ids: { A: b.a, B: b.b }, title: t.kind === 'ncaa' && b.label === 'Final' }; return startFeed();
+    ui.view = { idx: +d.v, res: replayBout(b), shown: 0, playing: true, ids: { A: b.a, B: b.b }, title: t.kind === 'ncaa' && b.label === 'Final', venue: tourneyVenue(t) }; return startFeed();
   }
   if (a === 'cancelmove') { cancelWeightMove(G, d.v); save(); return render(); }
   if (a === 'rectab') { ui.rec.tab = d.v; return render(); }
@@ -1334,7 +1335,7 @@ function boutView() {
     <div class="clock"><span>${last ? last.clock : '3:00'}</span><small>${last ? last.period : ''}</small></div><div class="B"><div class="pts">${last ? last.b : 0}</div>${sbName(v, res, 'B')}${rtBox(last, 1)}</div></div>
     <div class="row">${done || v.asking ? '' : `<button data-act="viewpause">${v.paused ? '▶ Resume' : '⏸ Pause'}</button>`}<button class="secondary" data-act="viewjump" ${done ? 'disabled' : ''}>⏭ Jump to result</button><button class="secondary" data-act="viewclose">Close</button>
       <label class="spd">Speed <input type="range" min="0" max="2" step="1" value="${ui.speed}" data-chg="vspeed"> <b>${SPEEDS[ui.speed].n}</b></label></div>
-    ${stage(res, last, col, { band: { A: BAND[bd.A], B: BAND[bd.B] }, champ: !!v.title, orient: orientAt(res.log, v.shown - 1) })}
+    ${stage(res, last, col, { band: { A: BAND[bd.A], B: BAND[bd.B] }, champ: !!v.title, orient: orientAt(res.log, v.shown - 1), venue: v.venue })}
     ${v.asking ? askPanel(v, res, last) : ''}
     <div id="feed">${feed}</div>
     ${done ? `<div class="result"><b>${res.detail}</b> · ${res.teamPoints} team points · Takedowns ${st.A.takedowns}-${st.B.takedowns} · Escapes ${st.A.escapes}-${st.B.escapes} · Near-fall pts ${st.A.nfPoints}-${st.B.nfPoints} · Ride ${fmtClock(st.A.ride)}-${fmtClock(st.B.ride)}</div>` : ''}</div>`;
@@ -1351,7 +1352,8 @@ function bandSides(col, home) {
   return d(col.A, R) + d(col.B, Gn) <= d(col.A, Gn) + d(col.B, R) ? { A: 'red', B: 'green' } : { A: 'green', B: 'red' };
 }
 // viewer context for a dual bout: wrestler ids, poll ranks on the day, home side (A = home team; national dual tournament = neutral site)
-const dualViewCtx = b => ({ ids: { A: b.wa, B: b.wb }, rk: b.rk ? { A: b.rk[0], B: b.rk[1] } : null, home: ui.dual && ui.dual.tid ? null : 'A' });
+const dualViewCtx = b => ({ ids: { A: b.wa, B: b.wb }, rk: b.rk ? { A: b.rk[0], B: b.rk[1] } : null, home: ui.dual && ui.dual.tid ? null : 'A', venue: dualVenue() });
+function dualVenue() { const du = ui.dual && !ui.dual.tid && findDual(ui.dual.id); return du && G.teams[du.a] ? teamVenue(du.a, G.teams[du.a].name) : NEUTRAL_MAT; }
 // scoreboard name: logo, poll rank, linked name, school + season record, and an S flag for each stalling call so far
 function sbName(v, res, side) {
   const id = v.ids && v.ids[side], w = id && G.wrestlers[id], nm = res.wrestlers[side].name;
