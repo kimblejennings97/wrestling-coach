@@ -149,7 +149,7 @@ nav::-webkit-scrollbar, .bkt::-webkit-scrollbar { height: 6px; }
   .tbl td { padding-top: 8px; padding-bottom: 8px; }
   .tbl.dense td, .tbl.dense th { padding: 6px 7px; }
   .chip { padding: 7px 12px; }
-  a.wlink[data-act], a[data-act] { padding: 3px 0; display: inline-block; }
+  a.wlink[data-act], a[data-act]:not([data-act=nav]) { padding: 3px 0; display: inline-block; }   /* not the menu links: this used to beat `nav a { display: block }` and pack them several per line on touch screens */
 }
 
 @media (max-width: 1100px) {                                /* iPad landscape / small laptops */
