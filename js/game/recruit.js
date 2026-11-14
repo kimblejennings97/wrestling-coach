@@ -11,7 +11,21 @@ export const AID_CAP = 9.9;
 export const WEEKLY_HOURS = 20;
 const STAR_PRES = { 5: 92, 4: 76, 3: 58, 2: 45, 1: 35 };           // prestige a team needs to be a realistic suitor
 const STAR_AID = { 5: 0.75, 4: 0.5, 3: 0.25, 2: 0.25, 1: 0 };        // typical AI scholarship offer by star level
-const AI_TARGETS = 4;                                               // new recruits each AI team works per week
+const AI_TARGETS = 4;
+// Recruiting difficulty (G.rec.diff; old saves and headless sims without it = easy = the original model). Harder: highly ranked recruits look down on
+// programs below the prestige their star level expects (less so close to home, late in the season with no better offer, or on signing day), your
+// attention counts for less against fit, your actions gain less, neglected targets cool faster, rivals push back on the 4-5* you chase, and a
+// low scholarship offer to a high-star recruit hurts. Knobs (fitted with rec_harness.html):
+//   gap: fit points lost per prestige point below STAR_PRES (3-5* only); home/region/late/sign: multipliers on that penalty; intK: weight of interest
+//   in fit; gain: your action gains; cool: weekly cooling; rival: extra weekly interest for the top AI suitors of a 4-5* you are chasing; aidK: fit
+//   points per scholarship fraction below the usual ask (3-5*); min: fit a recruit needs before committing during the season.
+export const REC_DIFF = {
+  easy:   { gap: 0,   home: 1,   region: 1,    late: 1,   sign: 1,   intK: 0.45, gain: 1,    cool: 3, rival: 0, aidK: 0,  min: 30 },
+  medium: { gap: 0.8, home: 0.35, region: 0.75, late: 0.4, sign: 0.3, intK: 0.38, gain: 0.9,  cool: 4, rival: 3, aidK: 14, min: 31 },
+  hard:   { gap: 1.6, home: 0.35, region: 0.8,  late: 0.35, sign: 0.25, intK: 0.32, gain: 0.8, cool: 5, rival: 6, aidK: 26, min: 32 },
+};
+export const REC_DIFF_LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+export const recDiff = G => REC_DIFF[(G.rec && G.rec.diff) || 'easy'] || REC_DIFF.easy;                                               // new recruits each AI team works per week
 const STATES = Object.keys(STATE_NQ);
 const sig = x => 1 / (1 + Math.exp(-x));
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -132,10 +146,24 @@ export function nextBest(G, t, wt) {
   return best;
 }
 export const ptScore = (G, t, ov, wt) => clamp((ov - nextBest(G, t, wt) + 3) / 7, 0.05, 1);
-export function fit(G, r, tid, offerAid) {
-  const t = G.teams[tid], n = r.needs;
+export function fit(G, r, tid, offerAid, phase) {   // phase: 'sign' = final signing day (forced choice)
+  const t = G.teams[tid], n = r.needs, d = recDiff(G);
   const f = n.pres * (t.prestige / 100) + n.pt * ptScore(G, t, overall(r), r.weight) + n.acad * (t.acad / 20) + n.loc * (t.state === r.state ? 1 : t.region === r.region ? 0.6 : 0.2) + n.aid * clamp(offerAid ?? 0, 0, 1);
-  return f * 60 + (r.interest[tid] || 0) * 0.45;
+  return f * 60 + (r.interest[tid] || 0) * d.intK - levelPenalty(G, r, tid, offerAid, phase, d);
+}
+// harder difficulties: a highly ranked recruit discounts a program below his level, and a low offer
+function levelPenalty(G, r, tid, offerAid, phase, d) {
+  if (!d.gap || r.stars < 3) return 0;
+  const t = G.teams[tid], below = Math.max(0, STAR_PRES[r.stars] - t.prestige);
+  let p = 0;
+  if (below > 0) {
+    let k = t.state === r.state ? d.home : t.region === r.region ? d.region : 1;
+    if (phase === 'sign') k *= d.sign;
+    else if (G.week >= (G.cal.lastDualWeek || 99) - 1 && !Object.keys(r.offers).some(o => o !== tid && G.teams[o] && G.teams[o].prestige >= STAR_PRES[r.stars] - 8)) k *= d.late;   // late in the season, no offer from a program at his level
+    p += d.gap * below * k;
+  }
+  if (offerAid != null) p += d.aidK * Math.max(0, STAR_AID[r.stars] - 0.25 - offerAid) * (r.stars - 2) / 3;   // well below the usual ask
+  return p;
 }
 
 // ---------- user actions ----------
@@ -148,13 +176,13 @@ export function scout(G, rid) {
 export function contact(G, rid, rng) {
   const r = G.recruits[rid]; if (hoursLeft(G) < 2) return false;
   const cur = r.interest[G.userTeam] || 0;
-  r.interest[G.userTeam] = Math.min(100, cur + Math.round((5 + rng() * 4) * (1 - cur / 130) * (1 + G.teams[G.userTeam].prestige / 250)));
+  r.interest[G.userTeam] = Math.min(100, cur + Math.round((5 + rng() * 4) * (1 - cur / 130) * (1 + G.teams[G.userTeam].prestige / 250) * recDiff(G).gain));
   G.rec.hours -= 2; r.touch = G.week; return true;
 }
 export function visit(G, rid, rng) {
   const r = G.recruits[rid]; if (hoursLeft(G) < 6 || (r.interest[G.userTeam] || 0) < 20) return false;
   const cur = r.interest[G.userTeam] || 0;
-  r.interest[G.userTeam] = Math.min(100, cur + Math.round((16 + rng() * 6) * (1 - cur / 160)));
+  r.interest[G.userTeam] = Math.min(100, cur + Math.round((16 + rng() * 6) * (1 - cur / 160) * recDiff(G).gain));
   G.rec.hours -= 6; r.touch = G.week; (r.once = r.once || {}).visit = true; return true;
 }
 export function offer(G, rid, frac) {
@@ -221,7 +249,7 @@ export function doAction(G, rid, type, rng, topic) {
     msg = react >= 0.55 ? `${PITCH_TOPICS[topic]} landed — he lit up.` : react >= 0.25 ? `${PITCH_TOPICS[topic]}: he listened politely.` : care < 0.45 ? `${PITCH_TOPICS[topic]} isn't a big deal to him.` : `${PITCH_TOPICS[topic]} matters to him, but ${G.teams[tid].name} doesn't stack up.`;
   }
   // diminishing returns as interest climbs
-  gain = Math.max(1, Math.round(gain * (1 - cur / (type === 'visit' || type === 'home' ? 160 : 130))));
+  gain = Math.max(1, Math.round(gain * (1 - cur / (type === 'visit' || type === 'home' ? 160 : 130)) * recDiff(G).gain));
   r.interest[tid] = Math.min(100, cur + gain);
   G.rec.hours -= a.hours; r.touch = G.week;
   if (a.once) (r.once = r.once || {})[type] = true; else thisWeek(G, r).push(type);
@@ -241,6 +269,8 @@ export function standing(G, r) {
   if (best < 0) return 'Leading';
   const d = myFit - best; return d >= 3 ? 'Leading' : d >= -3 ? 'Neck and neck' : 'Trailing';
 }
+// harder difficulties: does he see your program as below his level right now? (display only)
+export const belowLevel = (G, r) => r.status === 'open' && levelPenalty(G, r, G.userTeam, r.offers[G.userTeam], null, recDiff(G)) >= 6;
 export const coolingWeeks = (G, r) => ((r.interest[G.userTeam] || 0) > 0 && r.touch != null ? G.week - r.touch : 0);
 
 // ---------- weekly processing (AI actions + commitments) ----------
@@ -263,7 +293,7 @@ export function targetScore(G, tid, r, rng) {
 export function processRecruitingWeek(G) {
   const rng = makeRng(G.seed + G.week * 7717 + 3);
   const open = Object.values(G.recruits).filter(r => r.status === 'open');
-  const ids = Object.keys(G.teams).filter(id => id !== G.userTeam);
+  const ids = Object.keys(G.teams).filter(id => id !== G.userTeam), DW = recDiff(G);
   // AI teams: pick targets, build interest, make offers
   for (const tid of ids) {
     const t = G.teams[tid];
@@ -271,24 +301,36 @@ export function processRecruitingWeek(G) {
     const pend = pendingByWt(open, tid), roomAt = {};
     for (const wt of WEIGHTS) roomAt[wt] = aiHasRoom(G, tid, wt) &&(pend[wt] || 0) < MAX_INCOMING_PER_WT + 1;
     const scored = open.filter(r => r.offers[tid] == null && roomAt[r.weight]).map(r => ({ r, s: targetScore(G, tid, r, rng) })).sort((a, b) => b.s - a.s).slice(0, AI_TARGETS);
+    if (DW.gap) {   // harder difficulties: programs at an elite recruit's level always work their best 4-5* prospects too (no extra rng draws)
+      const have = new Set(scored.map(x => x.r.id));
+      for (const r of open.filter(r => r.stars >= 4 && !have.has(r.id) && r.offers[tid] == null && roomAt[r.weight] && t.prestige >= STAR_PRES[r.stars] - 8).sort((a, b) => a.rank - b.rank).slice(0, 2)) scored.push({ r });
+    }
     for (const { r } of scored) {
       r.interest[tid] = Math.min(100, (r.interest[tid] || 0) + Math.round((4 + rng() * 5) * (1 + t.prestige / 200)));
       if (r.interest[tid] >= 26 && r.offers[tid] == null) {
         const want = STAR_AID[r.stars], avail = aidAvailable(G, tid);
-        const give = Math.min(want, Math.floor(avail * 4) / 4);
-        if (give >= want - 0.26 && (want === 0 || give > 0)) {
+        let give = Math.min(want, Math.floor(avail * 4) / 4), ok = give >= want - 0.26 && (want === 0 || give > 0);
+        if (!ok && DW.gap && r.stars >= 4 && t.prestige >= STAR_PRES[r.stars] - 8) { give = Math.max(0.25, give); ok = true; }   // harder: a program at his level finds the money for an elite recruit
+        if (ok) {
           r.offers[tid] = give;
           if (onBoard(G, r.id)) G.inbox.unshift({ week: G.week, title: `Rival offer: ${t.name} offered ${r.name} (${r.weight}, ${r.stars}★)`, body: 'One of your board targets just got a scholarship offer from another program.' });
         }
       }
     }
   }
+  // harder difficulties: the top programs at a 4-5* recruit's level push back when you are chasing him (interest 40+)
+  const D = recDiff(G);
+  if (D.rival) for (const id of boardOf(G)) {
+    const r = G.recruits[id]; if (!r || r.status !== 'open' || r.stars < 4 || (r.interest[G.userTeam] || 0) < 40) continue;
+    const rivals = ids.filter(tid => G.teams[tid].prestige >= STAR_PRES[r.stars] - 6 && aiHasRoom(G, tid, r.weight)).sort((a, b) => (r.interest[b] || 0) - (r.interest[a] || 0) || G.teams[b].prestige - G.teams[a].prestige).slice(0, 2);
+    for (const tid of rivals) r.interest[tid] = Math.min(100, (r.interest[tid] || 0) + D.rival);
+  }
   // Targets you've neglected cool off (2+ weeks without any contact)
   const cooled = [];
   for (const id of boardOf(G)) {
     const r = G.recruits[id]; if (!r || r.status !== 'open') continue;
     const cur = r.interest[G.userTeam] || 0;
-    if (cur > 0 && r.touch != null && G.week - r.touch >= 2) { r.interest[G.userTeam] = Math.max(0, cur - 3); cooled.push(r.name); }
+    if (cur > 0 && r.touch != null && G.week - r.touch >= 2) { r.interest[G.userTeam] = Math.max(0, cur - recDiff(G).cool); cooled.push(r.name); }
   }
   if (cooled.length) G.inbox.unshift({ week: G.week, title: `Cooling interest: ${cooled.length} target${cooled.length > 1 ? 's' : ''}`, body: `${cooled.slice(0, 6).join(', ')}${cooled.length > 6 ? '…' : ''} ${cooled.length > 1 ? 'haven\'t' : 'hasn\'t'} heard from you in a while and lost interest.` });
   // Commit decisions
@@ -297,7 +339,7 @@ export function processRecruitingWeek(G) {
     const cands = Object.keys(r.offers).filter(tid => hasWeightRoom(G, tid, r.weight));
     if (!cands.length) continue;
     const scored = cands.map(tid => ({ tid, s: fit(G, r, tid, r.offers[tid]) + rng() * 4 })).sort((a, b) => b.s - a.s);
-    if (scored[0].s >= 30) commit(G, r, scored[0].tid, `He liked the mix of ${r.needs.pt > 0.25 ? 'playing time' : r.needs.pres > 0.25 ? 'program prestige' : r.needs.acad > 0.25 ? 'academics' : 'fit'} and your attention.`);
+    if (scored[0].s >= D.min) commit(G, r, scored[0].tid, `He liked the mix of ${r.needs.pt > 0.25 ? 'playing time' : r.needs.pres > 0.25 ? 'program prestige' : r.needs.acad > 0.25 ? 'academics' : 'fit'} and your attention.`);
   }
   G.rec.hours = WEEKLY_HOURS;
 }
@@ -318,7 +360,7 @@ export function finalizeRecruits(G) {
     if (r.status !== 'open') continue;
     const cands = Object.keys(r.offers).filter(tid => hasWeightRoom(G, tid, r.weight));
     if (!cands.length) { r.status = 'unsigned'; continue; }
-    const scored = cands.map(tid => ({ tid, s: fit(G, r, tid, r.offers[tid]) + rng() * 4 })).sort((a, b) => b.s - a.s);
+    const scored = cands.map(tid => ({ tid, s: fit(G, r, tid, r.offers[tid], 'sign') + rng() * 4 })).sort((a, b) => b.s - a.s);
     commit(G, r, scored[0].tid, 'He signed on the final signing day.');
   }
 }

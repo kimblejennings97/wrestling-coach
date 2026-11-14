@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Recruiting harness</title>
+<style>body{font:13px/1.4 ui-monospace,Consolas,monospace;background:#111;color:#ddd;margin:16px}</style></head>
+<body>
+<h3>Recruiting difficulty harness</h3>
+<p>?teams=virginia,missouri,penn-state&amp;diffs=easy,medium,hard&amp;seeds=1,2&amp;strat=greedy|auto. One recruiting season per run (user = the team; "greedy" chases the top-ranked recruits with every hour and full offers).</p>
+<pre id="o">running...</pre>
+<script type="module">
+import { newGame, finishWeek, useCalendar, autoLineup, userDual, playDual } from './js/game/core.js';
+import { beginOffseason } from './js/game/offseason.js';
+import * as R from './js/game/recruit.js';
+import { makeRng } from './js/engine/rng.js';
+const q = new URLSearchParams(location.search), out = [], P = s => { out.push(s); document.getElementById('o').textContent = out.join('\n'); };
+const TEAMS = (q.get('teams') || 'virginia,missouri,penn-state').split(','), DIFFS = (q.get('diffs') || 'easy,medium,hard').split(','), SEEDS = (q.get('seeds') || '1,2').split(',').map(Number), STRAT = q.get('strat') || 'greedy';
+const STAR_ASK = { 5: 0.75, 4: 0.5, 3: 0.25, 2: 0.25, 1: 0 };
+function greedy(G, rng) {
+  const me = G.userTeam, open = Object.values(G.recruits).filter(r => r.status === 'open').sort((a, b) => a.rank - b.rank);
+  R.clearClosedTargets(G);
+  for (const r of open) { if (R.boardOf(G).length >= 14) break; R.addTarget(G, r.id); }
+  const board = R.boardOf(G).map(id => G.recruits[id]).filter(r => r && r.status === 'open').sort((a, b) => a.rank - b.rank);
+  for (const r of board) if (r.offers[me] == null && (r.interest[me] || 0) >= 10) R.offer(G, r.id, STAR_ASK[r.stars]);
+  for (const r of board) {
+    for (const t of ['home', 'visit']) if (!R.actionBlock(G, r, t)) R.doAction(G, r.id, t, rng);
+    const st = R.teamStrengths(G, r, me), topic = Object.keys(R.PITCH_TOPICS).filter(k => k !== 'aid' || r.offers[me] != null).sort((a, b) => r.needs[b] * st[b] - r.needs[a] * st[a])[0];
+    if (!R.actionBlock(G, r, 'pitch')) R.doAction(G, r.id, 'pitch', rng, topic);
+    if (!R.actionBlock(G, r, 'call')) R.doAction(G, r.id, 'call', rng);
+  }
+  for (const r of board) if (!R.actionBlock(G, r, 'dm')) R.doAction(G, r.id, 'dm', rng);
+}
+const agg = {};
+try {
+  for (const diff of DIFFS) for (const team of TEAMS) for (const seed of SEEDS) {
+    const G = newGame(team, 'H', seed, { real: true }); useCalendar(G); G.rec.diff = diff; G.rec.mode = STRAT === 'auto' ? 'auto' : 'manual'; G.rec.noWarn = true;
+    const rng = makeRng(seed * 31 + 7);
+    let g = 0;
+    while (G.phase === 'season' && g++ < 60) {
+      if (STRAT === 'greedy') greedy(G, rng);
+      for (const tid of [G.userTeam]) G.teams[tid].lineup = autoLineup(G, tid);
+      const ud = userDual(G); if (ud && !ud.done) playDual(G, ud);
+      finishWeek(G);
+    }
+    R.finalizeRecruits(G);
+    if (q.has('dbg')) for (const r of Object.values(G.recruits).filter(x => x.team === G.userTeam && x.stars >= 4)) P('   ' + r.name + ' ' + r.stars + '* offers ' + Object.keys(r.offers).map(t => t + ':' + G.teams[t].prestige).join(',') + ' late ' + !!r.late);
+    beginOffseason(G);
+    const recs = G.lastClass.recs, mine = recs.filter(r => r.team === G.userTeam);
+    const by = s => mine.filter(r => r.stars === s).length, near = mine.filter(r => r.stars >= 4 && r.state === G.teams[G.userTeam].state).length, late = mine.filter(r => r.stars >= 4 && r.late).length;
+    const k = `${diff} ${team}`; agg[k] = agg[k] || { n: 0, s5: 0, s4: 0, s3: 0, tot: 0, top50: 0, near: 0 };
+    const a = agg[k]; a.n++; a.s5 += by(5); a.s4 += by(4); a.s3 += by(3); a.tot += mine.length; a.top50 += mine.filter(r => r.rank <= 50).length; a.near += near;
+    // AI health: average stars of signees by prestige tier
+    const tier = p => (p >= 85 ? 'A' : p >= 70 ? 'B' : p >= 55 ? 'C' : 'D'), ts = {};
+    for (const r of recs) if (r.team && r.team !== G.userTeam) { const t = tier(G.teams[r.team].prestige); ts[t] = ts[t] || [0, 0]; ts[t][0]++; ts[t][1] += r.stars; }
+    P(`${diff.padEnd(6)} ${team.padEnd(12)} seed ${seed}: signed ${mine.length} (5* ${by(5)}, 4* ${by(4)}, 3* ${by(3)}; top-50 ${mine.filter(r => r.rank <= 50).length}; 4-5* from home state ${near}) | AI avg stars ${Object.keys(ts).sort().map(t => `${t} ${(ts[t][1] / ts[t][0]).toFixed(2)} (${ts[t][0]})`).join(' ')} | unsigned ${recs.filter(r => r.status === 'unsigned').length}`);
+  }
+  P('');
+  for (const k in agg) { const a = agg[k]; P(`${k.padEnd(20)} per season: 5* ${(a.s5 / a.n).toFixed(1)}, 4* ${(a.s4 / a.n).toFixed(1)}, 3* ${(a.s3 / a.n).toFixed(1)}, top-50 ${(a.top50 / a.n).toFixed(1)}, signed ${(a.tot / a.n).toFixed(1)}, 4-5* from home ${(a.near / a.n).toFixed(1)}`); }
+} catch (e) { P('ERR ' + e.stack); }
+</script>
+</body></html>

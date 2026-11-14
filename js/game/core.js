@@ -69,7 +69,8 @@ export function newGame(userTeam, coach = 'Coach', seed = (Math.random() * 42949
   G.recruits = generateRecruitClass(G, rng);
   G.schedule = makeSchedule(G, rng);
   G.inbox.push({ week: 1, title: 'Welcome to ' + G.teams[userTeam].name, body: `The ${G.season}-${String(G.season + 1).slice(2)} season is underway, Coach ${coach}. Set your lineup, then press Continue to advance the calendar.` });
-  if (opts.fs) G.fs = { on: true, nextId: 1, grads: [] };   // freestyle mode (js/game/freestyle.js): pools are built at the first freestyle season, from their own rng
+  if (opts.fs) G.fs = { on: true, nextId: 1, grads: [] };
+  if (opts.recDiff) G.rec.diff = opts.recDiff;   // recruiting difficulty (recruit.js REC_DIFF); none = easy, the original model   // freestyle mode (js/game/freestyle.js): pools are built at the first freestyle season, from their own rng
   return G;
 }
 

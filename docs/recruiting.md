@@ -31,3 +31,15 @@ Injury Center screen; `INJURY_INFO`, `G.injLog` (last 40), `w.prone`. Rehab wind
 
 ## Weight classes
 `canWrestle(w, wt)` = natural weight or exactly one class up (bump: -1 str/cardio/speed via `wrestlerAt`); never down. Dropping a class = weight move (`startWeightMove`, ~5 weeks, max 1/season; the last week of a cut is held between conference and NCAA weeks). `sanitizeLineup` runs in playDual, runEvent, runTraining, startNewSeason, loadGame.
+
+## Recruiting difficulty (2026-11-14, `REC_DIFF` in recruit.js, `G.rec.diff`)
+- Easy = the original model (old saves and headless sims without `diff`; longrun identical). New games default to Medium (new-game screen); changeable any time on the Recruiting page; kept across seasons.
+- Medium / Hard (knobs in `REC_DIFF`):
+  - **Level gap**: 3-5* recruits lose `gap` (Medium 0.8 / Hard 1.6) fit points per prestige point the school is below `STAR_PRES` (5* 92, 4* 76, 3* 58). The penalty is multiplied by `home` 0.35 (same state) / `region` 0.75-0.8, by `late` 0.35-0.4 from the last dual week - 1 when no program at his level (STAR_PRES - 8) has offered, by `sign` 0.25-0.3 on the final signing day.
+  - **Money**: `aidK` 14 / 26 fit points per scholarship fraction below (usual ask - 0.25), scaled by stars.
+  - **Attention counts less**: interest weight in fit `intK` .45 -> .38 / .32; your action gains x .9 / .8; neglected targets cool 4 / 5 a week (was 3); in-season commit needs fit 31 / 32 (was 30).
+  - **Rivals push back**: for a 4-5* on your board at interest 40+, the two AI programs at his level (STAR_PRES - 6, with room) with the most interest gain +3 / +6 a week.
+  - **AI funds elite recruits**: programs at a 4-5* recruit's level (STAR_PRES - 8) add their best two such recruits to the weekly targets and offer even when short of aid (at least 25%). This closed the main hole: with the original model the top programs' aid was used up by their rosters, so the 5* got NO AI offers and any team with money won them.
+  - Recruiting board: "thinks you are below his level" under the standing when the penalty is 6+ (`belowLevel`).
+- Measured (`rec_harness.html`, 2 seeds, one season): a greedy human strategy (board = top 14 by rank, full offers, all hours) signs per season, Easy / Medium / Hard: Virginia (prestige 50) 6.5 / 0.5 / 0 five-stars (top-50: 6.5 / 1 / 1.5); Missouri (76) 4 / 0.5 / 0 five-stars (top-50 4 / 2.5 / 2.5, now 4*); Penn State (98) 6 / 5 / 5. Auto-recruiting ("AI logic") classes: Penn State 6-7 top-50 on every difficulty, Missouri ~6 3*, signed class 7 / 6-7.5 / 5.5-7. AI average signee stars by prestige tier unchanged (A ~3.7, B ~3.1, C ~2.2, D ~1.5).
+- Ideas not done: decommitments, official-visit weekends, in-state pipelines, NIL.

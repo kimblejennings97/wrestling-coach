@@ -200,7 +200,7 @@ export function startNewSeason(G) {
   pruneGone(G);   // unsigned transfers who left the sport
   pruneArchive(G);
   G.recruits = generateRecruitClass(G, rng);
-  G.rec = { hours: 20, board: [], mode: G.rec?.mode || "manual", noWarn: G.rec?.noWarn };   // keep the "Every week" mode and the warning preference across seasons
+  G.rec = { hours: 20, board: [], mode: G.rec?.mode || "manual", noWarn: G.rec?.noWarn, ...(G.rec?.diff ? { diff: G.rec.diff } : {}) };   // keep the "Every week" mode, the warning preference and the difficulty across seasons
   for (const id in G.teams) G.teams[id].incoming = [];
   if (G.inbox.length > 80) G.inbox.length = 80;
   G.inbox.unshift({ week: 1, title: `${G.season}-${String(G.season + 1).slice(2)} season begins`, body: `Week 1 is ${new Date(G.cal.start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}. A new recruiting class is available.` });

@@ -197,7 +197,7 @@ function act(a, d) {
   if (a === 'save') { save(); const b = document.querySelector('[data-act=save]'); if (b) { b.textContent = 'Saved ✓'; setTimeout(() => b && (b.textContent = 'Save'), 1200); } return; }
   if (a === 'menu') { if (confirm('Return to the start screen? (Your game is saved first.)')) { stopTimers(); save(); G = null; render(); } return; }
   if (a === 'pickteam') { ui.pick = d.v; return render(); }
-  if (a === 'begin') { const lg = activeLeague(); G = newGame(ui.pick, ui.coach || 'Coach', undefined, { real: ui.useReal !== false, fs: ui.useFs === true, edits: PE.loadEdits(), ...(lg ? { league: lg } : {}) }); save(); ui.screen = 'home'; return render(); }   // player-editor edits: new careers only
+  if (a === 'begin') { const lg = activeLeague(); G = newGame(ui.pick, ui.coach || 'Coach', undefined, { real: ui.useReal !== false, fs: ui.useFs === true, recDiff: ui.recDiff || 'medium', edits: PE.loadEdits(), ...(lg ? { league: lg } : {}) }); save(); ui.screen = 'home'; return render(); }   // player-editor edits: new careers only
   if (a === 'loadsave') { loadSlot(d.v).then(g => { if (g) { G = g; ui.screen = 'home'; ui.dual = null; ui.live = false; } render(); }); return; }
   if (a === 'delsave') { if (confirm('Delete this save permanently?')) { deleteSlot(d.v); render(); } return; }
   if (a === 'copysave') { copySlot(d.v).then(() => render()); return; }
@@ -334,6 +334,8 @@ function chg(k, el) {
   if (k === 'fskg') { const e = FS.setKg(G, el.dataset.id, +el.value); if (e) alert(e); save(); return render(); }
   if (k === 'fsent') { FS.setEntry(G, el.dataset.ev, el.dataset.id, el.checked); save(); return; }
   if (k === 'recmode') { G.rec.mode = el.value; save(); return render(); }
+  if (k === 'recdiff') { G.rec.diff = el.value; save(); return render(); }
+  if (k === 'newrecdiff') { ui.recDiff = el.value; return; }
   if (k === 'nowarn') { G.rec.noWarn = el.checked; save(); return; }
   if (k === 'pickconf') { ui.pickConf = el.value; ui.pick = null; return render(); }
   if (k === 'pickleague') { ui.useCustom = el.value === 'custom'; ui.pick = null; ui.pickConf = null; return render(); }
@@ -467,6 +469,7 @@ function startScreen() {
       <table class="tbl"><tr><th>School</th><th>Prestige</th><th></th></tr>${list}</table>
       <p><label><input type="checkbox" data-chg="usereal" ${ui.useReal !== false ? 'checked' : ''}> Use real wrestler names and rosters (2026-27 rosters from team sites, ratings from WrestleStat). Uncheck to play with fully generated names.</label></p>
       <p><label><input type="checkbox" data-chg="usefs" ${ui.useFs ? 'checked' : ''}> Freestyle mode: after each offseason, an RTC freestyle season (Bill Farrell, US Open, World Team Trials, World Championships / Olympics). Optional; it can also be turned on later from the Freestyle page.</label></p>
+      <p><label>Recruiting difficulty: <select data-chg="newrecdiff">${['easy', 'medium', 'hard'].map(k => `<option value="${k}" ${(ui.recDiff || 'medium') === k ? 'selected' : ''}>${{ easy: 'Easy', medium: 'Medium', hard: 'Hard' }[k]}</option>`).join('')}</select> <span class="muted">Harder: top recruits rarely pick programs below their level unless it is close to home or late with no better offer. Can be changed later on the Recruiting page.</span></label></p>
       <p>${ui.pick ? `Selected: <b>${(sc => schoolLogo(sc.id, sc.name, 24) + ' ' + sc.name)(schools.find(s => s.id === ui.pick))}</b>` : 'Pick a school.'} <button data-act="begin" ${ui.pick ? '' : 'disabled'}>Start career</button></p>
       <p class="hint">Real names and starters come from public 2026-27 roster and ranking data; each wrestler's ratings are estimated for the game, and backups are placed below their team's starter. ${lg ? ' Custom league: teams with a roster in the league file use it; the others use real rosters (when the name matches and real names are on) or generated ones.' : ' Prestige is approximate; conference alignment follows the 2026-27 season (js/data/schools.js).'}</p></div></div>`;
 }
@@ -1149,7 +1152,8 @@ function autoControls() {
   const last = R.lastPlanSize(G), mode = G.rec.mode || 'manual', msg = ui.rec.autoMsg;
   return `<div class="row" style="margin-top:8px"><button data-act="rec_auto" title="Uses the same ranking the AI uses to pick targets, then spends your hours on real actions">⚡ Auto-recruit this week</button>
     <button class="secondary" data-act="rec_repeat" ${last ? '' : 'disabled'}>↻ Repeat last week's plan${last ? ` (${last} actions)` : ''}</button>
-    <label>Every week: <select data-chg="recmode">${Object.entries(R.REC_MODES).map(([k, n]) => `<option value="${k}" ${mode === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
+    <label>Every week: <select data-chg="recmode">${Object.entries(R.REC_MODES).map(([k, n]) => `<option value="${k}" ${mode === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    <label title="Easy: the original model. Medium / Hard: top recruits look down on programs below their level (less so close to home, late in the season with no better offer, or on signing day), your attention counts for less, rival programs fight back for the 4-5* you chase, and low offers to top recruits hurt.">Difficulty: <select data-chg="recdiff">${Object.entries(R.REC_DIFF_LABEL).map(([k, n]) => `<option value="${k}" ${(G.rec.diff || 'easy') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
     ${msg ? `<p class="hint">${msg}</p>` : ''}
     <p class="hint">Auto-recruit ranks recruits the way the AI does (star level, fit, how realistic your prestige is), then pitches, calls, visits and DMs them with your hours and offers a scholarship once his interest is high enough. Set "Every week" to run a plan automatically when you advance, so no hours are lost.</p>`;
 }
@@ -1185,7 +1189,7 @@ function targetsTab() {
     const quick = open ? `${actBtn(r, 'dm', 'DM')} ${actBtn(r, 'call', 'Call')}` : '';
     const status = r.status === 'committed' ? `<span class="${r.team === G.userTeam ? 'pos' : 'neg'}">→ ${tn(r.team, 18)}</span>` : r.status === 'unsigned' ? '<span class="muted">unsigned</span>' : '';
     return `<tr data-act="recsel" data-v="${r.id}" class="${rc.sel === r.id ? 'me' : ''}" style="cursor:pointer"><td>${r.rank}</td><td>${r.name}</td><td>${r.weight}</td><td>${r.state}</td><td style="color:var(--gold)">${starStr(r.stars)}</td><td>${ovrShow}</td><td class="muted">${'●'.repeat(r.scout)}${'○'.repeat(3 - r.scout)}</td>
-      <td>${bar}</td><td class="muted" style="white-space:nowrap">${open ? rivalTxt(r) : ''}</td><td class="${standCls(st)}">${st}</td><td>${offr != null ? Math.round(offr * 100) + '%' : ''}</td><td>${quick} ${status}</td><td><button class="secondary" data-act="recrem" data-v="${r.id}" title="Remove from board">✕</button></td></tr>`;
+      <td>${bar}</td><td class="muted" style="white-space:nowrap">${open ? rivalTxt(r) : ''}</td><td class="${standCls(st)}">${st}${R.belowLevel(G, r) ? '<br><small class="neg" title="On this difficulty he discounts programs below the prestige his star level expects (less so close to home, late in the season with no offer from a program at his level, or on signing day). A low scholarship offer counts against you too.">thinks you are below his level</small>' : ''}</td><td>${offr != null ? Math.round(offr * 100) + '%' : ''}</td><td>${quick} ${status}</td><td><button class="secondary" data-act="recrem" data-v="${r.id}" title="Remove from board">✕</button></td></tr>`;
   }).join('');
   const sel = rc.sel && G.recruits[rc.sel];
   const empty = `<p class="hint">Your board is empty. Open <a data-act="rectab" data-v="board">All recruits</a>, click <b>＋ Target</b> on the recruits you want, then work them here each week: DM and call to build interest, pitch what each one cares about, then visit and offer before a rival lands him.</p>`;
