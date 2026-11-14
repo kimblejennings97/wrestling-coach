@@ -783,7 +783,8 @@ function profile() {
   }
   log.forEach((x, i) => { x.i = i; });   // push order = the order he wrestled them (a tournament's bouts are recorded round by round)
   log.sort((a, b) => b.week - a.week || b.i - a.i);   // newest first, also within a week (a tournament's final above its first round)
-  const logRows = log.slice(0, 25).map(x => `<tr><td class="muted">wk ${x.week}</td><td>${x.ev}</td><td>${x.opp}</td><td class="${x.res ? (w.team === G.userTeam ? 'tcwin' : 'pos') : 'neg'}">${x.res ? 'W' : 'L'} ${x.d}</td></tr>`).join('');
+  const mineW = w.team === G.userTeam;   // your own wrestlers: every match this season; others: the latest 25
+  const logRows = (mineW ? log : log.slice(0, 25)).map(x => `<tr><td class="muted">wk ${x.week}</td><td>${x.ev}</td><td>${x.opp}</td><td class="${x.res ? (w.team === G.userTeam ? 'tcwin' : 'pos') : 'neg'}">${x.res ? 'W' : 'L'} ${x.d}</td></tr>`).join('');
   const cs = careerOf(w);
   return `<div class="card"><div class="row"><button class="secondary" data-act="profback">◀ Back</button></div>
     <div style="display:flex;align-items:center;gap:14px;margin-top:10px">${schoolLogo(w.team, t.name, 56)}
@@ -792,9 +793,9 @@ function profile() {
     <div class="cols2" style="margin-top:14px;align-items:start"><div><h3>Info</h3><table class="tbl">${info}</table></div><div><h3>Ratings</h3><div class="cols2">${bars}</div>${tourCard(w, hide)}</div></div>
     <h3 style="margin-top:14px">Stats</h3>${statTable}
     <p class="muted">Career: ${cs[0]}-${cs[1]}${cs[0] + cs[1] ? ` (${Math.round(cs[0] / (cs[0] + cs[1]) * 100)}%)` : ''} · ${cs[2]} pins · ${cs[12]} All-American finish${cs[12] === 1 ? '' : 'es'} · ${cs[13]} national title${cs[13] === 1 ? '' : 's'}. Career counts start when you began the game.</p>
-    <h3 style="margin-top:14px">Recent matches</h3>
+    <h3 style="margin-top:14px">${mineW ? `Matches this season <small class="muted">${log.length}</small>` : 'Recent matches'}</h3>
     ${logRows ? `<table class="tbl"><tr><th>When</th><th>Event</th><th>Opponent</th><th>Result</th></tr>${logRows}</table>` : '<p class="muted">No matches yet this season.</p>'}
-    <p class="hint">Match log shows dual meets plus tournament matches you coached; other schools' tournament matches don't keep box scores.</p></div>`;
+    <p class="hint">${mineW ? 'Every dual and tournament match this season, newest first.' : "Match log shows dual meets plus tournament matches you coached; other schools' tournament matches don't keep box scores."}</p></div>`;
 }
 
 function injuries() {
