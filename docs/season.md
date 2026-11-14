@@ -10,7 +10,7 @@
 - Bout by bout: `beginDual` -> `stepDual(G, d, {assist})` (one bout; `d.prog` holds working lineups, used, score, subs) ; `playDual` = whole dual. A wrestler wrestles once per dual; `bout.subA/subB`, `d.result.subs` log. Each bout stores `rk: [rankA, rankB]` (poll rank that day).
 - **Coach AI** (`COACH`): win probability from score + remaining matchups. Clinched (P >= .985, from bout `restFrom` 5) -> rest the next starter (max `maxRest` 3); trailing (P < .45) -> local search of swaps/bump-ups vs the known opposing lineup. AI teams always; the user's team only when the dual is simulated without being opened and `G.assist !== false`.
 - **User control** in a live dual: Next bout / Watch next match, Coach's corner dropdowns (`userSub`/`subOptions`), Auto-run (pausable) honors the lineup set there. Half-played duals are saved and resumable.
-- **Start-of-period choices** in watched live duals: viewer pauses on `ask` events for your side; `watchSnapshot` + `redoBout` re-sim the bout with your `choices` (identical up to the choice because choices use no rng) and rebook the result. Tournaments too (see below).
+- **Start-of-period choices** in watched live duals: viewer pauses on `ask` events for your side (2nd and 3rd periods, and each 30 s overtime tiebreaker period your wrestler chooses, engine.md Overtime); `watchSnapshot` + `redoBout` re-sim the bout with your `choices` (identical up to the choice because choices use no rng) and rebook the result. Tournaments too (see below).
 
 ## Individual tournaments (js/game/tourney.js, live.js)
 - NCAA-style double elimination; `roundPlan(k)` sets reveal order (consolation rounds as soon as they exist, placement matches, **Finals last**; pigtail = level 0); matches store `l`, `rl` (round name).
