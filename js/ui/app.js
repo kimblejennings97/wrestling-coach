@@ -1160,6 +1160,8 @@ function recruiting() {
   return bar + head + boardTab();
 }
 const standCls = s => ({ Leading: 'pos', 'Neck and neck': '', Trailing: 'neg', Lost: 'neg', 'Committed to you': 'pos' }[s] ?? 'muted');
+// the two rival programs most interested in a recruit, with their interest (All recruits + My target board)
+const rivalTxt = r => Object.entries(r.interest).filter(([t]) => t !== G.userTeam).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([t, v]) => `${tn(t, 16)} ${v}`).join(', ');
 function targetsTab() {
   const rc = ui.rec, list = R.boardOf(G).map(id => G.recruits[id]).filter(Boolean);
   list.sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1) || a.rank - b.rank);
@@ -1171,12 +1173,12 @@ function targetsTab() {
     const quick = open ? `${actBtn(r, 'dm', 'DM')} ${actBtn(r, 'call', 'Call')}` : '';
     const status = r.status === 'committed' ? `<span class="${r.team === G.userTeam ? 'pos' : 'neg'}">→ ${tn(r.team, 18)}</span>` : r.status === 'unsigned' ? '<span class="muted">unsigned</span>' : '';
     return `<tr data-act="recsel" data-v="${r.id}" class="${rc.sel === r.id ? 'me' : ''}" style="cursor:pointer"><td>${r.rank}</td><td>${r.name}</td><td>${r.weight}</td><td>${r.state}</td><td style="color:var(--gold)">${starStr(r.stars)}</td><td>${ovrShow}</td><td class="muted">${'●'.repeat(r.scout)}${'○'.repeat(3 - r.scout)}</td>
-      <td>${bar}</td><td class="${standCls(st)}">${st}</td><td>${offr != null ? Math.round(offr * 100) + '%' : ''}</td><td>${quick} ${status}</td><td><button class="secondary" data-act="recrem" data-v="${r.id}" title="Remove from board">✕</button></td></tr>`;
+      <td>${bar}</td><td class="muted" style="white-space:nowrap">${open ? rivalTxt(r) : ''}</td><td class="${standCls(st)}">${st}</td><td>${offr != null ? Math.round(offr * 100) + '%' : ''}</td><td>${quick} ${status}</td><td><button class="secondary" data-act="recrem" data-v="${r.id}" title="Remove from board">✕</button></td></tr>`;
   }).join('');
   const sel = rc.sel && G.recruits[rc.sel];
   const empty = `<p class="hint">Your board is empty. Open <a data-act="rectab" data-v="board">All recruits</a>, click <b>＋ Target</b> on the recruits you want, then work them here each week: DM and call to build interest, pitch what each one cares about, then visit and offer before a rival lands him.</p>`;
   return `<div class="card" style="overflow-x:auto"><div class="row"><span class="muted">Each action can be done once per recruit per week (visits once per season). Targets you ignore for 2+ weeks cool off.</span>${closed ? `<button class="secondary" data-act="recclear">Clear ${closed} closed</button>` : ''}</div>
-    ${list.length ? `<table class="tbl dense"><tr><th>Rank</th><th>Name</th><th>Wt</th><th>St</th><th>★</th><th>OVR</th><th>Scout</th><th>Your interest</th><th>Standing</th><th>Offer</th><th>Quick</th><th></th></tr>${rows}</table>` : empty}</div>${sel ? recruitDetail(sel) : ''}`;
+    ${list.length ? `<table class="tbl dense"><tr><th>Rank</th><th>Name</th><th>Wt</th><th>St</th><th>★</th><th>OVR</th><th>Scout</th><th>Your interest</th><th>Rival interest</th><th>Standing</th><th>Offer</th><th>Quick</th><th></th></tr>${rows}</table>` : empty}</div>${sel ? recruitDetail(sel) : ''}`;
 }
 function actBtn(r, type, label, extra = '') {
   const block = R.actionBlock(G, r, type), a = R.ACTIONS[type];
@@ -1192,7 +1194,7 @@ function boardTab() {
   const rm = rankMap();
   const rows = list.slice(0, rc.limit).map(r => {
     const me_ = r.interest[G.userTeam] || 0, offr = r.offers[G.userTeam];
-    const rivals = Object.entries(r.interest).filter(([t]) => t !== G.userTeam).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([t, v]) => `${tn(t, 16)} ${v}`).join(', ');
+    const rivals = rivalTxt(r);
     const status = r.status === 'committed' ? `<span class="${r.team === G.userTeam ? 'pos' : 'neg'}">→ ${tn(r.team, 18)}</span>` : r.status === 'unsigned' ? '<span class="muted">unsigned</span>' : 'open';
     const ovrShow = r.scout >= 3 ? overall(r).toFixed(1) : `${R.estOvr(r).toFixed(1)}±${[2.6, 1.3, 0.5][r.scout]}`;
     return `<tr data-act="recsel" data-v="${r.id}" class="${rc.sel === r.id ? 'me' : ''}" style="cursor:pointer"><td>${r.rank}</td><td>${r.name}</td><td>${r.weight}</td><td>${r.state}</td><td style="color:var(--gold)">${starStr(r.stars)}</td>
