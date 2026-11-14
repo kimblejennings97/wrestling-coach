@@ -226,7 +226,7 @@ export function simulateFsBout(wA, wB, opts = {}) {
       }
       if (rng.chance(0.6)) {
         const hf = e('A', 'hand') - e('B', 'hand'), w = hf >= 0 ? 'A' : 'B', k = Math.round(S.elapsed) % 4;
-        say('info', [`${nm(w)} controls the ties in the center.`, `${nm(w)} snaps ${nm(other(w))} down; he pops back up.`, `Hand fight in the middle — nobody commits.`, `${nm(w)} works for an underhook.`][k], 'hand', w, ['ties', 'snapdn', 'handfight', 'elbow'][k]);
+        say('info', [`${nm(w)} controls the ties in the center.`, `${nm(w)} snaps ${nm(other(w))} down; he pops back up.`, `Hand fight in the middle — nobody commits.`, `${nm(w)} works for an underhook.`][k], 'hand', w, ['ties', 'snapdn', 'wrist', 'elbow'][k]);
       }
       tiredCheck(); return;
     }

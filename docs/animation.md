@@ -41,3 +41,11 @@ Bout feed is a timeout chain: `feedDelay()` (app.js) waits max(line time, (clipT
 - `animsheet.html` (not deployed): grid of clips; `?c=a,b&t=0.2,0.5,1&w=216` frozen contact sheet for headless screenshots, `&a=B`, `&h=30&cut=1`. Chain names need `+` URL-encoded as `%2B`.
 - Fuzz after any clip change: render every event of a few hundred bouts with `orientAt` and check for NaN/undefined and unknown clips.
 - Rough spots: sweep single's middle, wrist/elbow subtle at small size, circle overlaps briefly mid-turn, counters' end-on camera frame, chain joins only seen as stills. Nothing hand-checked on the iPad.
+
+## Freestyle (2026-11-13, events from js/engine/fs.js; see freestyle.md)
+- `stage()` switches to the freestyle look when `res.style === 'fs'` (or `opt.fs`): `cols.bare` (no headgear), no ankle bands, `FS_MAT` (blue protection area, orange passivity zone, blue centre, white circle; `matSvg` draws it when the venue has a `zone`).
+- New clips: `gut` (gut wrench roll, also used for `rollthru`), `lace` (leg lace, also `alace`), `push` (drive-out step-out, then walk back), `refup` (referee stands them up from par terre), `ref` (referee steps in and points at 'a': passivity warning, activity clock, activity point, caution), `chal` (referee draws the TV box), `suplex` (5). Aliases: `armroll` = wing, `armspin` = duck, `slideby` = snap.
+- `clipFor` freestyle fx: `big` (4/5: `FS_BIG` maps `double4`/`highc4` -> lift, `single4`/`sweep4` -> trip, `counter4` -> headlock, `<throw>5` -> that throw), `exp` -> turn clip, `funk` -> scramble, `so` -> push / oob, `up` -> refup, `warn`/`act`/`pass`/`caut` -> ref, `chal` -> chal. Labels: TAKEDOWN +2, EXPOSURE +2, +4/+5 POINTS, STEP-OUT +1, ACTIVITY CLOCK 0:30, ACTIVITY POINT +1, CAUTION +1, CHALLENGE · OVERTURNED / LOST CHALLENGE +1.
+- Checked: contact sheets of every new clip (headless), render fuzz of 300 freestyle bouts (8,333 events, no NaN / unknown clips) and 300 folkstyle bouts (unchanged). Not checked on the iPad. Rough: the gut wrench / leg lace rolls are simplified log rolls; the step-out has no real mat geometry (always pushed to the right).
+- Move Viewer: "Freestyle" group (always shown in the freestyle look) + a "Freestyle look" switch for any clip; `animsheet.html?fs=1`.
+- Match Lab now animates bouts in both styles (red/blue singlets, timeout chain like the bout viewer's `feedDelay`).

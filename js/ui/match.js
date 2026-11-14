@@ -1,6 +1,7 @@
 // Match Lab UI: build two wrestlers, simulate, watch the play-by-play or jump to the result.
 import { simulateBout, ATTR_KEYS, ATTR_LABELS, fmtClock } from '../engine/bout.js';
 import { simulateFsBout, FS_OF_LBS, fsOvrOfAttrs } from '../engine/fs.js';
+import { stage, orientAt, clipTime } from './anim.js';
 import { generateWrestler, WEIGHTS, ARCHETYPES } from '../data/gen.js';
 import { makeRng } from '../engine/rng.js';
 import { loadGame, newGame, wrestlerAt, overall, CLASS_NAMES, potLabel } from '../game/core.js';
@@ -81,8 +82,8 @@ function onCfg(e) {
 }
 
 function reset() {
-  clearInterval(timer); timer = null; idx = 0;
-  $('feed').innerHTML = ''; $('result').hidden = true;
+  clearTimeout(timer); timer = null; idx = 0;
+  $('feed').innerHTML = ''; $('result').hidden = true; $('stage').innerHTML = '';
   $('sA').textContent = '0'; $('sB').textContent = '0'; $('clk').textContent = '3:00'; $('per').textContent = 'Ready';
 }
 function simulate(newSeed = true) {
@@ -90,6 +91,12 @@ function simulate(newSeed = true) {
   W.A.plan = cfg.A.plan; W.B.plan = cfg.B.plan;
   result = (isFs() ? simulateFsBout : simulateBout)(W.A, W.B, { seed: +$('seed').value });
   reset();
+}
+// bout animation (both styles): red vs blue singlets; folkstyle adds the red / green ankle bands
+const LAB_COL = { A: '#2f6fd8', B: '#d9443a' };   // A blue, B red: matches the Lab scoreboard (A blue, B orange)
+function drawStage(i) {
+  const ev = result.log[i];
+  $('stage').innerHTML = ev ? stage(result, ev, LAB_COL, { orient: orientAt(result.log, i), band: result.style === 'fs' ? null : { A: '#e5534b', B: '#3fb27f' } }) : '';
 }
 function addEvent(ev) {
   const d = document.createElement('div');
@@ -120,14 +127,17 @@ function watch() {
   reset();
   const ms = +$('speed').value;
   $('watch').disabled = true;
-  timer = setInterval(() => {
-    if (idx >= result.log.length) { clearInterval(timer); timer = null; $('watch').disabled = false; showResult(); return; }
-    addEvent(result.log[idx++]);
-  }, ms);
+  $('stage').style.setProperty('--spd', ms / 1000);
+  const step = () => {
+    if (idx >= result.log.length) { timer = null; $('watch').disabled = false; showResult(); return; }
+    const ev = result.log[idx]; addEvent(ev); drawStage(idx); idx++;
+    timer = setTimeout(step, Math.max(ms, Math.round((clipTime(result, ev) + 0.2) * ms)));   // long clips (chains, gut-wrench rolls) are not cut off
+  };
+  step();
 }
 function jump() {
-  clearInterval(timer); timer = null; $('feed').innerHTML = '';
-  result.log.forEach(addEvent); idx = result.log.length; $('watch').disabled = false; showResult();
+  clearTimeout(timer); timer = null; $('feed').innerHTML = '';
+  result.log.forEach(addEvent); idx = result.log.length; drawStage(idx - 1); $('watch').disabled = false; showResult();
 }
 
 $('leagueNote').textContent = 'Team rosters come from the ' + leagueNote + '. Choose "From a team roster" on either side to test real wrestlers; the weight box is the weight they compete at (changing it picks a starter at that weight).';

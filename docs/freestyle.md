@@ -46,3 +46,6 @@ Measured:
 
 ## Match Lab
 lab.html has a Style switch (Folkstyle / Freestyle; `lab.html?style=fs`); weights show lbs and kg; the freestyle result table shows takedowns, 4-pointers, exposures, step-outs, activity points, cautions, challenges and FS OVR. No animation in the Lab (as before).
+
+## Animation
+See animation.md "Freestyle": international mat, no headgear / ankle bands, new clips (gut wrench, leg lace, push-out, referee stand-up, referee calls, challenge, suplex). Match Lab animates freestyle bouts.
