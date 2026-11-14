@@ -22,7 +22,7 @@ Keep these files current: when you change a system, update its topic file (curre
 - 2026-11-13: conferences realigned to 2026-27 (Ivy League, Pac-12, SoCon added; old saves realign at their next offseason); custom league upload (JSON league file + roster CSV); offseason "Wrestlers leaving" step; last recruiting class kept through the offseason; OVR column in Training. Overtime now follows the NCAA format (2:00 SV-1, TB-1 with riding-time edge, SV-2, TB-2) and riding time runs on the real clock (RT point can break a regulation tie); engine.md.
 - Almost everything was verified **headlessly** (sim harnesses, DOM click-throughs, Edge screenshots). The user has hand-tested little of it; the iPad is their test device. `dist/` must be rebuilt (`deploy.bat`) before iPad testing.
 - Bout viewer mat follows the venue (2026-11-12): host team colour + logo in duals, organisation mat + logo at conference tournaments / NCAAs, neutral green elsewhere (`js/data/venues.js`, animation.md). Not yet checked on the iPad.
-- 2026-11-14: freestyle mode playable (optional at new game): RTC rosters, Farrell, US Open, Trials, Worlds/Olympics (docs/freestyle.md); NCAA bracket layout + consolation crossing + pigtail wrestleback; profile shows all your wrestlers' matches.
+- 2026-11-14: freestyle mode playable (optional at new game): RTC rosters, Farrell, US Open, Trials, Worlds/Olympics (docs/freestyle.md); NCAA bracket layout + consolation crossing + pigtail wrestleback; profile shows all your wrestlers' matches; recruiting difficulty Easy/Medium/Hard (recruiting.md; Easy = old model).
 - Open ideas: export/import save file; auto-taper option for the user; top-position stalling / stall ladder; escapes and league-mix MD probably high; coach/staff, facilities, NIL; redshirts; women's / other divisions / freestyle mode; Match Lab has no animation.
 
 ## Decisions made with the user (don't re-litigate)
@@ -50,7 +50,7 @@ Works autonomously and reports briefly; concise answers with a recommendation an
 - `js/engine/bout.js` (+ rng.js): bout sim and tunables.
 - `js/game/`: `core.js` (state G, new game, real rosters, lineups, duals, finishWeek, training, injuries, rankings, save/migrate), `tourney.js`, `live.js`, `selection.js`, `dualtourney.js`, `dualcoach.js`, `sched.js`, `recruit.js`, `offseason.js`, `prestige.js`, `stats.js`, `legacy.js`, `saves.js`, `playeredit.js`, `league.js` (custom leagues).
 - `js/data/`: gen, schools, practice, tournaments, realteams (generated), realtop, overrides, ncaa2026, states, logos, teamcolors, venues (bout viewer mat). `assets/logos/` school logos, `assets/logos/org/` conference + NCAA logos.
-- Tools/tests kept: `animsheet.html`, `harness.html`, `fs_harness.html` (freestyle calibration), `diag.html`, `sim_balance.html`, `longrun.html`, `tools/*.py`.
+- Tools/tests kept: `animsheet.html`, `harness.html`, `fs_harness.html` (freestyle calibration), `rec_harness.html` (recruiting difficulty), `diag.html`, `sim_balance.html`, `longrun.html`, `tools/*.py`.
 
 ## Invariants and gotchas
 - **Viewer-only changes must not change rng draws** (engine tags, move names, chain/counter variants): verify 3,000 bouts identical vs the previous commit's bout.js.
