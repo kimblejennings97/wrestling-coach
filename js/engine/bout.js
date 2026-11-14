@@ -1,5 +1,5 @@
 // Folkstyle bout simulator. Pure logic, no DOM. Returns a result object plus a play-by-play log.
-// Format: 3:00 / 2:00 / 2:00 periods, 1:00 riding-time point, 15-pt tech fall, SV-1 + TB-1 + TB-2 + UTB overtime.
+// Format: 3:00 / 2:00 / 2:00 periods, 1:00 riding-time point, 15-pt tech fall, SV-1 (2:00) + TB-1 + SV-2 + TB-2 + UTB overtime.
 import { makeRng } from './rng.js';
 
 export const ATTR_KEYS = ['str', 'cardio', 'speed', 'flex', 'tdo', 'tdd', 'hand', 'topc', 'topt', 'botEsc', 'botRes', 'big', 'comp', 'iq'];
@@ -42,7 +42,7 @@ export function pTakedown(O, D) {
   return 1 / (1 + Math.exp(-((1 - t) * mid + t * elite)));
 }
 // Match flow knobs (2026-11-09 scoring retune): how often wrestlers shoot, get turned (near-falls), escape or reverse.
-export const FLOW = { rideK: 0.5, letUp: 0.9, letLead: 3, letMin: 40, shotPow: 3, act: 0.28, turn: 0.0035, level: 0.12, esc: 0.07, rev: 0.05 };   // 2026-11-09 tech-fall pass: letUp/letLead (dominant wrestlers let opponents up to score again), shotPow (stronger wrestler takes more of the shots); was act .58 / turn .014 / level 0 / esc .08 / rev .18 before the scoring retune
+export const FLOW = { rideK: 1, letUp: 0.9, letLead: 3, letMin: 40, shotPow: 3, act: 0.28, turn: 0.0035, level: 0.12, esc: 0.07, rev: 0.05 };   // 2026-11-09 tech-fall pass: letUp/letLead (dominant wrestlers let opponents up to score again), shotPow (stronger wrestler takes more of the shots); was act .58 / turn .014 / level 0 / esc .08 / rev .18 before the scoring retune
 // pace by weight class: lighter weights are quicker and score more, heavyweights shoot less (real scoring falls steadily from 125 to 285)
 export const PACE = new Proxy({ 125: 1.1, 133: 1.07, 141: 1.04, 149: 1.02, 157: 1.0, 165: 0.99, 174: 0.97, 184: 0.94, 197: 0.9, 285: 0.8 }, { get: (t, k) => t[k] ?? 1 });
 export const ELITE = { amp: 0, from: 14, span: 4 };   // off: the elite takedown curve (TD) already separates the top tier
@@ -71,7 +71,12 @@ export function simulateBout(wA, wB, opts = {}) {
   const log = [];
 
   const nm = s => lastName(W[s]);
-  const say = (type, text, fx, who, ask, mv) => log.push({ type, period: S.periodLabel, clock: fmtClock(S.remaining), a: S.score.A, b: S.score.B, text, ride: [Math.round(S.ride.A), Math.round(S.ride.B)], pos: S.pos, fx: fx || null, who: who || null, ask: ask || null, mv: mv || null });   // ask = a start-of-period choice the viewer may hand to the user   // pos/fx/who/mv (mv = which move, e.g. 'headlock', 'cradle', 'sprawl') only drive the viewer animation
+  const say = (type, text, fx, who, ask, mv) => {
+    if (!S.first && S.mode === 'reg' && type === 'score' && (fx === 'td' || fx === 'nf') && who) S.first = who;   // first offensive points: overtime tiebreaker choice
+    return sayRaw(type, text, fx, who, ask, mv);
+  };
+  const rb = S => S.rideBase || { A: 0, B: 0 };   // overtime riding time is shown from 0 (scoreboards reset it)
+  const sayRaw = (type, text, fx, who, ask, mv) => log.push({ type, period: S.periodLabel, clock: fmtClock(S.remaining), a: S.score.A, b: S.score.B, text, ride: [Math.round(S.ride.A - rb(S).A), Math.round(S.ride.B - rb(S).B)], pos: S.pos, fx: fx || null, who: who || null, ask: ask || null, mv: mv || null });   // ask = a start-of-period choice the viewer may hand to the user   // pos/fx/who/mv (mv = which move, e.g. 'headlock', 'cradle', 'sprawl') only drive the viewer animation
   const pick = arr => rng.pick(arr);
 
   // ---------- rating helpers ----------
@@ -307,7 +312,7 @@ export function simulateBout(wA, wB, opts = {}) {
     if (S.mode === 'reg' && FLOW.letUp > 0 && S.remaining >= FLOW.letMin) {
       const lead = S.score[T] - S.score[Bt], gap = clamp((e(T, 'tdo') - e(Bt, 'tdd') - 2) / 6, 0, 1);
       if (lead >= FLOW.letLead && gap > 0 && rng.chance(FLOW.letUp * gap)) {
-        ST[Bt].escapes++; award(Bt, RULES.escape); S.pos = 'neutral';
+        ST[Bt].escapes++; award(Bt, RULES.escape); S.ride[T] += dt * 0.5 * FLOW.rideK; S.pos = 'neutral';
         say('score', `${nm(T)} lets ${nm(Bt)} up, looking for the bonus. Escape, one point. (${scoreLine()})`, 'esc', Bt, null, 'letup');
         tiredCheck(); return;
       }
@@ -326,11 +331,11 @@ export function simulateBout(wA, wB, opts = {}) {
     } else if (r < turnP + escP) {
       const pRev = clamp(FLOW.rev + 0.015 * (e(Bt, 'speed') + e(Bt, 'iq') - 20), 0.02, 0.5);
       if (rng.chance(pRev)) {
-        ST[Bt].reversals++; award(Bt, RULES.reversal); S.pos = 'top' + Bt; S.ride[Bt] += 0;
+        ST[Bt].reversals++; award(Bt, RULES.reversal); S.ride[T] += dt * 0.5 * FLOW.rideK; S.pos = 'top' + Bt;   // he was ridden for part of the tick before getting out
         const sw = Math.round(S.elapsed) % 2 === 1;   // which reversal (no rng: results unchanged)
         say('score', `${nm(Bt)} ${sw ? 'hits a switch and comes out on top of' : 'sits out, turns the corner and reverses'} ${nm(T)}! ${cap(WORDS[RULES.reversal])} points. (${scoreLine()})`, 'rev', Bt, null, sw ? 'switch' : 'sitout');
       } else {
-        ST[Bt].escapes++; award(Bt, 1); S.pos = 'neutral';
+        ST[Bt].escapes++; award(Bt, 1); S.ride[T] += dt * 0.5 * FLOW.rideK; S.pos = 'neutral';
         const E2 = [`${nm(Bt)} stands up and breaks free — escape, one point. (${scoreLine()})`, `${nm(Bt)} hand-fights out of the bottom position. Escape! (${scoreLine()})`,
           `${nm(Bt)} hits a Granby roll and comes out the back door — escape, one point. (${scoreLine()})`], eTxt = pick(E2);
         const ei = E2.indexOf(eTxt);
@@ -414,54 +419,53 @@ export function simulateBout(wA, wB, opts = {}) {
   if (!S.over) {
     S.remaining = 0;
     say('period', `Regulation ends. ${scoreLine()}. Riding time: ${nm('A')} ${fmtClock(S.ride.A)}, ${nm('B')} ${fmtClock(S.ride.B)}.`, 'break');
-    // Assumption: the riding-time point is only awarded when the match is not tied after regulation.
-    if (S.score.A !== S.score.B) {
-      const adv = S.ride.A - S.ride.B;
-      if (Math.abs(adv) >= 60) {
-        const s = adv > 0 ? 'A' : 'B';
-        S.score[s] += 1;
-        say('score', `${nm(s)} earns the riding time point (${fmtRT(adv)} advantage). (${scoreLine()})`);
-      }
+    // The riding-time point counts even when it breaks a tie (NCAA: 2-2 with 1:00+ riding time ends 3-2; only a tie after it goes to overtime).
+    const adv = S.ride.A - S.ride.B;
+    if (Math.abs(adv) >= 60) {
+      const s = adv > 0 ? 'A' : 'B';
+      S.score[s] += 1;
+      say('score', `${nm(s)} earns the riding time point (${fmtRT(adv)} advantage). (${scoreLine()})`);
     }
     if (S.score.A !== S.score.B) { S.winner = S.score.A > S.score.B ? 'A' : 'B'; S.method = 'Dec'; }
   }
 
-  // ---------- overtime ----------
+  // ---------- overtime (NCAA rules 3.16/3.17, 2021-22 format, unchanged through 2026-27) ----------
+  // SV-1 2:00 neutral, first point wins -> TB-1: two 0:30 periods, the wrestler with the first offensive points of regulation (takedown / near fall;
+  // disk toss if none) picks his start for the first, the other picks for the second; full 30 s each (wrestling goes on after an escape). After TB-1:
+  // more points wins, else a net tiebreaker riding-time edge wins (+1 point) -> SV-2 1:00 -> TB-2 (the other wrestler picks first) -> UTB rounds.
   if (!S.over && !S.winner) {
-    S.mode = 'sv'; S.periodNo = 4; S.periodLabel = 'SV'; S.remaining = 60; S.pos = 'neutral';
+    const firstPick = S.first || (rng.chance(0.5) ? 'A' : 'B');
     recover();
-    say('period', `Tied ${S.score.A}-${S.score.B}! Sudden victory — first takedown wins.`);
-    const base = { ...S.score };
-    while (S.remaining > 0 && !S.over && S.score.A === base.A && S.score.B === base.B) tick();
-    if (!S.over && (S.score.A !== base.A || S.score.B !== base.B)) {
-      S.winner = S.score.A > S.score.B ? 'A' : 'B'; S.method = 'SV';
-    }
-  }
-  if (!S.over && !S.winner) {
-    S.mode = 'tb';
-    const coin = rng.chance(0.5) ? 'A' : 'B';
-    const tbSeg = (label, bottom) => {
-      S.periodLabel = label; S.remaining = 30; S.pos = 'top' + other(bottom);
-      const startPos = S.pos, before = { ...S.score };
-      say('period', `${label}: ${nm(bottom)} starts on the bottom, 30 seconds.`);
-      while (S.remaining > 0 && !S.over && S.pos === startPos) tick();
-      return before;
-    };
-    S.periodNo = 5;
-    tbSeg('TB-1', coin);
-    if (!S.over) tbSeg('TB-2', other(coin));
-    if (!S.over) {
-      if (S.score.A !== S.score.B) { S.winner = S.score.A > S.score.B ? 'A' : 'B'; S.method = 'TB-2'; }
-      else {
-        const before = { ...S.score };
-        const bottom = other(coin);
-        tbSeg('UTB', bottom);
-        if (!S.over) {
-          if (S.score.A !== before.A || S.score.B !== before.B) S.winner = S.score.A > S.score.B ? 'A' : 'B';
-          else S.winner = other(bottom); // rode out the full 30 seconds
-          S.method = 'UTB';
-        }
-      }
+    say('period', `Tied ${S.score.A}-${S.score.B} after regulation. Overtime!`, 'break');
+    for (let round = 1; !S.over && !S.winner; round++) {
+      const sv = `SV-${round}`, len = round === 1 ? 120 : 60;
+      S.mode = 'sv'; S.periodNo = 4; S.periodLabel = sv; S.remaining = len; S.pos = 'neutral'; S.rideBase = { ...S.ride };
+      say('period', `${sv}: ${len / 60} minute${len > 60 ? 's' : ''} of sudden victory, first point wins.`);
+      const base = { ...S.score };
+      while (S.remaining > 0 && !S.over && S.score.A === base.A && S.score.B === base.B) tick();
+      if (S.over) break;
+      if (S.score.A !== base.A || S.score.B !== base.B) { S.winner = S.score.A > S.score.B ? 'A' : 'B'; S.method = sv; break; }
+
+      const tb = round <= 2 ? `TB-${round}` : 'UTB', c1 = round % 2 ? firstPick : other(firstPick);
+      S.mode = 'tb'; S.periodNo = 5; S.rideBase = { ...S.ride };
+      const half = (c, key, n) => {
+        const r = chooseStart(c, key, false);
+        S.periodLabel = tb; S.remaining = 30; S.pos = startPosFor(c, r.pick);
+        const why = n === 1 && round === 1 ? (S.first ? ' (first offensive points in regulation)' : ' (won the disk toss)') : '';
+        say('period', `${tb}, ${n === 1 ? 'first' : 'second'} 30 seconds: ${nm(c)} has the choice${why} and chooses ${r.pick}.`, null, null, { who: c, key, def: r.def, canDefer: false, per: `${tb} (${n === 1 ? 'first' : 'second'} 30 seconds)` });
+        while (S.remaining > 0 && !S.over) tick();
+      };
+      half(c1, `tb${round}a`, 1);
+      if (!S.over) half(other(c1), `tb${round}b`, 2);
+      if (S.over) break;
+      if (S.score.A !== S.score.B) { S.winner = S.score.A > S.score.B ? 'A' : 'B'; S.method = tb; break; }
+      const oa = S.ride.A - S.rideBase.A, ob = S.ride.B - S.rideBase.B;
+      if (Math.abs(oa - ob) >= 1) {
+        const s = oa > ob ? 'A' : 'B';
+        S.score[s] += 1; S.winner = s; S.method = tb;
+        say('score', `Still tied, but ${nm(s)} has the tiebreaker riding-time edge (${fmtRT(oa - ob)}) and wins. (${scoreLine()})`);
+      } else say('period', `Still tied, with even riding time in the tiebreaker. Back to neutral.`, 'break');
+      if (round >= 8 && !S.winner) { S.winner = firstPick; S.method = tb; S.score[firstPick] += 1; }   // safety net, never reached in practice
     }
   }
 
@@ -474,7 +478,7 @@ export function simulateBout(wA, wB, opts = {}) {
   else if (margin >= 8) { teamPoints = 4; method = 'Major Decision'; detail = `MD ${S.score[w]}-${S.score[l]}`; }
   else {
     teamPoints = 3;
-    method = S.method === 'Dec' ? 'Decision' : S.method === 'SV' ? 'Sudden Victory' : S.method === 'TB-2' ? 'Tiebreaker' : 'Ultimate Tiebreaker';
+    method = S.method === 'Dec' ? 'Decision' : S.method.startsWith('SV') ? 'Sudden Victory' : S.method === 'UTB' ? 'Ultimate Tiebreaker' : 'Tiebreaker';
     detail = `${S.method === 'Dec' ? 'Dec' : S.method} ${S.score[w]}-${S.score[l]}`;
   }
   S.remaining = Math.max(0, S.remaining);

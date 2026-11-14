@@ -16,10 +16,15 @@
 - `FLOW.shotPow` 3: the stronger wrestler takes a bigger share of the shots in a mismatch. `PACE` by weight (125 1.10 ... 197 .90, 285 .80) multiplies `FLOW.act`.
 
 ## Top / bottom
-- `FLOW = { act .28, turn .0035, level .12, esc .07, rev .05, shotPow 3, letUp .9, letLead 3, letMin 40, rideK .5 }`.
+- `FLOW = { act .28, turn .0035, level .12, esc .07, rev .05, shotPow 3, letUp .9, letLead 3, letMin 40, rideK 1 }`.
 - Near falls: `turn` x exp(top vs bottom) x `exp(-level*(botDefense-12))` (a good bottom wrestler is hard to turn). Pins: `PIN = { base .10, adv .016, strK .003, min .015, max .4, bigMult 1.2 }`; near-fall/pin odds use un-amplified `e0()`.
 - Bonus hunting: a top man leading by `letLead`+ with a big tdo-vs-tdd edge lets the bottom man up (prob `letUp * gap`) to score again; never with < `letMin` 40 s left in the period. This is what produces tech falls.
-- Riding time: only `rideK` (half) of top time counts; the 1-point award at >= 1:00 net now in ~20% of bouts.
+- Riding time follows the game clock (`rideK` 1, 2026-11-13; was .5, which showed a full ridden-out 3rd period as 1:00): it runs from a takedown / referee's position and stops at an escape, reversal or end of period (the tick an escape or reversal happens in credits half its time). The 1-point award at >= 1:00 net is given after regulation **even when the score is tied** (2-2 -> 3-2; only a tie after it goes to overtime). League mix: RT point in ~45% of bouts (was 16%), it decides ~3% of bouts that were tied; avg top rider ~2:15 in full-length bouts. No sourced real rate (believed to be roughly half of D1 bouts).
+
+## Overtime (NCAA rules 3.16/3.17, 2021-22 format; the 2025-27 rule changes leave it unchanged)
+- SV-1 **2:00** neutral, first point of any kind wins -> TB-1: two 0:30 periods, the wrestler with the first offensive points in regulation (takedown or near fall, `S.first`; disk toss if none) picks his start for the first, the other for the second (AI `chooseStart`: bottom unless a strong rider; user picks via `ask` keys `tb1a/tb1b/...` in watched matches). Each period runs the full 30 s (wrestling continues after an escape). More points wins; if tied, a net tiebreaker riding-time edge >= 1 s wins (+1 point on the score) -> SV-2 1:00 -> TB-2 (the other wrestler picks first) -> further rounds labelled UTB (practically never reached). Overtime riding time is shown from 0 (`S.rideBase`).
+- Results read `SV-1 5-3`, `TB-1 3-2`, `SV-2 ...`; methods Sudden Victory / Tiebreaker / Ultimate Tiebreaker. The winner's score is always higher (the old UTB could end tied, e.g. "UTB 4-4").
+- League mix: OT 6.1% of bouts (was 7.7%): SV-1 77% of them, TB-1 9%, SV-2 8%, rest < 6%. Uncertain point: whether a reversal counts as "first offensive points" for the TB choice (one secondary source says no; implemented as takedown / near fall only).
 - Period choices `CHOICE = { top 7, p2Neutral 7, trailNeutral 3, defer 47 }` (McGarvey 2018: 2nd-period chooser picks bottom 89 / neutral 7 / top 4%; ~47% of toss winners defer, decided by a seed hash, no rng). Period 3 rule is a judgement call (no data). `opts.userSide` + `opts.choices` let the user choose in live duals and in his matches of a live tournament (season.md).
 - Stalling: only a conservative-plan leader in period 2+ (16% of his idle neutral ticks); 1st call warning, then +1. ~11% of bouts get a warning with a realistic plan mix. No sourced real rate.
 

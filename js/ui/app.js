@@ -1482,15 +1482,15 @@ function rtBox(last, side) {
   const net = last && last.ride ? last.ride[0] - last.ride[1] : 0, mine = side === 0 ? net > 0 : net < 0, v = Math.abs(net);
   return `<div class="rt ${mine ? (v >= 60 ? 'pt' : 'lead') : 'none'}" title="Riding-time advantage: a full minute ahead at the end of regulation earns a point">${mine ? `RT ${fmtClock(v)}${v >= 60 ? ' · +1' : ''}` : '&nbsp;'}</div>`;
 }
-const tChoiceBox = () => `<label class="spd tch" title="When you watch one of your wrestlers' matches, the viewer pauses at the start of the 2nd and 3rd periods so you pick top, bottom, neutral or defer. Off: the coach's suggestion is used and the match plays straight through."><input type="checkbox" data-chg="tchoice" ${G.tChoices !== false ? 'checked' : ''}> Make period choices in my matches</label>`;
+const tChoiceBox = () => `<label class="spd tch" title="When you watch one of your wrestlers' matches, the viewer pauses at the start of the 2nd and 3rd periods (and each overtime tiebreaker period) so you pick top, bottom, neutral or defer. Off: the coach's suggestion is used and the match plays straight through."><input type="checkbox" data-chg="tchoice" ${G.tChoices !== false ? 'checked' : ''}> Make period choices in my matches</label>`;
 // the user's wrestler has a start-of-period choice
 const CH_LABEL = { top: ['Top', 'start on top (offense)'], bottom: ['Bottom', 'start on bottom (defense)'], neutral: ['Neutral', 'start standing'], defer: ['Defer', 'let your opponent choose the 2nd period; you choose the 3rd'] };
 function askPanel(v, res, last) {
   const a = v.asking, mine = res.wrestlers[v.live.mySide], opp = res.wrestlers[v.live.mySide === 'A' ? 'B' : 'A'];
-  const per = a.key === 'p3' ? 'third' : 'second', opts = a.canDefer ? ['top', 'bottom', 'neutral', 'defer'] : ['top', 'bottom', 'neutral'];
+  const per = a.per || `the ${a.key === 'p3' ? 'third' : 'second'} period`, opts = a.canDefer ? ['top', 'bottom', 'neutral', 'defer'] : ['top', 'bottom', 'neutral'];
   const my = last ? (v.live.mySide === 'A' ? last.a : last.b) : 0, th = last ? (v.live.mySide === 'A' ? last.b : last.a) : 0;
-  return `<div class="ask"><h3>${mine.name}: your choice for the ${per} period</h3>
-    <p class="muted">${mine.name} ${my}, ${opp.name} ${th}${a.key === 'p3' ? (my < th ? ' — you are trailing' : my > th ? ' — you are leading' : ' — tied') : ''}. Coach suggests: <b>${a.def}</b>.</p>
+  return `<div class="ask"><h3>${mine.name}: your choice for ${per}</h3>
+    <p class="muted">${mine.name} ${my}, ${opp.name} ${th}${a.key !== 'p2' && a.key !== 'p2b' ? (my < th ? ' — you are trailing' : my > th ? ' — you are leading' : ' — tied') : ''}. Coach suggests: <b>${a.def}</b>.</p>
     <div class="row">${opts.map(o => `<button class="${o === a.def ? '' : 'secondary'}" data-act="viewchoose" data-v="${o}"><b>${CH_LABEL[o][0]}</b><br><small>${CH_LABEL[o][1]}</small></button>`).join('')}</div></div>`;
 }
 function boutView() {
