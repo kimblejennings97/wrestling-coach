@@ -762,7 +762,7 @@ function profile() {
   const statTable = `<div style="overflow-x:auto"><table class="tbl"><tr><th>Season</th>${COLS.map(c => `<th>${c.h}</th>`).join('')}</tr>${seasons}${line(G.season + ' (now)', cur)}${line('<b>Career</b>', careerOf(w), 'me')}</table></div>`;
   // match log: duals this season + the user's tournament matches (other tournaments keep no box scores)
   const hide = eventInProgress() ? G.week : -1, log = [];
-  const nameOf = (id, fb) => (G.wrestlers[id] ? wl(id) : fb || '?');
+  const nameOf = (id, fb) => { const o = G.wrestlers[id]; if (!o) return fb || '?'; const p = wrank(o); return `${p ? `<b class="rk">#${p}</b> ` : ''}${wl(id)}`; };   // opponent's CURRENT poll rank (not his rank at the time)
   for (const d of G.schedule.concat(...G.tournaments.map(x => x.duals || []))) {
     if (!d.done || d.week === hide) continue;
     for (const b of d.result.bouts) {
