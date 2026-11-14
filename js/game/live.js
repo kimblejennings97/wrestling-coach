@@ -84,6 +84,7 @@ export function liveScores(G, t) {
     o.forEach((m, k) => { last[m.a] = k; last[m.b] = k; });
     for (let k = 0; k < n; k++) { const m = o[k]; add(G.wrestlers[m.w === 'A' ? m.a : m.b].team, m.tp ?? ((m.c ? 1 : 0.5) + (BONUS_PTS[m.m] || 0))); }   // m.tp: the winner's team points from runWeight (advancement + bye + bonus)
     for (const e of W.top) {
+      if (e.x) continue;   // second (non-scoring) entry: no placement points
       if (last[e.id] != null && last[e.id] < n) { add(e.team, PLACE_PTS[e.place]); continue; }   // his place is final
       const f = W.ent ? floorPlace(t, wt, e.id) : 9;
       if (f <= 8) add(e.team, PLACE_PTS[f]);

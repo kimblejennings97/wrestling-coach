@@ -96,7 +96,7 @@ function entriesFor(G, spec, wt, rng) {
       }
       for (const a of alt) if (!ids.includes(a) && !G.wrestlers[a].injury) ids.push(a);
     }
-    for (const id of ids) out.push({ id, team: tid, ss: overall(G.wrestlers[id]) + rng.gauss() * 0.6 });
+    ids.forEach((id, i) => out.push({ id, team: tid, ss: overall(G.wrestlers[id]) + rng.gauss() * 0.6, ...(i ? { x: 1 } : {}) }));   // x = second entry: wrestles and places but never scores team points
   }
   return out;
 }
@@ -131,7 +131,7 @@ export function runEvent(G, spec, opts = {}) {
     const entries = entriesFor(G, spec, wt, rng).sort((a, b) => b.ss - a.ss);
     entries.forEach((e, i) => { e.seed = i + 1; const ov = overall(G.wrestlers[e.id]); e.form = FORM.sd ? rng.gauss() * FORM.sd * Math.max(FORM.min, Math.min(1, (FORM.hi - ov) / FORM.span)) : 0; });
     const base = rng.int(1, 2e9);
-    if (keep) { rs.w[wt] = { base, ents: entries.map(e => ({ id: e.id, team: e.team, seed: e.seed, ss: e.ss, form: e.form })) }; for (const e of entries) rs.snap[e.id] = snapOf(G, G.wrestlers[e.id]); }
+    if (keep) { rs.w[wt] = { base, ents: entries.map(e => ({ id: e.id, team: e.team, seed: e.seed, ss: e.ss, form: e.form, ...(e.x ? { x: 1 } : {}) })) }; for (const e of entries) rs.snap[e.id] = snapOf(G, G.wrestlers[e.id]); }
     const s0 = (G.sq || []).length;
     res.weights[wt] = runWeight(G, spec, wt, entries, base, res, rs);
     if (keep) rs.w[wt].sq = [s0, (G.sq || []).length];
@@ -167,8 +167,8 @@ function runWeight(G, spec, wt, entries, base, res, rs) {
     // NCAA team scoring: advancement 1 (championship side) / 0.5 (consolation), none in the finals or placement matches (placement points cover them);
     // a bye pays its advancement points only if the wrestler wins his next match; bonus fall 2 / tech fall 1.5 / major 1 in every match
     const adv = rl === 'Finals' || rl === 'Placement matches' ? 0 : champ ? 1 : 0.5, bye = win.pend || 0; a.pend = b.pend = 0;
-    const tpts = adv + bye + (BONUS_PTS[r.method] || 0);
-    addPts(win.team, tpts);
+    const tpts = win.x ? 0 : adv + bye + (BONUS_PTS[r.method] || 0);   // a second (non-scoring) entry earns his team nothing
+    if (tpts) addPts(win.team, tpts);
     const mine = a.team === G.userTeam || b.team === G.userTeam, uIdx = mine ? res.userBouts.length : -1;
     // round = 1 + the latest round either wrestler just came from (so consolation rounds line up with the championship rounds)
     const lvl = Math.max(minR, (a.lvl ?? -1) + 1, (b.lvl ?? -1) + 1);   // explicit reveal level (roundPlan); dependency is only a safety net
@@ -192,7 +192,7 @@ function runWeight(G, spec, wt, entries, base, res, rs) {
   for (const e of entries) {
     const p = places.get(e) || 9, w = G.wrestlers[e.id];
     all.push({ id: e.id, team: e.team, place: p, seed: e.seed, ss: e.ss });
-    if (p <= 8) { top.push({ id: e.id, name: w.name, team: e.team, place: p }); addPts(e.team, PLACE_PTS[p]); }
+    if (p <= 8) { top.push({ id: e.id, name: w.name, team: e.team, place: p, ...(e.x ? { x: 1 } : {}) }); if (!e.x) addPts(e.team, PLACE_PTS[p]); }   // non-scoring entries place but add no points
     if (spec.kind === 'ncaa') recordPlacement(G, e.id, p);
     w.fatigue = Math.min(100, w.fatigue + FATIGUE.tourneyBout * e.bouts);
     if (e.team === G.userTeam) res.userPlaces.push({ wt, id: e.id, place: p, n: entries.length });

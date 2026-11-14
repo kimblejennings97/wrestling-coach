@@ -52,6 +52,7 @@ const tn = (id, px = 22) => `<span class="tn">${schoolLogo(id, G.teams[id].name,
 const tl = (name, label) => `<a class="wlink" data-act="tprofile" data-v="${String(name).replace(/"/g, "&quot;")}">${label ?? name}</a>`;   // tournament name -> tournament profile
 // clickable wrestler name -> profile screen (idOrWrestler, optional label)
 // Ratings are hidden outside Roster / Profile / Recruiting: elsewhere a wrestler shows his season record and top-25 poll rank.
+const NS = ' <small class="muted" title="Second entry at this weight: no team points">non-scoring</small>';
 const wrank = w => { const p = (ensurePolls(G)[w.lw || w.natural] || []).indexOf(w.id) + 1; return p || 0; };
 const wtxt = w => { const st = seasonOf(w), p = wrank(w); return `${st[0]}-${st[1]}${p ? ' #' + p : ''}`; };
 const wstat = w => { const st = seasonOf(w), p = wrank(w); return `<span class="muted">${st[0]}-${st[1]}</span>${p ? ` <b class="rk">#${p}</b>` : ''}`; };
@@ -874,7 +875,7 @@ function tourneyday() {
     }).join('');
   }
   return `<div class="card"><h2>${tl(t.name)}</h2><p class="muted">Week ${G.week} · ${t.dates} · ${t.loc} · ${t.teams.length} teams${t.tier === 'major' ? ' · major invitational' : ''}</p>
-    ${t.kind === 'dual' ? '<p>Single-elimination bracket of dual meets for the top 16 programs: win your dual to advance. Your lineup is used for every dual, so set it first (you can change it between rounds). Fatigue and injuries carry from dual to dual.</p>' : t.kind === 'ncaa' ? '<p>Your NCAA qualifiers:</p>' : t.kind === 'conf' ? '<p>One entry per weight. Top finishers earn automatic NCAA berths; strong non-placers can still get at-large bids.</p>' : '<p>Your starters are entered. You may add a second wrestler at any weight.</p>'}
+    ${t.kind === 'dual' ? '<p>Single-elimination bracket of dual meets for the top 16 programs: win your dual to advance. Your lineup is used for every dual, so set it first (you can change it between rounds). Fatigue and injuries carry from dual to dual.</p>' : t.kind === 'ncaa' ? '<p>Your NCAA qualifiers:</p>' : t.kind === 'conf' ? '<p>One entry per weight. Top finishers earn automatic NCAA berths; strong non-placers can still get at-large bids.</p>' : '<p>Your starters are entered. You may add a second wrestler at any weight: he wrestles and can place, but as a non-scoring entry he earns no team points (only the starter scores).</p>'}
     <table class="tbl"><tr><th>Wt</th><th>Entry</th>${t.kind === 'open' ? '<th>Second entry</th>' : ''}</tr>${rows}</table>
     <div class="row" style="margin-top:10px"><button data-act="starttourney">Start tournament ▶</button><button class="secondary" data-act="nav" data-v="lineup">Edit lineup</button></div>
     <p class="hint">Fatigue builds with every match, so deep runs get tiring. Fatigue (F) lowers starting energy.</p></div>`;
@@ -1019,7 +1020,7 @@ function bracketHtml(t, wt) {
   // placers whose last match is already revealed
   const o = live ? L.orderOf(t, wt) : ms, n = live ? t.rv.cnt[wt] : ms.length, last = {};
   o.forEach((m, k) => { last[m.a] = k; last[m.b] = k; });
-  const placed = W.top.filter(e => last[e.id] != null && last[e.id] < n).map(e => `<tr class="${e.team === G.userTeam ? 'me' : ''}"><td>${e.place}</td><td class="${e.team === G.userTeam ? 'tcname' : ''}">${wl(e.id, e.name)}</td><td>${tn(e.team, 16)}</td></tr>`).join('');
+  const placed = W.top.filter(e => last[e.id] != null && last[e.id] < n).map(e => `<tr class="${e.team === G.userTeam ? 'me' : ''}"><td>${e.place}</td><td class="${e.team === G.userTeam ? 'tcname' : ''}">${wl(e.id, e.name)}${e.x ? NS : ''}</td><td>${tn(e.team, 16)}</td></tr>`).join('');
   return `${placed ? `<table class="tbl" style="max-width:420px"><tr><th>Place</th><th>Wrestler</th><th>Team</th></tr>${placed}</table>` : '<p class="muted">No placers decided yet.</p>'}
     ${sect(true, 'Championship bracket')}${sect(false, 'Consolation / placement matches')}`;
 }
@@ -1114,7 +1115,7 @@ function tourney() {
   } else if (view === 'weights') {
     const w = r.weights[wtSel];
     body = `${wsel} <span class="muted">${w.n} wrestlers</span>
-      <table class="tbl"><tr><th>Place</th><th>Wrestler</th><th>Team</th></tr>${w.top.map(e => `<tr class="${e.team === G.userTeam ? 'me' : ''}"><td>${e.place}</td><td class="${e.team === G.userTeam ? 'tcname' : ''}">${wl(e.id, e.name)}</td><td>${tn(e.team)}</td></tr>`).join('')}</table>`;
+      <table class="tbl"><tr><th>Place</th><th>Wrestler</th><th>Team</th></tr>${w.top.map(e => `<tr class="${e.team === G.userTeam ? 'me' : ''}"><td>${e.place}</td><td class="${e.team === G.userTeam ? 'tcname' : ''}">${wl(e.id, e.name)}${e.x ? NS : ''}</td><td>${tn(e.team)}</td></tr>`).join('')}</table>`;
   } else if (view === 'bracket') {
     body = `${wsel} <span class="muted">${r.weights[wtSel].n} wrestlers · brackets are removed once the week moves on</span>${bracketHtml(t, wtSel)}`;
   } else if (view === 'teams') {
