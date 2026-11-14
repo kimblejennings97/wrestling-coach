@@ -12,7 +12,7 @@
 - Logos: `schoolLogo(id, name, px)` (chip or initials badge). `LOGOS_ENABLED` / `REAL_NAMES_ENABLED` must go off before any public release.
 
 ## Profiles
-- Wrestler (`profile()`): header (logo, OVR, class, weight, rank), info (hometown/HS; potential/ethic/durability/scholarship only for your own wrestlers), attribute bars, season-by-season stats + career, recent matches (opponent shows his CURRENT poll rank `#N` when ranked), tournament history card (`tourCard`) with Outstanding Wrestler awards, Hall of Fame badge. Archived wrestlers: `archProfile`.
+- Wrestler (`profile()`): header (logo, OVR, class, weight, rank), info (hometown/HS; potential/ethic/durability/scholarship only for your own wrestlers), attribute bars, season-by-season stats + career, recent matches (newest first, also within a week: a tournament's final above its first round; opponent shows his CURRENT poll rank `#N` when ranked), tournament history card (`tourCard`) with Outstanding Wrestler awards, Hall of Fame badge. Archived wrestlers: `archProfile`.
 - Team (`teamProfile`): dual rank + tournament rank, roster, duals, tournaments, NCAA history, school Hall of Fame. Tournament (`tournamentProfile`): past winners, champions, Outstanding Wrestler, title tallies.
 
 ## Bout viewer (`boutView`)

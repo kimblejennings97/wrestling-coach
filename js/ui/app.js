@@ -781,7 +781,8 @@ function profile() {
       log.push({ week: tr.week, ev: `${tl(tr.name)} · ${b.label}`, opp: nameOf(oppId, side === 'A' ? b.bName : b.aName), res: b.w === side, d: b.d });
     }
   }
-  log.sort((a, b) => b.week - a.week);
+  log.forEach((x, i) => { x.i = i; });   // push order = the order he wrestled them (a tournament's bouts are recorded round by round)
+  log.sort((a, b) => b.week - a.week || b.i - a.i);   // newest first, also within a week (a tournament's final above its first round)
   const logRows = log.slice(0, 25).map(x => `<tr><td class="muted">wk ${x.week}</td><td>${x.ev}</td><td>${x.opp}</td><td class="${x.res ? (w.team === G.userTeam ? 'tcwin' : 'pos') : 'neg'}">${x.res ? 'W' : 'L'} ${x.d}</td></tr>`).join('');
   const cs = careerOf(w);
   return `<div class="card"><div class="row"><button class="secondary" data-act="profback">◀ Back</button></div>
