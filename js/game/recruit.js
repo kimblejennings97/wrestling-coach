@@ -55,7 +55,18 @@ export const hasWeightRoom = (G, tid, wt) => tid === G.userTeam || aiHasRoom(G, 
 // (AI teams may still cut a signed freshman as a last resort so they stay at the limit)
 const cuttable = (G, tid) => G.teams[tid].roster.filter(id => tid !== G.userTeam || !G.wrestlers[id].fresh);
 export const cutsNeeded = G => (G.phase === 'offseason' && G.off && G.off.step === 'cut' ? Math.max(0, Math.min(G.teams[G.userTeam].roster.length - ROSTER_MAX, cuttable(G, G.userTeam).length)) : 0);
-export const portalAsk = w => (w.pot >= 15 ? 0.75 : w.pot >= 13 ? 0.5 : 0.25);
+// Optional cuts: over the whole cut step the user may release max(CUT_FREE, roster at the start of the step - ROSTER_MAX) wrestlers
+// (35 -> 5 required + 3 more; 40 -> exactly the 10 required), to make room for transfers. G.off.cutStart is set by beginOffseason
+// (older saves: the current roster size when first asked).
+export const CUT_FREE = 8;
+export function cutAllowance(G) {
+  if (!(G.phase === 'offseason' && G.off && G.off.step === 'cut')) return { total: 0, made: 0, left: 0 };
+  const n = G.teams[G.userTeam].roster.length;
+  if (G.off.cutStart == null) G.off.cutStart = n;
+  const total = Math.max(CUT_FREE, G.off.cutStart - ROSTER_MAX), made = Math.max(0, G.off.cutStart - n);
+  return { total, made, left: Math.max(0, Math.min(total - made, cuttable(G, G.userTeam).length)) };
+}
+export const portalAsk =w => (w.pot >= 15 ? 0.75 : w.pot >= 13 ? 0.5 : 0.25);
 // Release a wrestler into the transfer portal.
 export function cutToPortal(G, tid, id) {
   const t = G.teams[tid], w = G.wrestlers[id];

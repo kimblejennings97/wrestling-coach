@@ -261,7 +261,7 @@ function act(a, d) {
   if (a === 'reccontact') { if (!R.contact(G, d.v, Math.random)) alert('Need 2 hours.'); save(); return render(); }
   if (a === 'recvisit') { if (!R.visit(G, d.v, Math.random)) alert('Need 6 hours and at least 20 interest before a campus visit.'); save(); return render(); }
   if (a === 'recoffer') { const v = +document.getElementById('aidsel').value; if (!R.offer(G, d.v, v)) alert('Not enough scholarship room.'); save(); return render(); }
-  if (a === 'cutw') { const w = G.wrestlers[d.v]; if (w && R.cutsNeeded(G) && confirm(`Cut ${w.name} (${w.natural}, ${CLASS_NAMES[w.cls]})? He will enter the transfer portal.`)) { R.cutToPortal(G, G.userTeam, d.v); save(); } return render(); }
+  if (a === 'cutw') { const w = G.wrestlers[d.v]; if (w && R.cutAllowance(G).left && confirm(`Cut ${w.name} (${w.natural}, ${CLASS_NAMES[w.cls]})? He will enter the transfer portal.`)) { R.cutToPortal(G, G.userTeam, d.v); save(); } return render(); }
   if (a === 'cutauto') { const n = R.cutsNeeded(G); if (n && confirm(`Auto-cut the ${n} lowest-value wrestler${n === 1 ? '' : 's'} (starters and depth at each weight are protected)?`)) { R.autoCut(G, G.userTeam); save(); } return render(); }
   if (a === 'recwithdraw') { R.withdraw(G, d.v); save(); return render(); }
   if (a === 'pofferv') { const v = +document.getElementById('pa-' + d.v).value; if (!R.portalOffer(G, d.v, v)) alert('Not enough scholarship room.'); save(); return render(); }
@@ -1261,7 +1261,7 @@ function offseasonScreen() {
   const step = offStep(G);
   let body;
   if (step === 'leaving') body = leavingPanel();
-  else if (step === 'cut') body = cutPanel(Math.max(0, me().roster.length - R.ROSTER_MAX));
+  else if (step === 'cut') body = cutPanel(R.cutsNeeded(G));
   else if (step === 'progress') body = progressPanel();
   else body = `<div class="card"><p>This step happens on the <a data-act="nav" data-v="${step === 'recruit' ? 'recruit' : 'schedule'}">${step === 'recruit' ? 'Recruiting' : 'Schedule'}</a> page.</p></div>`;
   return offBar() + body;
@@ -1296,13 +1296,15 @@ function progressPanel() {
 }
 // Offseason roster cut-down: must reach ROSTER_MAX before progression; cuts enter the portal.
 function cutPanel(need) {
-  const t = me(), lu = new Set(Object.values(t.lineup));
+  const t = me(), lu = new Set(Object.values(t.lineup)), al = R.cutAllowance(G);
   const ws = t.roster.map(id => G.wrestlers[id]).sort((a, b) => a.natural - b.natural || overall(b) - overall(a));
   const cnt = {}; for (const w of ws) cnt[w.natural] = (cnt[w.natural] || 0) + 1;
-  const rows = ws.map(w => `<tr><td>${wl(w)}${w.fresh ? ' <small class="tag aq">incoming</small>' : ''}</td><td>${CLASS_NAMES[w.cls]}</td><td>${w.natural}</td><td><b>${ovr(w)}</b></td><td>${potLabel(w)}</td><td>${lu.has(w.id) ? '★' : ''}</td><td>${Math.round((w.aid || 0) * 100)}%</td><td class="muted">${cnt[w.natural]} at wt</td><td>${w.fresh ? '<span class="muted">signed recruit</span>' : `<button class="secondary" data-act="cutw" data-v="${w.id}">Cut</button>`}</td></tr>`).join('');
-  return `<div class="card" style="overflow-x:auto"><h2>Cut your roster <small class="neg">${need} to go</small></h2>
-    <p class="muted">Roster ${ws.length} · limit ${R.ROSTER_MAX}. Incoming freshmen count toward the limit but can't be cut. Cut ${need} more wrestler${need === 1 ? '' : 's'} before the transfer portal opens; they enter the portal and can sign with other programs. ★ = projected starter. Cutting frees his scholarship.</p>
-    <div class="row"><button data-act="cutauto">Auto-cut the ${need} lowest-value</button></div>
+  const rows = ws.map(w => `<tr><td>${wl(w)}${w.fresh ? ' <small class="tag aq">incoming</small>' : ''}</td><td>${CLASS_NAMES[w.cls]}</td><td>${w.natural}</td><td><b>${ovr(w)}</b></td><td>${potLabel(w)}</td><td>${lu.has(w.id) ? '★' : ''}</td><td>${Math.round((w.aid || 0) * 100)}%</td><td class="muted">${cnt[w.natural]} at wt</td><td>${w.fresh ? '<span class="muted">signed recruit</span>' : al.left ? `<button class="secondary" data-act="cutw" data-v="${w.id}">Cut</button>` : ''}</td></tr>`).join('');
+  const s = n => (n === 1 ? '' : 's');
+  const status = need ? `<small class="neg">${need} to go</small>` : `<small class="muted">${al.left} optional cut${s(al.left)} left</small>`;
+  return `<div class="card" style="overflow-x:auto"><h2>Cut your roster ${status}</h2>
+    <p class="muted">Roster ${ws.length} · limit ${R.ROSTER_MAX} · cuts used ${al.made} of ${al.total}. Incoming freshmen count toward the limit but can't be cut. ${need ? `Cut ${need} more wrestler${s(need)} to reach the limit. ` : ''}You may cut up to ${al.total} in all (${R.CUT_FREE}, or as many as it takes to get to ${R.ROSTER_MAX}), to free scholarships and roster spots for transfers in the Recruiting step. Cut wrestlers enter the transfer portal and can sign with other programs. ★ = projected starter.</p>
+    ${need ? `<div class="row"><button data-act="cutauto">Auto-cut the ${need} lowest-value</button></div>` : ''}
     <table class="tbl dense"><tr><th>Name</th><th>Cl</th><th>Wt</th><th>OVR</th><th>Pot</th><th></th><th>Aid</th><th></th><th></th></tr>${rows}</table></div>`;
 }
 function portalTab() {

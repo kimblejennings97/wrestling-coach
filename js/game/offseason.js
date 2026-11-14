@@ -10,7 +10,7 @@ import { applyPrestige } from './prestige.js';
 import { buildNext } from './sched.js';
 import { rollSeasonStats, updatePolls, careerOf, flushStats, IDX } from './stats.js';
 import { closeSeasonRecords, retire, pruneArchive } from './legacy.js';
-import { finalizeRecruits, buildPortal, resolvePortal, generateRecruitClass, aidAvailable, AID_CAP, ROSTER_MAX, autoCut, cutsNeeded, pruneGone } from './recruit.js';
+import { finalizeRecruits, buildPortal, resolvePortal, generateRecruitClass, aidAvailable, AID_CAP, ROSTER_MAX, autoCut, cutsNeeded, pruneGone, CUT_FREE } from './recruit.js';
 
 const nextWeight = wt => WEIGHTS[WEIGHTS.indexOf(wt) + 1] ?? null;
 
@@ -95,10 +95,10 @@ export function beginOffseason(G) {
   for (const id in G.teams) if (id !== G.userTeam) aiCuts += autoCut(G, id).length;
   for (const id in G.teams) G.teams[id].lineup = autoLineup(G, id);
   G.phase = 'offseason';
-  G.off = { step: 'leaving', grads: gradNames, leaving, freshmen: stats.freshmen, aiCuts, prog: null };
+  G.off = { step: 'leaving', grads: gradNames, leaving, freshmen: stats.freshmen, aiCuts, prog: null, cutStart: G.teams[G.userTeam].roster.length };   // cutStart: sets the user's cut allowance (recruit.js cutAllowance)
   buildNext(G);   // next season's schedule, editable in step 4
   const mustCut = cutsNeeded(G);
-  G.inbox.unshift({ week: G.week, title: 'Offseason', body: `${stats.grads} senior${stats.grads === 1 ? '' : 's'} graduated; ${stats.freshmen} freshmen joined. ${gradNames.length ? 'Graduated: ' + gradNames.join(', ') + '. ' : ''}Next step: cut players. ${mustCut ? `your roster is ${G.teams[G.userTeam].roster.length} and the limit is ${ROSTER_MAX}, so you must cut ${mustCut}.` : 'your roster is within the limit; cut anyone else you want to release.'} Cut wrestlers enter the transfer portal (${G.portal.length} in it now${aiCuts ? `, ${aiCuts} of them AI roster cuts` : ''}).` });
+  G.inbox.unshift({ week: G.week, title: 'Offseason', body: `${stats.grads} senior${stats.grads === 1 ? '' : 's'} graduated; ${stats.freshmen} freshmen joined. ${gradNames.length ? 'Graduated: ' + gradNames.join(', ') + '. ' : ''}Next step: cut players. ${mustCut ? `your roster is ${G.teams[G.userTeam].roster.length} and the limit is ${ROSTER_MAX}, so you must cut ${mustCut}.` : 'your roster is within the limit.'} You may cut up to ${Math.max(CUT_FREE, G.teams[G.userTeam].roster.length - ROSTER_MAX)} in all, to make room for transfers. Cut wrestlers enter the transfer portal (${G.portal.length} in it now${aiCuts ? `, ${aiCuts} of them AI roster cuts` : ''}).` });
   return stats;
 }
 
