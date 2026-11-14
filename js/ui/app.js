@@ -997,8 +997,8 @@ function selection() {
 
 // ---------- tournament screen: live (reveal as you choose) and final results ----------
 // round names come from the matches (m.rl, set in tourney.js roundPlan): Round of N / Quarterfinals / Semifinals / Consolation n / Placement matches / Finals (Finals is always last)
-function rname(t, l, wt) {   // name stored on the matches themselves (m.rl); falls back to the first weight that has this round
-  for (const w of (wt ? [wt] : WEIGHTS)) { const m = (t.result.weights[w].matches || []).find(x => x.l === l && x.rl); if (m) return m.rl; }
+function rname(t, l, wt, c) {   // name stored on the matches themselves (m.rl); falls back to the first weight that has this round; c = championship (true) / consolation (false) side only
+  for (const w of (wt ? [wt] : WEIGHTS)) { const m = (t.result.weights[w].matches || []).find(x => x.l === l && x.rl && (c === undefined || !!x.c === c)); if (m) return m.rl; }
   return `Round ${l}`;
 }
 // round shown under the bout viewer's clock: the reveal round (Round of 16, Quarterfinals, Consolation 3...), or the exact bout for finals/placements
@@ -1016,7 +1016,7 @@ function bracketHtml(t, wt) {
   const box = m => `<div class="bm">${slot(m, 'A')}${slot(m, 'B')}<div class="bd">${rev.has(m.i) ? `<span>${m.lb} · ${m.d}</span>${canPlay(m) ? `<a class="bplay" data-act="watchtm" data-wt="${wt}" data-v="${m.i}" title="Watch the replay">▶ Watch</a>` : ''}` : `<span class="muted">${m.lb}</span>`}</div></div>`;
   const sect = (champ, title) => {
     const lv = [...new Set(ms.filter(m => !!m.c === champ).map(m => m.l))].sort((x, y) => x - y);
-    return lv.length ? `<h4 style="margin:12px 0 6px">${title}</h4><div class="bkt">${lv.map(l => `<div class="bcol"><div class="bhead">${rname(t, l, wt)}</div>${ms.filter(m => !!m.c === champ && m.l === l).map(box).join('')}</div>`).join('')}</div>` : '';
+    return lv.length ? `<h4 style="margin:12px 0 6px">${title}</h4><div class="bkt">${lv.map(l => `<div class="bcol"><div class="bhead">${rname(t, l, wt, champ)}</div>${ms.filter(m => !!m.c === champ && m.l === l).map(box).join('')}</div>`).join('')}</div>` : '';
   };
   // placers whose last match is already revealed
   const o = live ? L.orderOf(t, wt) : ms, n = live ? t.rv.cnt[wt] : ms.length, last = {};

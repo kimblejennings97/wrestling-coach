@@ -16,7 +16,10 @@ const BONUS_PTS = { 'Fall': 2, 'Tech Fall': 1.5, 'Major Decision': 1 };
 export const FORM = { sd: 1.3, hi: 19.5, span: 6, min: 0.15 };
 const TEAM_PTS = { 'Fall': 6, 'Tech Fall': 5, 'Major Decision': 4 };
 
-export function seedOrder(P) { let o = [1]; while (o.length < P) { const n = o.length * 2; o = o.flatMap(s => [s, n + 1 - s]); } return o; }
+// Bracket line order of the seeds, as on the NCAA bracket (2026 PDF): 32 -> 1 32 | 17 16 | 9 24 | 25 8 | 5 28 | 21 12 | 13 20 | 29 4 || 3 30 | 19 14 | ...
+// | 31 2: the 4 seed at the bottom of the top half, the 3 seed at the top of the bottom half and the 2 seed at the very bottom (16: 1 16 9 8 5 12 13 4 3 14
+// 11 6 7 10 15 2, the NFHS layout). Same quarters as before 2026-11-13 (1 32 16 17 8 25 ...), but the consolation crossing depends on these positions.
+export function seedOrder(P) { let o = [1]; while (o.length < P) { const n = o.length * 2; o = o.flatMap((s, i) => (i % 2 ? [n + 1 - s, s] : [s, n + 1 - s])); } return o; }
 const roundName = (r, k) => (r === k ? 'Final' : r === k - 1 ? 'Semifinal' : r === k - 2 ? 'Quarterfinal' : `Round of ${2 ** (k - r + 1)}`);
 // Reveal order of a double-elim bracket with 2^k slots (k >= 2). Top-side rounds T1..Tk, consolation rounds I<r> (losers of top round r paired among
 // themselves / previous consolation winners) and P<r> (consolation winners vs the losers dropping out of top round r), then placement matches, then the Final LAST.
@@ -38,7 +41,8 @@ export function runBracket(entries, play) {
   if (!N) return places;
   if (N === 1) { places.set(entries[0], 1); return places; }
   let list = entries;
-  if (N === 33) { const r = play(entries[31], entries[32], true, 'Pigtail', 0, 'Pigtail'); places.set(r.l, 33); list = entries.slice(0, 31).concat([r.w]); }
+  let pigL = null;   // NCAA: the pigtail loser is not out yet, he gets a wrestleback (below)
+  if (N === 33) { const r = play(entries[31], entries[32], true, 'Pigtail', 0, 'Pigtail'); pigL = r.l; list = entries.slice(0, 31).concat([r.w]); }
   const n = list.length, k = Math.ceil(Math.log2(n)), P = 2 ** k;
   let cur = seedOrder(P).map(s => (s <= n ? list[s - 1] : null));
   const wbL = {}, plan = roundPlan(k);
@@ -54,6 +58,12 @@ export function runBracket(entries, play) {
     wbL[r] = losers; cur = next;
   }
   places.set(cur[0], 1); if (wbL[k][0]) places.set(wbL[k][0], 2);
+  // NCAA pigtail wrestleback (2026 bracket, bout 251): the pigtail loser meets the loser of the top first-round bout of the BOTTOM half (the 3 v 30
+  // bout, far from the pigtail winner's bout v the 1 seed); the winner takes that loser's place in Consolation 1, the loser is out (33rd)
+  if (pigL && k >= 3) {
+    const hi = wbL[1].length / 2, x = play(pigL, wbL[1][hi], false, 'Consolation', plan.T2, 'Consolation pigtail');
+    wbL[1][hi] = x.w; places.set(x.l, 33);
+  } else if (pigL) places.set(pigL, 33);
   if (k === 1) return places;
   const pairs = (A, B, label, step) => { // elementwise A[i] vs B[i]
     const w = [], l = [];
@@ -68,7 +78,10 @@ export function runBracket(entries, play) {
   for (let r = 1; r <= k - 1; r++) {
     const L = wbL[r];
     if (r === 1) lb = L.slice();
-    else { const x = pairs(lb, L.slice().reverse(), 'Consolation', 'P' + r); lb = x.w; if (r === k - 1) combineL = x.l; }
+    // losers dropping in are crossed so nobody meets an earlier opponent again before the placement matches (NCAA 2026 bracket): the first drop-in
+    // round (r = 2) is fully reversed (bottom loser meets the top consolation winner); later ones swap with the neighbouring section (32-man
+    // bracket: quarterfinal losers 2,1,4,3 into the Blood Round; semifinal losers 2,1). 16- and 8-man brackets: the same as a full reversal.
+    else { const drop = r === 2 ? L.slice().reverse() : L.map((_, i) => L[i ^ 1]); const x = pairs(lb, drop, 'Consolation', 'P' + r); lb = x.w; if (r === k - 1) combineL = x.l; }
     if (r < k - 1) { const x = internal(lb, 'Consolation', 'I' + r); lb = x.w; if (r === k - 2) internalL = x.l; }
   }
   const settle = (arr, first, label) => {
