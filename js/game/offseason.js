@@ -7,6 +7,7 @@ import { seasonCalendar } from '../data/tournaments.js';
 import { syncDualField } from './dualtourney.js';
 import { overall, overallLegacy, sanitizeLineup, autoLineup, aiPlan, coachFactor, initDev, makeSchedule, useCalendar, rankings, realign } from './core.js';
 import { applyPrestige } from './prestige.js';
+import { graduate, startFsSeason, finishFsSeason, runFsEvent, fsOn, fsYear } from './freestyle.js';
 import { buildNext } from './sched.js';
 import { rollSeasonStats, updatePolls, careerOf, flushStats, IDX } from './stats.js';
 import { closeSeasonRecords, retire, pruneArchive } from './legacy.js';
@@ -50,6 +51,7 @@ function growWrestler(G, w, tid, rng, plan) {
 
 // ---------- the offseason is 5 steps: leaving -> cut -> progress -> recruit -> schedule ----------
 export const OFF_STEPS = [['leaving', 'Wrestlers leaving'], ['cut', 'Cut players'], ['progress', 'Wrestler progression'], ['recruit', 'Recruiting'], ['schedule', 'Customize schedule']];
+export const offSteps = G => (G.fs && G.fs.on ? OFF_STEPS.concat([['fs', 'Freestyle season']]) : OFF_STEPS);   // freestyle mode adds a sixth step
 export const offStep = G => (G.phase === 'offseason' ? (G.off && G.off.step) || 'recruit' : null);   // old saves (no G.off) land on recruiting
 
 // Step 1 setup: seniors graduate, signed recruits join as freshmen, the portal fills with random transfers, AI programs cut to the roster limit.
@@ -69,6 +71,7 @@ export function beginOffseason(G) {
       const w = G.wrestlers[id];
       if (w.cls >= 4) {
         const b = brief(w); leaving.notable.push(b); if (tid === G.userTeam) leaving.grads.push(b);
+        graduate(G, w);   // freestyle mode: an AA-level senior goes on to senior freestyle (same id, kept in G.fsw)
         retire(G, w);   // career record books, Halls of Fame, archive (keeps his profile reachable)
         if (tid === G.userTeam) { G.alumni.push({ id: w.id, name: w.name, season: G.season, weight: w.natural, ovr: Math.round(overall(w) * 10) / 10, car: careerOf(w) }); stats.grads++; gradNames.push(`${w.name} (${w.natural})`); }
         delete G.wrestlers[id]; continue;
@@ -141,6 +144,8 @@ export function advanceOffseason(G) {
   }
   if (step === 'progress') { G.off.step = 'recruit'; return { ok: true }; }
   if (step === 'recruit') { G.off.step = 'schedule'; return { ok: true }; }
+  if (step === 'schedule' && fsOn(G)) { startFsSeason(G); G.off.step = 'fs'; return { ok: true }; }   // freestyle season: RTC roster step first
+  if (step === 'fs' && G.fs.step !== 'done') { runFsEvent(G); return { ok: true }; }   // the next freestyle event
   return { ok: true, done: true };
 }
 
@@ -158,6 +163,7 @@ export function startNewSeason(G) {
   const rng = makeRng(G.seed + G.season * 977 + 11);
   if (offStep(G) === 'leaving') G.off.step = 'cut';
   if (offStep(G) === 'cut') { if (cutsNeeded(G)) autoCut(G, G.userTeam); runProgression(G); G.off.step = 'progress'; }   // safety net (UI walks the steps; headless sims skip them): trim, then progress
+  if (fsOn(G)) { if (G.fs.year !== fsYear(G)) startFsSeason(G); finishFsSeason(G); }   // freestyle season: whatever was not run yet
   resolvePortal(G);
   // prestige drift from this season's result
   applyPrestige(G);

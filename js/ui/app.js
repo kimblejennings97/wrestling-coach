@@ -5,7 +5,7 @@ import { SCHOOLS, CONFERENCES, confsOf, isIndependent } from '../data/schools.js
 import * as LEA from '../game/league.js';
 import { PRACTICE, INTENSITY, FOCUS_SHARES } from '../data/practice.js';
 import * as R from '../game/recruit.js';
-import { beginOffseason, startNewSeason, advanceOffseason, offStep, OFF_STEPS } from '../game/offseason.js';
+import { beginOffseason, startNewSeason, advanceOffseason, offStep, OFF_STEPS, offSteps } from '../game/offseason.js';
 import {
   newGame, autoLineup, canWrestle, overall, ovr, wrestlerAt, playDual, beginDual, stepDual, userSub, subOptions, skipToWeek, replayBout, watchSnapshot, redoBout, userDual, userEvent, playEvent, teamEvents, teamTournaments, finishWeek,
   records, rankings, tournamentRankings, teamStrength, fmtDate, startWeightMove, cancelWeightMove, canMove, CLASS_NAMES, potLabel, ethicLabel, coachFactor,
@@ -23,6 +23,8 @@ import { teamVenue, tourneyVenue, NEUTRAL_MAT } from '../data/venues.js';
 import { stage, singletColors, orientAt, clipTime } from './anim.js';
 import { seasonOf, careerOf, derived, KEYS, ensurePolls, flushStats, pendingStats } from '../game/stats.js';
 import * as LG from '../game/legacy.js';
+import * as FS from '../game/freestyle.js';
+import { FS_WEIGHTS } from '../engine/fs.js';
 import * as PE from '../game/playeredit.js';
 
 import { initSaves, loadLast, loadSlot, saveGame, saveAs, copySlot, renameSlot, deleteSlot, listSaves, MAX_SLOTS } from '../game/saves.js';
@@ -100,15 +102,15 @@ function render() {
   if (!G) { $app.innerHTML = ui.editor ? editorScreen() : ui.leagueScr ? leagueScreen() : startScreen(); bind(); return; }
   document.documentElement.style.setProperty('--tc', TEAM_COLORS[G.userTeam] || '#3fb27f');   // your team's colour, used to highlight your wrestlers
   const rec = records(G)[G.userTeam], ev = userEvent(G);
-  const label = G.phase === 'seasonEnd' ? 'Begin offseason ▶' : G.phase === 'offseason' ? ({ leaving: 'Continue → Cut players ▶', cut: 'Done cutting → Progression ▶', progress: 'Continue → Recruiting ▶', recruit: 'Done recruiting → Schedule ▶' }[offStep(G)] || `Start ${G.season + 1} season ▶`) : ev && ev.type === 'tourney' && ev.ref.kind === 'dual' && D.inProgress(ev.ref) ? 'Resume tournament ▶' : ev && !ev.done ? (ev.type === 'dual' ? 'Go to dual day ▶' : 'Go to tournament ▶') : ev && liveTourney() ? 'Resume tournament ▶' : ev ? 'Finish week ▶' : G.week === G.cal.selWeek && SEL.selActive(G) ? 'Selection show ▶' : G.week === G.cal.selWeek ? 'Advance (selection week) ▶' : 'Advance (bye week) ▶';
-  const body = { home, roster, lineup, schedule, standings, rankings: rankingsScreen, stats: statsScreen, profile, team: teamProfile, tprofile: tournamentProfile, offseason: offseasonScreen, dualday, dual, recruit: recruiting, train: training, injuries, tourneyday, tourney, selection, dtourney }[ui.screen]();
+  const label = G.phase === 'seasonEnd' ? 'Begin offseason ▶' : G.phase === 'offseason' ? ({ leaving: 'Continue → Cut players ▶', cut: 'Done cutting → Progression ▶', progress: 'Continue → Recruiting ▶', recruit: 'Done recruiting → Schedule ▶' }[offStep(G)] || fsLabel() || `Start ${G.season + 1} season ▶`) : ev && ev.type === 'tourney' && ev.ref.kind === 'dual' && D.inProgress(ev.ref) ? 'Resume tournament ▶' : ev && !ev.done ? (ev.type === 'dual' ? 'Go to dual day ▶' : 'Go to tournament ▶') : ev && liveTourney() ? 'Resume tournament ▶' : ev ? 'Finish week ▶' : G.week === G.cal.selWeek && SEL.selActive(G) ? 'Selection show ▶' : G.week === G.cal.selWeek ? 'Advance (selection week) ▶' : 'Advance (bye week) ▶';
+  const body = { home, roster, lineup, schedule, standings, rankings: rankingsScreen, stats: statsScreen, profile, team: teamProfile, tprofile: tournamentProfile, offseason: offseasonScreen, freestyle: freestyleScreen, dualday, dual, recruit: recruiting, train: training, injuries, tourneyday, tourney, selection, dtourney }[ui.screen]();
   $app.innerHTML = `
   <div class="top"><b>${tn(G.userTeam, 28)}</b><span class="muted">Coach ${G.coach}</span><span class="muted">${G.phase === 'seasonEnd' ? `Season over · ${seasonLbl(G.season)}` : G.phase === 'offseason' ? `Offseason ${G.season}` : `Week ${G.week} · ${fmtDate(G.week, true)}`}</span>
     <span class="muted">Record ${rec.w}-${rec.l}</span>
     <span style="margin-left:auto"></span>
     <button data-act="continue">${label}</button>
     <button class="secondary" data-act="save">Save</button><button class="secondary" data-act="saveas" title="Copy this career into a new save slot">Save as…</button><button class="secondary" data-act="menu">Menu</button></div>
-  <div class="layout"><nav>${NAV.concat(G.phase === 'offseason' ? [['offseason', 'Offseason']] : G.phase === 'season' && G.ncaa && G.ncaa.show && G.week >= G.cal.selWeek ? [['selection', 'NCAA selection']] : []).map(([k, n, off]) => `<a data-act="nav" data-v="${k}" class="${ui.screen === k ? 'on' : ''} ${off ? 'off' : ''}">${n}${off ? ' <small>soon</small>' : ''}${k === 'injuries' ? injBadge() : ''}</a>`).join('')}
+  <div class="layout"><nav>${NAV.concat(FS.fsOn(G) ? [['freestyle', 'Freestyle']] : [], G.phase === 'offseason' ? [['offseason', 'Offseason']] : G.phase === 'season' && G.ncaa && G.ncaa.show && G.week >= G.cal.selWeek ? [['selection', 'NCAA selection']] : []).map(([k, n, off]) => `<a data-act="nav" data-v="${k}" class="${ui.screen === k ? 'on' : ''} ${off ? 'off' : ''}">${n}${off ? ' <small>soon</small>' : ''}${k === 'injuries' ? injBadge() : ''}</a>`).join('')}
     <hr><a href="moves.html" class="off2">Move viewer</a><a href="lab.html" class="off2">Match Lab</a><a href="harness.html" class="off2">Balance harness</a></nav>
   <section class="content">${body}</section></div>${ui.modal ? modalHtml() : ''}`;
   bind();
@@ -168,18 +170,21 @@ function act(a, d) {
   if (a === 'stcat') { ui.stat.cat = d.v; return render(); }
   if (a === 'rcat') { ui.stat.rcat = d.v; return render(); }
   if (a === 'rteam') { ui.stat.rteam = d.v; return render(); }
+  if (a === 'fsadd' || a === 'fsdrop') { const e = (a === 'fsadd' ? FS.rtcAdd : FS.rtcDrop)(G, d.v); if (e) alert(e); save(); return render(); }
+  if (a === 'fsev') { ui.fsev = d.v; return render(); }
+  if (a === 'fson') { if (confirm('Turn freestyle mode on for this career? A freestyle season will follow each offseason. It cannot be turned off again.')) { G.fs = { on: true, nextId: 1, grads: [] }; save(); } return render(); }
   if (a === 'continue') {
     if (G.phase === 'seasonEnd') { beginOffseason(G); save(); return go('offseason'); }
     if (G.phase === 'offseason') {
       const step = offStep(G);
-      if (step === 'schedule') {
+      if ((step === 'schedule' && !FS.fsOn(G)) || (step === 'fs' && G.fs.step === 'done')) {
         if (!confirm('Start the new season? Portal decisions will be resolved and your offers and schedule are final.')) return;
         startNewSeason(G); save(); ui.rec.tab = 'targets'; return go('home');
       }
       const res = advanceOffseason(G);
       if (!res.ok) { alert(res.msg); return go('offseason'); }
       save(); const nxt = offStep(G); if (nxt === 'recruit') ui.rec.tab = 'portal';
-      return go(nxt === 'recruit' ? 'recruit' : nxt === 'schedule' ? 'schedule' : 'offseason');
+      return go(nxt === 'recruit' ? 'recruit' : nxt === 'schedule' ? 'schedule' : nxt === 'fs' ? 'freestyle' : 'offseason');
     }
     if (ui.park && parkOk(ui.park) && ui.park.screen !== ui.screen) { const p = ui.park; ui.tid = p.tid; if (p.screen === 'dual' && (!ui.dual || ui.dual.id !== p.dual)) { const du = findDual(p.dual); if (du) ui.dual = { id: du.id, shown: du.result ? du.result.bouts.length : 0, live: !du.done, tid: p.tid && G.tournaments.find(x => x.id === p.tid && x.kind === 'dual') ? p.tid : undefined }; } return go(p.screen); }   // back to the match you were watching
     const ev = userEvent(G);
@@ -192,7 +197,7 @@ function act(a, d) {
   if (a === 'save') { save(); const b = document.querySelector('[data-act=save]'); if (b) { b.textContent = 'Saved ✓'; setTimeout(() => b && (b.textContent = 'Save'), 1200); } return; }
   if (a === 'menu') { if (confirm('Return to the start screen? (Your game is saved first.)')) { stopTimers(); save(); G = null; render(); } return; }
   if (a === 'pickteam') { ui.pick = d.v; return render(); }
-  if (a === 'begin') { const lg = activeLeague(); G = newGame(ui.pick, ui.coach || 'Coach', undefined, { real: ui.useReal !== false, edits: PE.loadEdits(), ...(lg ? { league: lg } : {}) }); save(); ui.screen = 'home'; return render(); }   // player-editor edits: new careers only
+  if (a === 'begin') { const lg = activeLeague(); G = newGame(ui.pick, ui.coach || 'Coach', undefined, { real: ui.useReal !== false, fs: ui.useFs === true, edits: PE.loadEdits(), ...(lg ? { league: lg } : {}) }); save(); ui.screen = 'home'; return render(); }   // player-editor edits: new careers only
   if (a === 'loadsave') { loadSlot(d.v).then(g => { if (g) { G = g; ui.screen = 'home'; ui.dual = null; ui.live = false; } render(); }); return; }
   if (a === 'delsave') { if (confirm('Delete this save permanently?')) { deleteSlot(d.v); render(); } return; }
   if (a === 'copysave') { copySlot(d.v).then(() => render()); return; }
@@ -325,6 +330,9 @@ function chg(k, el) {
   if (['edschool', 'edwt', 'edq', 'edonly'].includes(k)) { const st = edState(); st[{ edschool: 'school', edwt: 'wt', edq: 'q', edonly: 'only' }[k]] = k === 'edonly' ? el.checked : el.value; return render(); }
   if (k === 'coach') { ui.coach = el.value; return; }
   if (k === 'usereal') { ui.useReal = el.checked; return; }
+  if (k === 'usefs') { ui.useFs = el.checked; return; }
+  if (k === 'fskg') { const e = FS.setKg(G, el.dataset.id, +el.value); if (e) alert(e); save(); return render(); }
+  if (k === 'fsent') { FS.setEntry(G, el.dataset.ev, el.dataset.id, el.checked); save(); return; }
   if (k === 'recmode') { G.rec.mode = el.value; save(); return render(); }
   if (k === 'nowarn') { G.rec.noWarn = el.checked; save(); return; }
   if (k === 'pickconf') { ui.pickConf = el.value; ui.pick = null; return render(); }
@@ -458,6 +466,7 @@ function startScreen() {
       <label>Conference <select data-chg="pickconf">${confs.map(c => `<option ${c === ui.pickConf ? 'selected' : ''}>${escA(c)}</option>`).join('')}</select></label></div>
       <table class="tbl"><tr><th>School</th><th>Prestige</th><th></th></tr>${list}</table>
       <p><label><input type="checkbox" data-chg="usereal" ${ui.useReal !== false ? 'checked' : ''}> Use real wrestler names and rosters (2026-27 rosters from team sites, ratings from WrestleStat). Uncheck to play with fully generated names.</label></p>
+      <p><label><input type="checkbox" data-chg="usefs" ${ui.useFs ? 'checked' : ''}> Freestyle mode: after each offseason, an RTC freestyle season (Bill Farrell, US Open, World Team Trials, World Championships / Olympics). Optional; it can also be turned on later from the Freestyle page.</label></p>
       <p>${ui.pick ? `Selected: <b>${(sc => schoolLogo(sc.id, sc.name, 24) + ' ' + sc.name)(schools.find(s => s.id === ui.pick))}</b>` : 'Pick a school.'} <button data-act="begin" ${ui.pick ? '' : 'disabled'}>Start career</button></p>
       <p class="hint">Real names and starters come from public 2026-27 roster and ranking data; each wrestler's ratings are estimated for the game, and backups are placed below their team's starter. ${lg ? ' Custom league: teams with a roster in the league file use it; the others use real rosters (when the name matches and real names are on) or generated ones.' : ' Prestige is approximate; conference alignment follows the 2026-27 season (js/data/schools.js).'}</p></div></div>`;
 }
@@ -518,7 +527,7 @@ function home() {
   const rm = rankMap(), t = me(), du = userDual(G), rk = rankings(G);
   let next;
   const ev = userEvent(G);
-  if (G.phase === 'offseason') next = `<b>Offseason ${G.season}</b> — step ${Math.max(1, OFF_STEPS.findIndex(s => s[0] === offStep(G)) + 1)} of ${OFF_STEPS.length}: <b>${(OFF_STEPS.find(s => s[0] === offStep(G)) || [])[1]}</b>. Go to the <a data-act="nav" data-v="offseason">Offseason</a> page, and use the top-right button to move to the next step. Roster has scholarships, Training has weight moves.`;
+  if (G.phase === 'offseason') next = `<b>Offseason ${G.season}</b> — step ${Math.max(1, offSteps(G).findIndex(s => s[0] === offStep(G)) + 1)} of ${offSteps(G).length}: <b>${(offSteps(G).find(s => s[0] === offStep(G)) || [])[1]}</b>. Go to the <a data-act="nav" data-v="offseason">Offseason</a> page, and use the top-right button to move to the next step. Roster has scholarships, Training has weight moves.`;
   else if (G.phase === 'seasonEnd') {
     const h = G.history[G.history.length - 1], rec = records(G)[G.userTeam];
     next = `<b>Season complete.</b> Dual record ${rec.w}-${rec.l}.` + (h ? `<br>NCAA champion: <b>${tn(h.champion)}</b>. ${h.userFinish ? `You finished <b>#${h.userFinish}</b> (${h.userPts} pts) with ${h.userAA} All-American${h.userAA === 1 ? '' : 's'} and ${h.userChamps} national champion${h.userChamps === 1 ? '' : 's'}.` : 'You had no NCAA qualifiers.'}` : '');
@@ -1255,8 +1264,79 @@ function commitsTab() {
 }
 // ---------- offseason (5 steps: wrestlers leaving, cut, progression, recruiting, schedule) ----------
 function offBar() {
-  const idx = OFF_STEPS.findIndex(s => s[0] === offStep(G));
-  return `<div class="card"><div class="row"><b>Offseason ${G.season}</b> ${OFF_STEPS.map(([k, n], i) => `<span class="${i === idx ? '' : 'muted'}" style="${i === idx ? 'font-weight:700;color:var(--tc)' : ''}">${i < idx ? '✓' : i + 1}. ${n}</span>`).join(' <span class="muted">›</span> ')}</div></div>`;
+  const idx = offSteps(G).findIndex(s => s[0] === offStep(G));
+  return `<div class="card"><div class="row"><b>Offseason ${G.season}</b> ${offSteps(G).map(([k, n], i) => `<span class="${i === idx ? '' : 'muted'}" style="${i === idx ? 'font-weight:700;color:var(--tc)' : ''}">${i < idx ? '✓' : i + 1}. ${n}</span>`).join(' <span class="muted">›</span> ')}</div></div>`;
+}
+// ---------- freestyle season (optional mode, js/game/freestyle.js, docs/freestyle.md) ----------
+const fsName = id => { const a = FS.ath(G, id); return a ? (G.wrestlers[id] ? wl(id) : wl(id, a.name)) : '?'; };
+function fsLabel() {
+  if (!FS.fsOn(G) || G.phase !== 'offseason') return null;
+  const st = offStep(G);
+  if (st === 'schedule') return 'Done → Freestyle season ▶';
+  if (st !== 'fs') return null;
+  const s = G.fs.step;
+  return s === 'roster' ? 'Rosters set → Bill Farrell ▶' : s === 'open' ? 'Run the US Open ▶' : s === 'trials' ? 'Run the World Team Trials ▶' : s === 'worlds' ? `Run the ${FS.EV_NAME[FS.worldsKey(G)]} ▶` : null;
+}
+function freestyleScreen() {
+  if (!FS.fsOn(G)) return `<div class="card"><h2>Freestyle</h2><p>Freestyle mode is off in this career. With it on, a freestyle season follows each offseason: RTC rosters, the Bill Farrell, the US Open, the World Team Trials and the World Championships (Olympics every four years).</p>
+    ${G.phase === 'season' || (G.phase === 'offseason' && offStep(G) !== 'fs') ? '<button data-act="fson">Turn freestyle mode on</button> <span class="muted">(from the next freestyle season on; it cannot be turned off again)</span>' : ''}</div>`;
+  const fs = G.fs, live = G.phase === 'offseason' && offStep(G) === 'fs' && fs.year === FS.fsYear(G);
+  const steps = FS.FS_STEPS.map(([k, n]) => [k, k === 'worlds' ? FS.EV_NAME[FS.worldsKey(G)] : n]), order = ['roster', 'farrell', 'open', 'trials', 'worlds', 'done'], cur = live ? order.indexOf(fs.step === 'roster' ? 'roster' : fs.step) : -1;
+  const bar = live ? `<div class="card"><div class="row"><b>Freestyle ${fs.year}</b> ${steps.map(([k, n], i) => `<span class="${i === cur ? '' : 'muted'}" style="${i === cur ? 'font-weight:700;color:var(--tc)' : ''}">${i < cur ? '✓' : i + 1}. ${n}</span>`).join(' <span class="muted">›</span> ')}</div>
+    <p class="muted" style="margin:6px 0 0">${fs.step === 'done' ? 'The freestyle season is over. Use the top-right button to start the next college season.' : 'Use the top-right button to run the next event.'}</p></div>` : '';
+  let body = '';
+  if (live && fs.step === 'roster') body += fsRosterPanel();
+  else if (live && ['open', 'trials', 'worlds'].includes(fs.step)) body += fsEntryPanel(fs.step);
+  if (live && fs.step === 'roster') body += fsEntryPanel('farrell');
+  body += fsResultsPanel() + fsHistoryPanel();
+  return `<div class="card"><h2>Freestyle <small class="muted">${G.teams[G.userTeam].name} RTC</small></h2><p class="muted">Senior men's freestyle (international rules). Your RTC has no size limit; your college wrestlers can only wrestle for your RTC. RTC results (World Team spots, medals, US Open titles) raise your program's prestige a little.</p></div>` + bar + body;
+}
+function fsRosterPanel() {
+  const fs = G.fs, me = G.userTeam, mine = (fs.rtc[me] || []).slice().sort((x, y) => FS.kgOf(G, x) - FS.kgOf(G, y) || FS.fsOvr(FS.ath(G, y)) - FS.fsOvr(FS.ath(G, x)));
+  const src = id => (FS.isCollege(G, id) ? 'College' : G.fsw[id] && G.fsw[id].src === 'grad' ? 'Graduate' : 'Senior');
+  const kgSel = id => { const a = FS.ath(G, id), k = FS.kgOf(G, id), base = a._kg0 ?? k, i = FS_WEIGHTS.indexOf(base); return `<select data-chg="fskg" data-id="${id}">${FS_WEIGHTS.filter((_, j) => Math.abs(j - i) <= 1).map(w => `<option value="${w}" ${w === k ? 'selected' : ''}>${w} kg${w !== base ? (w > base ? ' (up)' : ' (down)') : ''}</option>`).join('')}</select>`; };
+  const row = (id, act) => { const a = FS.ath(G, id); return `<tr><td>${fsName(id)}</td><td>${act === 'drop' ? kgSel(id) : FS.kgOf(G, id) + ' kg'}</td><td>${FS.ageOf(G, id)}</td><td><b>${FS.fsOvr(a).toFixed(1)}</b></td><td class="muted">${act === 'drop' ? src(id) : FS.isCollege(G, id) ? 'College ' + CLASS_NAMES[G.wrestlers[id].cls] : FS.affil(G, id)}</td><td><button class="secondary" data-act="fs${act}" data-v="${id}">${act === 'drop' ? 'Drop' : 'Add'}</button></td></tr>`; };
+  const head = `<tr><th>Wrestler</th><th>Weight</th><th>Age</th><th>FS OVR</th><th></th><th></th></tr>`;
+  const college = G.teams[me].roster.filter(id => !mine.includes(id)).map(id => G.wrestlers[id]).sort((x, y) => FS.fsOvr(y) - FS.fsOvr(x)).slice(0, 12).map(w => w.id);
+  const fa = FS.freeAgents(G).slice(0, 20).map(a => a.id);
+  const moved = (fs.lastGrads || []).filter(g => g.from === me || g.to === me);
+  return `<div class="card"><h3 style="margin-top:0">Your RTC <small class="muted">${mine.length} athletes</small></h3>
+    <p class="muted">Weight: one class up or down per freestyle season, chosen here (instant). Your All-Americans and graduates start on the roster; drop anyone you don't want to enter. FS OVR weighs the attributes for freestyle (throws and par-terre skills count, riding barely does).</p>
+    ${mine.length ? `<table class="tbl">${head}${mine.map(id => row(id, 'drop')).join('')}</table>` : '<p class="muted">Nobody yet.</p>'}
+    ${moved.length ? `<p class="muted">This year's graduates: ${moved.map(g => `${fsName(g.id)} → ${g.to ? G.teams[g.to].name : 'unattached'}`).join(', ')}.</p>` : ''}</div>
+    <div class="cols2"><div class="card"><h3 style="margin-top:0">Add from your college roster</h3><table class="tbl dense">${head}${college.map(id => row(id, 'add')).join('')}</table></div>
+    <div class="card"><h3 style="margin-top:0">Free agents <small class="muted">unattached US athletes</small></h3>${fa.length ? `<table class="tbl dense">${head}${fa.map(id => row(id, 'add')).join('')}</table>` : '<p class="muted">None.</p>'}</div></div>`;
+}
+function fsEntryPanel(ev) {
+  const fs = G.fs, mine = (fs.rtc[G.userTeam] || []).slice().sort((x, y) => FS.kgOf(G, x) - FS.kgOf(G, y));
+  if (ev === 'worlds') { const t = fs.team || {}; return `<div class="card"><h3 style="margin-top:0">US team for the ${FS.EV_NAME[FS.worldsKey(G)]}</h3><table class="tbl">${FS_WEIGHTS.map(kg => `<tr><td>${kg} kg</td><td>${t[kg] ? fsName(t[kg]) : '—'}</td><td class="muted">${t[kg] ? FS.affil(G, t[kg]) : ''}</td></tr>`).join('')}</table></div>`; }
+  const why = id => (ev === 'trials' ? ((fs.q || {})[id] || (Object.values(fs.prev.team).includes(id) ? `${fs.year - 1} World Team` : 'needs an at-large bid')) : '');
+  return `<div class="card"><h3 style="margin-top:0">Your entries: ${FS.EV_NAME[ev]}</h3>${ev === 'trials' ? `<p class="muted">Qualifiers: top ${FS.FS_Q.trialsTop} at the Bill Farrell or the US Open, last year's World Team, last season's NCAA champions, then at-large bids by rating up to ${FS.FS_Q.trialsField}. Last year's World medalist at a weight waits in the best-of-3 final.</p>` : ''}
+    ${mine.length ? `<table class="tbl"><tr><th>Enter</th><th>Wrestler</th><th>Weight</th><th>FS OVR</th>${ev === 'trials' ? '<th>Qualified</th>' : ''}</tr>${mine.map(id => `<tr><td><input type="checkbox" data-chg="fsent" data-ev="${ev}" data-id="${id}" ${!(fs.ent[ev] && fs.ent[ev][id] === false) ? 'checked' : ''}></td><td>${fsName(id)}</td><td>${FS.kgOf(G, id)}</td><td>${FS.fsOvr(FS.ath(G, id)).toFixed(1)}</td>${ev === 'trials' ? `<td class="muted">${why(id)}</td>` : ''}</tr>`).join('')}</table>` : '<p class="muted">Your RTC is empty.</p>'}</div>`;
+}
+function fsResultsPanel() {
+  const fs = G.fs, keys = ['farrell', 'open', 'trials', FS.worldsKey(G)].filter(k => fs.ev && fs.ev[k]);
+  if (!keys.length) return '';
+  const k = keys.includes(ui.fsev) ? ui.fsev : keys[keys.length - 1], R = fs.ev[k];
+  const tabs = keys.map(x => `<a data-act="fsev" data-v="${x}" class="chip ${x === k ? 'on' : ''}">${FS.EV_NAME[x]}</a>`).join('');
+  const pl = p => `${p.place}. ${fsName(p.id)} <small class="muted">${p.aff}</small>`;
+  const rows = FS_WEIGHTS.map(kg => { const r = R.kg[kg]; if (!r) return '';
+    let extra = '';
+    if (k === 'trials') extra = r.final ? `<div><b>Final (best of 3):</b> ${fsName(r.final.a)} ${r.final.wins[0]}-${r.final.wins[1]} ${fsName(r.final.b)}${r.bye && r.final.a === r.bye ? ' <small class="muted">(medalist bye)</small>' : ''} → <b>${r.winnerName}</b></div>` : r.winner ? `<div>World Team: <b>${r.winnerName}</b></div>` : '';
+    if (r.us) extra = `<div>USA: ${fsName(r.us.id)} — ${r.us.place && r.us.place <= 3 ? `<b>${['', 'GOLD', 'SILVER', 'BRONZE'][r.us.place]}</b>` : r.us.place === 5 ? '5th' : 'no medal'}</div>`;
+    return `<tr><td><b>${kg}</b><br><small class="muted">${r.field} entered</small></td><td>${extra}${r.places.map(pl).join('<br>')}</td></tr>`; }).join('');
+  const mine = (R.bouts || []).map(b => { const side = FS.isMine(G, b.a) ? 'A' : 'B', me = side === 'A' ? b.a : b.b, op = side === 'A' ? b.b : b.a, won = b.w === side;
+    return `<tr><td>${b.kg}</td><td>${fsName(me)}</td><td class="muted">${b.label}</td><td>${fsName(op)} <small class="muted">${FS.affil(G, op)}</small></td><td class="${won ? 'tcwin' : 'neg'}">${won ? 'W' : 'L'} ${b.d}</td></tr>`; }).join('');
+  return `<div class="card"><h3 style="margin-top:0">Results ${fs.year}</h3><div class="chips">${tabs}</div><table class="tbl" style="margin-top:8px">${rows}</table>
+    ${mine ? `<h4>Your athletes' bouts</h4><table class="tbl dense"><tr><th>kg</th><th>Wrestler</th><th>Round</th><th>Opponent</th><th>Result</th></tr>${mine}</table>` : ''}</div>`;
+}
+function fsHistoryPanel() {
+  const fs = G.fs; if (!fs.hist || !fs.hist.length) return '';
+  const teams = fs.hist.slice().reverse().map(h => `<tr><td><b>${h.year}</b> <small class="muted">${h.oly ? 'Olympics' : 'Worlds'}</small></td><td>${FS_WEIGHTS.map(kg => { const t = h.team[kg]; return t ? `${kg}: ${t.name}${t.place && t.place <= 3 ? ` <b>${['', '🥇', '🥈', '🥉'][t.place]}</b>` : ''}` : ''; }).filter(Boolean).join(' · ')}</td></tr>`).join('');
+  const hon = Object.values(fs.honors).filter(x => x.gold + x.silver + x.bronze > 0).sort((a, b) => b.gold - a.gold || (b.gold + b.silver + b.bronze) - (a.gold + a.silver + a.bronze)).slice(0, 25);
+  return `<div class="card"><h3 style="margin-top:0">US World / Olympic Teams</h3><table class="tbl dense">${teams}</table></div>
+    <div class="card"><h3 style="margin-top:0">World and Olympic medalists <small class="muted">most golds first, all countries</small></h3><table class="tbl dense"><tr><th>Wrestler</th><th></th><th>Gold</th><th>Silver</th><th>Bronze</th><th>Olympic</th><th>US teams</th></tr>
+    ${hon.map(x => `<tr class="${x.usa ? '' : 'muted'}"><td>${x.name}</td><td>${x.aff}</td><td>${x.gold}</td><td>${x.silver}</td><td>${x.bronze}</td><td>${x.oly}</td><td>${x.teams || ''}</td></tr>`).join('')}</table></div>`;
 }
 function offseasonScreen() {
   const step = offStep(G);
@@ -1264,8 +1344,9 @@ function offseasonScreen() {
   if (step === 'leaving') body = leavingPanel();
   else if (step === 'cut') body = cutPanel(R.cutsNeeded(G));
   else if (step === 'progress') body = progressPanel();
+  else if (step === 'fs') body = `<div class="card"><p>The freestyle season happens on the <a data-act="nav" data-v="freestyle">Freestyle</a> page.</p></div>`;
   else body = `<div class="card"><p>This step happens on the <a data-act="nav" data-v="${step === 'recruit' ? 'recruit' : 'schedule'}">${step === 'recruit' ? 'Recruiting' : 'Schedule'}</a> page.</p></div>`;
-  return offBar() + body;
+  return offBar() + (!FS.fsOn(G) && step !== 'schedule' ? `<div class="card muted">Freestyle mode is off in this career. <a data-act="fson">Turn it on</a> to add a freestyle season after the offseason.</div>` : '') + body;
 }
 // Step 1: who is gone (your graduating seniors and transfers out) and the best seniors leaving the sport. Nothing to decide here.
 function leavingPanel() {
