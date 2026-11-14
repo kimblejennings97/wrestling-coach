@@ -8,9 +8,10 @@ import { runBracket } from './tourney.js';
 const PLACE_PTS = { 1: 16, 2: 12, 3: 10, 4: 9, 5: 7, 6: 6, 7: 4, 8: 3 };
 const BONUS_PTS = { 'Fall': 2, 'Tech Fall': 1.5, 'Major Decision': 1 };
 const cache = new WeakMap();
+const WS = t => t.wts || WEIGHTS;   // weight list: folkstyle WEIGHTS, or the event's own (freestyle: t.wts = FS_WEIGHTS)
 
 export const hasBracket = t => !!(t.result && t.result.weights[WEIGHTS[0]].matches);
-export function initLive(t) { t.rv = { cnt: Object.fromEntries(WEIGHTS.map(wt => [wt, 0])), feed: [], done: false }; }
+export function initLive(t) { t.rv = { cnt: Object.fromEntries(WS(t).map(wt => [wt, 0])), feed: [], done: false }; }
 export const isLive = t => !!(t.rv && !t.rv.done);
 
 // matches of one weight in reveal order: by round, then bracket order
@@ -19,15 +20,15 @@ export function orderOf(t, wt) {
   if (!o) { o = m.slice().sort((a, b) => a.l - b.l || a.i - b.i); cache.set(m, o); }
   return o;
 }
-export const totalOf = t => WEIGHTS.reduce((s, wt) => s + t.result.weights[wt].matches.length, 0);
-export const revealedTotal = t => WEIGHTS.reduce((s, wt) => s + t.rv.cnt[wt], 0);
+export const totalOf = t => WS(t).reduce((s, wt) => s + t.result.weights[wt].matches.length, 0);
+export const revealedTotal = t => WS(t).reduce((s, wt) => s + t.rv.cnt[wt], 0);
 export const nextMatch = (t, wt) => orderOf(t, wt)[t.rv.cnt[wt]] || null;
 export function currentRound(t) {            // the lowest round that still has unrevealed matches at any weight
   let min = Infinity;
-  for (const wt of WEIGHTS) { const n = nextMatch(t, wt); if (n && n.l < min) min = n.l; }
+  for (const wt of WS(t)) { const n = nextMatch(t, wt); if (n && n.l < min) min = n.l; }
   return min === Infinity ? null : min;
 }
-export const maxRound = t => Math.max(...WEIGHTS.map(wt => { const o = orderOf(t, wt); return o.length ? o[o.length - 1].l : 0; }));
+export const maxRound = t => Math.max(...WS(t).map(wt => { const o = orderOf(t, wt); return o.length ? o[o.length - 1].l : 0; }));
 export const canRoundAt = (t, wt) => { const n = nextMatch(t, wt), c = currentRound(t); return !!n && n.l === c; };   // may this weight's round be finished now?
 export function revealedSet(t, wt) {
   const o = orderOf(t, wt), s = new Set();
@@ -39,16 +40,16 @@ export function revealedSet(t, wt) {
 export function advanceLive(t, mode, wt) {
   const out = [];
   const take = w => { const m = nextMatch(t, w); if (!m) return false; t.rv.cnt[w]++; t.rv.feed.push([w, m.i]); out.push({ wt: w, m }); return true; };
-  if (mode === 'all') { for (const w of WEIGHTS) while (take(w)); }
+  if (mode === 'all') { for (const w of WS(t)) while (take(w)); }
   else if (mode === 'match') {
     const L = currentRound(t);
-    if (L != null) for (const w of WEIGHTS) { const n = nextMatch(t, w); if (n && n.l === L) { take(w); break; } }
+    if (L != null) for (const w of WS(t)) { const n = nextMatch(t, w); if (n && n.l === L) { take(w); break; } }
   } else if (mode === 'wround') {
     const L = currentRound(t);
     if (L != null && canRoundAt(t, wt)) while (nextMatch(t, wt) && nextMatch(t, wt).l === L) take(wt);
   } else if (mode === 'round') {
     const L = currentRound(t);
-    if (L != null) for (const w of WEIGHTS) while (nextMatch(t, w) && nextMatch(t, w).l === L) take(w);
+    if (L != null) for (const w of WS(t)) while (nextMatch(t, w) && nextMatch(t, w).l === L) take(w);
   }
   if (t.rv.feed.length > 60) t.rv.feed = t.rv.feed.slice(-60);
   if (revealedTotal(t) >= totalOf(t)) t.rv.done = true;
@@ -113,10 +114,10 @@ export function myStatus(G, t, team = G.userTeam) {
 // The match "Next match" would reveal, without revealing it ({wt, m} or null).
 export function peekNext(t) {
   const L = currentRound(t); if (L == null) return null;
-  for (const w of WEIGHTS) { const n = nextMatch(t, w); if (n && n.l === L) return { wt: w, m: n }; }
+  for (const w of WS(t)) { const n = nextMatch(t, w); if (n && n.l === L) return { wt: w, m: n }; }
   return null;
 }
-export const userMatchesAhead = t => WEIGHTS.some(wt => orderOf(t, wt).slice(t.rv.cnt[wt]).some(m => m.u >= 0));
+export const userMatchesAhead = t => WS(t).some(wt => orderOf(t, wt).slice(t.rv.cnt[wt]).some(m => m.u >= 0));
 // Reveal everything before the user's next match and return that match (still unrevealed), or null if he has none left.
 export function advanceToUser(t) {
   for (let guard = 0; guard < 5000; guard++) {

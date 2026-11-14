@@ -7,7 +7,7 @@ import { seasonCalendar } from '../data/tournaments.js';
 import { syncDualField } from './dualtourney.js';
 import { overall, overallLegacy, sanitizeLineup, autoLineup, aiPlan, coachFactor, initDev, makeSchedule, useCalendar, rankings, realign } from './core.js';
 import { applyPrestige } from './prestige.js';
-import { graduate, startFsSeason, finishFsSeason, runFsEvent, fsOn, fsYear } from './freestyle.js';
+import { graduate, startFsSeason, finishFsSeason, runFsEvent, fsOn, fsYear, fsLiveOpen, closeFsEvent } from './freestyle.js';
 import { buildNext } from './sched.js';
 import { rollSeasonStats, updatePolls, careerOf, flushStats, IDX } from './stats.js';
 import { closeSeasonRecords, retire, pruneArchive } from './legacy.js';
@@ -83,7 +83,7 @@ export function beginOffseason(G) {
       const r = G.recruits[rid]; if (!r) continue;
       const w = { id: 'w' + G.nextId++, name: r.name, school: t.name, weight: r.weight, archetype: r.arch, attrs: { ...r.attrs }, team: tid, natural: r.weight, cls: 1, pot: r.pot,
         ethic: Math.max(3, Math.min(20, Math.round(11 + rng.gauss() * 3.5))), prone: Math.max(1, Math.min(20, Math.round(10 + rng.gauss() * 4))),
-        fatigue: 0, injury: null, focus: null, prog: {}, sg: {}, dev: Math.round(rng.gauss() * 100) / 100, aid: r.offers[tid] || 0, fresh: true, stars: r.stars, hm: r.state || '', prior: false, elo: 1500 };   // no college results yet: unranked until he wins, starts at the neutral rating
+        fatigue: 0, injury: null, focus: null, prog: {}, sg: {}, dev: Math.round(rng.gauss() * 100) / 100, aid: r.offers[tid] || 0, fresh: true, stars: r.stars, hm: r.state || '', ...(r.nat ? { nat: r.nat } : {}), prior: false, elo: 1500 };   // no college results yet: unranked until he wins, starts at the neutral rating
       G.wrestlers[w.id] = w; keep.push(w.id); if (tid === G.userTeam) stats.freshmen++;
     }
     t.roster = keep; t.incoming = [];
@@ -145,7 +145,8 @@ export function advanceOffseason(G) {
   if (step === 'progress') { G.off.step = 'recruit'; return { ok: true }; }
   if (step === 'recruit') { G.off.step = 'schedule'; return { ok: true }; }
   if (step === 'schedule' && fsOn(G)) { startFsSeason(G); G.off.step = 'fs'; return { ok: true }; }   // freestyle season: RTC roster step first
-  if (step === 'fs' && G.fs.step !== 'done') { runFsEvent(G); return { ok: true }; }   // the next freestyle event
+  if (step === 'fs' && fsLiveOpen(G)) { closeFsEvent(G); return { ok: true }; }   // close the event just watched (the step moves on)
+  if (step === 'fs' && G.fs.step !== 'done') { runFsEvent(G); return { ok: true }; }   // the next freestyle event (opens in the live viewer)
   return { ok: true, done: true };
 }
 

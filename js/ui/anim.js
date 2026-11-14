@@ -23,7 +23,7 @@ const LIMBS = ['hL', 'hR', 'fL', 'fR'], POLES = ['pL', 'pR', 'qL', 'qR'];
 const DEF = { hL: { b: [-2.4, 1.4, 0] }, hR: { b: [-2.4, 1.4, 0] }, fL: { b: [-7.2, 0.5, 0] }, fR: { b: [-7.2, 0.5, 0] } };
 
 function lerpPose(A, B, t) {
-  const P = { p: [mix(A.p[0], B.p[0], t), mix(A.p[1], B.p[1], t)], z: mix(A.z, B.z, t), yaw: mix(A.yaw, B.yaw, t), lean: mix(A.lean, B.lean, t), roll: mix(A.roll, B.roll, t), vs: B.vs || A.vs, t, nb: t >= 0.5 ? B.nb : A.nb };   // nb = ankle band taken off
+  const P = { p: [mix(A.p[0], B.p[0], t), mix(A.p[1], B.p[1], t)], z: mix(A.z, B.z, t), yaw: mix(A.yaw, B.yaw, t), lean: mix(A.lean, B.lean, t), roll: mix(A.roll, B.roll, t), vs: B.vs || A.vs, t, nb: t >= 0.5 ? B.nb : A.nb, fg: mix(A.fg || 0, B.fg || 0, t), fw: mix(A.fw || 0, B.fw || 0, t) };   // nb = ankle band taken off
   for (const k of LIMBS) P[k] = [A[k] || DEF[k], B[k] || DEF[k]];
   for (const k of POLES) P[k] = [A[k] || null, B[k] || null];
   return P;
@@ -91,7 +91,7 @@ function drawFrame(all, cam, cols, prop) {
     if (dec && dec.belt) stripe(mix3(J.hip, J.neck, 0.14), mix3(J.hip, J.neck, 0.21), 8, dec.belt, parts[kTorso].d + 0.03);   // signature singlet: belt stripe around the waist, just above the torso
     seg(J.shL, J.shR, 5, c, -0.02); seg(J.hpL, J.hpR, 5.4, ref ? '#30343a' : c, -0.02);
     for (const s of ['L', 'R']) {
-      seg(J['hp' + s], J['kn' + s], 4.6, ref ? '#30343a' : sk(s)); const kLeg = parts.length; seg(J['hp' + s], mix3(J['hp' + s], J['kn' + s], 0.5), 5, ref ? '#30343a' : sc(s), 0.01);
+      seg(J['hp' + s], J['kn' + s], 4.6, ref ? '#30343a' : sk(s)); const kLeg = parts.length; seg(J['hp' + s], mix3(J['hp' + s], J['kn' + s], 0.5), 5, ref ? '#30343a' : sc(s), 0.01); parts[kLeg].d = parts[kLeg - 1].d + 0.01;   // singlet leg: always just above its thigh (sorted by its own midpoint it slipped under the thigh when the knee came toward the camera, e.g. jumping)
       if (dec && dec.legBand) for (const [u, v] of [[0.36, 0.39], [0.425, 0.455]]) stripe(mix3(J['hp' + s], J['kn' + s], u), mix3(J['hp' + s], J['kn' + s], v), 5, far(s) ? shade(dec.legBand, 0.78) : dec.legBand, parts[kLeg].d + 0.002);   // signature singlet: two thin stripes round the leg just above the hem (0.5)
       seg(J['kn' + s], J['ft' + s], 3.8, ref ? '#30343a' : sk(s)); seg(J['ft' + s], J['toe' + s], 3.6, far(s) ? shade(SHOE, 0.8) : SHOE, 0.02);   // shin + shoe (keep on their own line: a trailing comment once swallowed them)
       seg(J['sh' + s], J['el' + s], 3.6, sk(s)); seg(J['el' + s], J['ha' + s], 3.2, sk(s));
@@ -101,6 +101,16 @@ function drawFrame(all, cam, cols, prop) {
       // a thin flat-ended ring (butt caps; round caps made a tall blob): ink edge, then the colour, a little wider than the shin
       const sd = (pr(J.knL)[2] + pr(J.ftL)[2]) / 2, P = u => pr(mix3(J.knL, J.ftL, u)), path = (u, v) => { const A = P(u), B = P(v); return `M${n1(A[0])} ${n1(A[1])}L${n1(B[0])} ${n1(B[1])}`; };
       parts.push({ d: sd + fb + 0.015, raw: `<path d="${path(0.72, 0.9)}" stroke="${INK}" stroke-width="6.2" stroke-linecap="butt"/><path d="${path(0.75, 0.87)}" stroke="${cols.band[n]}" stroke-width="4.6" stroke-linecap="butt"/>` });
+    }
+    // champion's flag (freestyle World / Olympic title, clip champFlag): the flag image stretched between his hands, hanging down behind his back.
+    // The image's left edge goes to the hand that is on the left of the screen (cols.mir = the stage's mirror), so it never reads backwards.
+    if (n === 'a' && cols.flag && J.P.fg > 0.05) {
+      let A = J.haL, B = J.haR; const m = cols.mir || 1; if (pr(A)[0] * m > pr(B)[0] * m) [A, B] = [B, A];
+      const ext = mul(sub(B, A), 0.32); A = sub(A, ext); B = add(B, ext);   // the flag drapes past both hands (held a little in from its corners)
+      const wv = Math.hypot(...sub(B, A)), h = wv * 0.6 * Math.min(1, J.P.fg), dn = add([0, -h, 0], mul(J.lat, (J.P.fw || 0) * 0.6));
+      const TL = pr(A), TR = pr(B), BL = pr(add(A, dn)), BR = pr(add(B, dn)), mt = [TR[0] - TL[0], TR[1] - TL[1], BL[0] - TL[0], BL[1] - TL[1], TL[0], TL[1]].map(v => +v.toFixed(2)).join(' ');
+      parts.push({ d: Math.min(TL[2], TR[2]) + fb - 0.4, raw: `<image href="assets/flags/${cols.flag}.svg" x="0" y="0" width="1" height="1" preserveAspectRatio="none" transform="matrix(${mt})"/>`
+        + `<path d="M${n1(TL[0])} ${n1(TL[1])}L${n1(TR[0])} ${n1(TR[1])}L${n1(BR[0])} ${n1(BR[1])}L${n1(BL[0])} ${n1(BL[1])}Z" stroke="${INK}" stroke-width="0.8" stroke-linejoin="round"/>` });
     }
     // head: a plain grey circle
     const h = pr(J.head);
@@ -222,8 +232,8 @@ const CLIPS = {
     ...spin(0.42, 0)] }),
   counter: () => ({ kf: [   // 'o' shoots, 'a' sprawls and spins behind
     K(0, S(XA, 1), S(XO, -1), N), K(0.14, S(XA, 1, { hL: { r: [2.6, -3.2] } }), rot180(SHOT())),
-    K(0.3, SPRAWL(-6.8, 1), { p: [-1.6, 3], f: -1, lean: 70, fL: [2.4, 0.3], fR: [3.2, 0.3], hL: { o: 'knL' }, hR: { o: 'knR' } }),
-    K(0.44, SPRAWL(-7, 1, { p: [-7, 3.4], lean: 66 }), { p: [-2.2, 3.4], f: -1, lean: 82, fL: [1.6, 0.3], fR: [2, 0.3], hL: [-8, 0], hR: [-8.2, 0] }, N),
+    K(0.3, SPRAWL(-8.8, 1), { p: [-1.6, 3], f: -1, lean: 70, fL: [2.4, 0.3], fR: [3.2, 0.3], hL: { o: 'knL' }, hR: { o: 'knR' } }),
+    K(0.44, SPRAWL(-9.2, 1, { p: [-9.2, 3.8], lean: 64, hL: { o: 'neck', d: [0.2, 0.4, 0] }, hR: { o: 'shR', d: [0, 0.4, 0] } }), { p: [-2.2, 3.4], f: -1, lean: 82, fL: [1.6, 0.3], fR: [2, 0.3], hL: [-8, 0], hR: [-8.2, 0] }, N),
     ...spin(0.44, -6)] }),
   scr: () => ({ kf: [...roll(), K(0.74, { p: [1.2, 3.6], lean: 64, fL: [-2.4, 0.3], fR: [-2, 0.3], hL: { o: 'belly' }, hR: { o: 'hip' } }, SEAT({ p: [5.4, 1.7] }), [-12, 20], { o2: alt(SEAT({ p: [5.4, 1.7] })) }),
     K(0.88, { p: [2.4, 4.1], z: -1.8, lean: 62, fL: [-1.4, 0.3], fR: [-1, 0.3], hR: { o: 'belly', d: [0.4, -0.6, 1.2] }, hL: { o: 'shL' } }, { p: [4.8, 2.9], lean: 76, roll: 80, fL: { b: [-4.5, 2.6, 0] }, fR: { b: [-5.5, 1.5, 0] }, hL: [10, 0.2], hR: [10.4, 0.2] }, [-30, 26]),
@@ -530,6 +540,17 @@ CLIPS.champKneel = () => {
   return { n: 28, dur: 2.3, noHg: true, cam: [0, 16], kf, loopDur: 1.4, loop: [{ a: lie(), o: KNEEL(7, -1), r: REF1() }, { a: lie({ p: [x - 1.6, 1.45], hL: { b: [4, 0.6, -2.6] }, hR: { b: [4, 0.6, 2.6] } }), o: KNEEL(7, -1), r: REF1() }] };
 };
 
+// freestyle World / Olympic title (user request 2026-11-14, from a photo): he takes his country's flag, lifts it over his head and holds it up behind
+// his back, arms spread above the shoulders, then turns a little each way to show it to the crowd; the flag waves gently in the loop
+CLIPS.champFlag = () => {
+  const x = -1.6, back = (fg, k) => VUP(x, 7.25, { fg, hL: { b: [3.3, -1.2, -3.8] }, hR: { b: [3.3, -1.2, 3.8] }, fL: [x + 1.1, 0], fR: [x - 1.1, 0], ...k });
+  const kf = [...champStart(),
+    K(0.14, UP(x, 1, { yaw: 90, fL: [x + 1, 0], fR: [x - 1, 0], hL: { b: [-1.4, 1.8, -1.2] }, hR: { b: [-1.4, 1.8, 1.2] }, fg: 0.06 }), KNEEL(7, -1), [0, 14], { r: REF1() }),
+    K(0.3, VUP(x, 7.25, { fg: 0.45, hL: { b: [4.3, 0.3, -1.9] }, hR: { b: [4.3, 0.3, 1.9] } })),   // over his head
+    K(0.46, back(1, { fw: 0.6 })), K(0.62, back(1, { yaw: 72, fw: -0.6 })), K(0.8, back(1, { yaw: 108, fw: 0.6 })), K(1, back(1, { fw: -0.4 }))];
+  return { n: 30, dur: 2.6, noHg: true, cam: [0, 14], kf, loopDur: 1.2, loop: [{ a: back(1, { fw: 0.7 }), o: KNEEL(7, -1), r: REF1() }, { a: back(1, { fw: -0.7, lean: -3 }), o: KNEEL(7, -1), r: REF1() }] };
+};
+
 // ----- more moves (2026-11-12) -----
 // high-crotch: head inside on his chest, arms round the near leg high at the crotch, stands it up and runs the pipe so he falls to his seat
 CLIPS.highc = () => ({ kf: [
@@ -574,7 +595,7 @@ CLIPS.spiral = () => ({ n: 13, dur: 1.0, kf: [
 // on the left. The camera swings round during the finish (final camera M + 180 here = the usual riding view after the flip). -----
 const MB = [M[0] + 180, M[1]];
 // pancake: in on a double / high-crotch, the defender crossfaces hard, locks the head and arm and turns his hips: the shooter is rolled to his back
-CLIPS.pancake = () => flipClip({ n: 15, dur: 1.05, kf: [
+const PANCAKE_KF = () => [
   K(0, S(XA, 1), S(XO, -1), N), K(0.12, SHOT(), S(XO, -1)),
   K(0.26, INLEGS(), { p: [6.6, 5.6], f: -1, lean: 44, fL: [5, 0], fR: [8.6, 0], hL: { o: 'head', d: [0.5, 0.1, 0] }, hR: { o: 'shR', d: [0, 0.6, 0] } }),
   K(0.4, INLEGS({ p: [2.2, 3.7], lean: 52 }), { p: [5.8, 4.8], f: -1, lean: 54, fL: [3.8, 0], fR: [8, 0], hL: { o: 'neck', d: [0, 0.3, 0] }, hR: { o: 'shL', d: [0, 0.4, 0] } }),
@@ -585,10 +606,15 @@ CLIPS.pancake = () => flipClip({ n: 15, dur: 1.05, kf: [
   K(0.8, { p: [3.6, 1.6], lean: 88, roll: 178, fL: { b: [-5.2, 3, 0] }, fR: { b: [-6.4, 1.6, 0] }, hL: { b: [-0.4, 2, 0] }, hR: { b: [0.6, 2.4, 0] } },
     { p: [4.6, 2.9], yaw: 0, lean: 80, fL: [-1.6, 0.3, -1.8], fR: [-0.8, 0.3, 2], hL: { o: 'neck', d: [0, -0.2, 0] }, hR: { o: 'head', d: [0.4, 0, 0] } }, [-16, 24]),
   K(0.9, { p: [4.2, 3], lean: 82, roll: 70, fL: [1.4, 0.3], fR: [1.8, 0.3], hL: [9.6, 0.2], hR: [10, 0.4] }, COVER({ p: [2.6, 3.8], fL: [-1.2, 0.3], fR: [-0.6, 0.3] }), [70, 52]),
-  K(1, RB(), RT(), MB)] });
+  K(1, RB(), RT(), MB)];
+CLIPS.pancake = () => flipClip({ n: 15, dur: 1.05, kf: PANCAKE_KF() });
+// near-fall version (bout.js counterNF): he stays on his back, the defender keeps the head and arm locked and squeezes chest to chest
+CLIPS.pancakeNF = () => flipClip({ n: 15, dur: 1.05, pin: true, kf: [...PANCAKE_KF().filter(k => k.t <= 0.8),
+  K(1, { p: [3.6, 1.4], lean: 88, roll: 178, fL: { b: [-4.8, 3.4, 0] }, fR: { b: [-6.6, 1.2, 0] }, hL: { b: [-0.4, 0.6, -2.4] }, hR: { b: [1.2, 1.4, 0] } },
+    { p: [4.6, 2.6], yaw: 0, lean: 84, fL: [-1.8, 0.3, -2.2], fR: [-1, 0.3, 2.4], hL: { o: 'neck', d: [0, -0.2, 0] }, hR: { o: 'head', d: [0.4, 0, 0] } }, [-20, 26])] });
 // kickstand: the shooter comes up on a single and turns away with the leg trapped between his legs; the defender hooks that foot on the far
 // knee, reaches his arm behind the near knee and sits back, pulling him over backwards onto his back, then comes up on top
-CLIPS.kickstand = () => flipClip({ n: 16, dur: 1.15, kf: [
+const KICK_KF = () => [
   K(0, S(XA, 1), S(XO, -1), N), K(0.1, SHOT(), S(XO, -1)),
   K(0.2, INLEGS({ hL: { o: 'knL', d: [0.6, 0.6, 0] }, hR: { o: 'knL', d: [0.4, -0.8, 0] } }), { p: [7, 6], f: -1, lean: 34, fL: [4.6, 0], fR: [8.4, 0], hL: { o: 'head' }, hR: { o: 'chest', d: [0, 1, 0] } }),
   K(0.32, { p: [2.4, 6.5], lean: 14, fL: [3.4, 0], fR: [1.2, 0], hL: { o: 'knL', d: [0.2, 0.4, 0] }, hR: { o: 'ftL', d: [0.4, 0.6, 0] } }, { p: [7.6, 6.7], f: -1, lean: 16, fL: [2.8, 6.3], fR: [8, 0], hL: { o: 'shL' }, hR: { r: [1, 1.5] } }),
@@ -602,7 +628,12 @@ CLIPS.kickstand = () => flipClip({ n: 16, dur: 1.15, kf: [
     { p: [5.4, 2.6], f: -1, lean: -10, fL: [7.4, 0.3], fR: [8.4, 0.3, 1.6], hL: [8, 0.2], hR: { o: 'knL', d: [0.4, 0, 0.6] } }, [-24, 24],
     { a2: alt({ p: [4.6, 1.8], yaw: 180, lean: -84, fL: { b: [-5.4, 3, 0] }, fR: { b: [-6.6, 1.2, 0] }, hL: { r: [-1.6, 2] }, hR: { r: [-2.4, 1] } }) }),
   K(0.9, { p: [4.4, 3], lean: 82, roll: 80, fL: [1.4, 0.3], fR: [1.8, 0.3], hL: [9.6, 0.2], hR: [10, 0.4] }, COVER({ p: [2.4, 3.8], fL: [-1.2, 0.3], fR: [-0.6, 0.3] }), [70, 52]),
-  K(1, RB(), RT(), MB)] });
+  K(1, RB(), RT(), MB)];
+CLIPS.kickstand = () => flipClip({ n: 16, dur: 1.15, kf: KICK_KF() });
+// near-fall version: the defender comes up out of the sit and covers him chest to chest while he is still on his back
+const KICK_BACK = k => alt({ p: [4.6, 1.6], yaw: 180, lean: -86, fL: { b: [-5, 3.4, 0] }, fR: { b: [-6.6, 1.2, 0] }, hL: { r: [-1.6, 2] }, hR: { r: [-2.4, 1] }, ...k });
+CLIPS.kickstandNF = () => flipClip({ n: 16, dur: 1.15, pin: true, kf: [...KICK_KF().filter(k => k.t <= 0.8),
+  K(1, KICK_BACK(), { p: [3.4, 3.2], yaw: 360, lean: 76, fL: [-0.8, 0.3, -1.4], fR: [-0.2, 0.3, 1.4], hL: { o: 'head', d: [0, 0.4, 0] }, hR: { o: 'chest', d: [0, 0.4, 0] } }, [-26, 26])] });
 // high-crotch counter: the defender sits to his butt, reaches his arm over the shooter's back to the inside of his thigh (a switch), swings his
 // hips out and comes up behind him
 CLIPS.hcswitch = () => flipClip({ n: 15, dur: 1.05, kf: [
@@ -646,17 +677,6 @@ function roll() {
 
 // ---------- freestyle clips (2026-11-13; js/engine/fs.js events) ----------
 // Par terre in freestyle starts from the flattened position (FT / FB): the bottom man lies flat, the top man works from the side.
-// gut wrench: hands locked round his waist, the top man drives into his side and rolls him across his back (2 points), back to the stomach
-CLIPS.gut = () => ({ n: 16, dur: 1.05, pin: true, kf: [
-  K(0, FT(), FB(), M),
-  K(0.2, FT({ p: [3.4, 3.1], z: -2.2, lean: 64, hL: { o: 'belly', d: [0, -0.6, 0.8] }, hR: { o: 'chest', d: [0, -0.6, 0.8] } }), FB()),
-  K(0.42, { p: [4.2, 3.2], z: -2.6, lean: 70, roll: 40, fL: [0.6, 0.3, -3.6], fR: [1.4, 0.3, -1.6], hL: { o: 'belly', d: [0, -0.4, 0.4] }, hR: { o: 'chest', d: [0, -0.4, 0.4] } },
-    FB({ p: [5, 2.2], z: -0.8, roll: -70, hL: [11, 1.6, -1], hR: [11.2, 2.4, 1] }), [-30, 26]),
-  K(0.62, { p: [4.4, 2.4], z: -1.6, lean: 76, roll: 110, fL: { b: [-6.6, 1.2, 1] }, fR: { b: [-6.4, 2.2, -1] }, hL: { o: 'belly', d: [0, 0.4, 0] }, hR: { o: 'chest', d: [0, 0.4, 0] } },
-    FB({ p: [5, 1.5], z: 0.6, roll: -180, fL: { b: [-6.2, 2, 0] }, fR: { b: [-6.8, 1, 0] }, hL: { b: [1, 2.6, -1.6] }, hR: { b: [1, 2.6, 1.6] } }), [-34, 28]),
-  K(0.82, FT({ p: [2.8, 3], z: 1.4, yaw: 0, hL: { o: 'belly', d: [0, 0.4, 0] }, hR: { o: 'chest', d: [0, 0.4, 0] } }),
-    FB({ p: [5, 1.4], z: 1.6, roll: -290, hL: [11, 1.2, 2.4], hR: [11.4, 0.6, 0.6] }), [-26, 26]),
-  K(1, FT({ z: 1.4, hL: { o: 'belly', d: [0, -0.4, 0.4] }, hR: { o: 'chest', d: [0, -0.4, 0.4] } }), FB({ z: 1.6, roll: -360 }), M)] });
 // leg lace: at his feet, ankles locked under the arm, the top man rolls sideways and the bottom man goes over his shoulders with him (2 points)
 CLIPS.lace = () => ({ n: 16, dur: 1.05, pin: true, kf: [
   K(0, FT(), FB(), M),
@@ -669,8 +689,6 @@ CLIPS.lace = () => ({ n: 16, dur: 1.05, pin: true, kf: [
     FB({ p: [5, 1.3], z: 3, roll: 300 }), [-40, 28]),
   K(1, { p: [-2.4, 3.4], z: 3, lean: 60, roll: -360, fL: [-6, 0.3, 2.6], fR: [-5.6, 0.3, 4.2], hL: { o: 'ftL', d: [0.4, 0.4, 0] }, hR: { o: 'knR', d: [0.4, 0.4, 0] } }, FB({ z: 3, roll: 360 }), [-40, 26])] });
 CLIPS.alace = CLIPS.lace; CLIPS.armroll = CLIPS.wing;
-// roll-through: the bottom man catches the top man's turn and rolls HIM across his back
-CLIPS.rollthru = CLIPS.gut;   // the bottom man ('a', the scorer) rolls the top man across his back: shown as the gut-wrench roll
 // push-out: tied up, he drives the other man straight back off the mat (step-out, 1 point), then they walk back to the centre
 CLIPS.push = () => ({ n: 16, dur: 1.15, kf: [
   K(0, S(XA, 1), S(XO, -1), N),
@@ -714,6 +732,179 @@ CLIPS.suplex = () => ({ n: 16, dur: 1.05, pin: true, kf: [
   K(1, { p: [-6.6, 2.8], lean: -74, roll: 180, fL: [-2.2, 0.3], fR: [-1.4, 0.3], hL: { o: 'chest' }, hR: { o: 'head' } },   // = facing back over him (yaw 180, lean 74) written as a roll, so he turns over instead of standing up
     { p: [-9.4, 1.3], f: -1, lean: 268, fL: { b: [-4.8, 3.8, 0] }, fR: { b: [-6.8, 0.8, 0] }, hL: { b: [0.4, 0.6, -2.4] }, hR: { b: [1.4, 1.4, 0] } }, [30, 26])] });
 CLIPS.armspin = CLIPS.duck; CLIPS.slideby = CLIPS.snap;
+// ---------- more clips (2026-11-14): gut wrench with both men rolling, front-headlock series, belly-to-back suplex, chest wrap / crotch lift,
+// leg riding series, spladle, leg pass ----------
+// gut wrench (redone): hands locked round his waist, the top man rolls under, the bottom man goes over the top of him, and the top man
+// comes back up on top: both turn a full circle together and travel one body-width sideways (like the leg lace)
+CLIPS.gut = () => ({ n: 18, dur: 1.15, pin: true, kf: [
+  K(0, FT(), FB(), M),
+  K(0.16, FT({ p: [3.4, 3.1], z: -2.2, lean: 64, hL: { o: 'belly', d: [0, -0.6, 0.8] }, hR: { o: 'chest', d: [0, -0.6, 0.8] } }), FB(), M),
+  K(0.36, { p: [3.8, 1.8], z: -2.2, lean: 84, roll: -90, fL: { b: [-6.4, 1.6, 0.4] }, fR: { b: [-6, 2.6, -0.4] }, hL: { o: 'belly', d: [0, -0.4, 0.4] }, hR: { o: 'chest', d: [0, -0.4, 0.4] } },
+    FB({ p: [5, 3], z: -1.6, roll: -80, fL: { b: [-6.4, 1.6, 0] }, fR: { b: [-6.8, 0.8, 0] }, hL: [10.6, 2.6, -2], hR: [11, 3.4, -0.6] }), [-30, 26]),
+  K(0.56, { p: [3.8, 1.3], z: -2.8, lean: 88, roll: -180, fL: { b: [-6.6, 1.2, 0.6] }, fR: { b: [-6.2, 2, -0.6] }, hL: { o: 'belly', d: [0, 0.2, 0] }, hR: { o: 'chest', d: [0, 0.2, 0] } },
+    FB({ p: [5, 3.6], z: -2.8, roll: -180, fL: { b: [-5.6, 2.6, 0] }, fR: { b: [-6.4, 1.6, 0] }, hL: { b: [1, 2.6, -1.6] }, hR: { b: [1, 2.6, 1.6] } }), [-34, 28]),
+  K(0.76, { p: [3.6, 2], z: -4.2, lean: 80, roll: -280, fL: { b: [-6.4, 1.6, -0.4] }, fR: { b: [-6, 2.4, 0.4] }, hL: { o: 'belly', d: [0, 0.4, 0] }, hR: { o: 'chest', d: [0, 0.4, 0] } },
+    FB({ p: [5, 2], z: -3.6, roll: -280, fL: { b: [-6.6, 1.2, 0] }, fR: { b: [-6.8, 0.8, 0] }, hL: [11, 1.6, -2.2], hR: [11.4, 0.8, -4] }), [-30, 26]),
+  K(1, { ...FT({ z: -5.6, hL: { o: 'belly', d: [0, -0.4, 0.4] }, hR: { o: 'chest', d: [0, -0.4, 0.4] } }), roll: -360 }, FB({ z: -4, roll: -360 }), M)] });
+CLIPS.rollthru = CLIPS.gut;
+// front headlock: 'o' shoots, 'a' sprawls and snaps him into a front headlock (head and arm), 'o' on his knees in front of him
+const FHL_A = k => SPRAWL(-9.4, 1, { p: [-9.4, 4.1], lean: 62, hL: { o: 'neck', d: [0.2, 0.4, 0] }, hR: { o: 'shR', d: [0, 0.4, 0] }, ...k });
+const FHL_O = k => ({ p: [-1.6, 3.7], f: -1, lean: 70, fL: [2, 0.3, 0.6], fR: [2.4, 0.3, -0.8], hL: [-5.6, 0, 0.8], hR: [-6, 0, -1], ...k });
+CLIPS.fhl = () => ({ n: 14, dur: 1.0, kf: [
+  K(0, S(XA, 1), S(XO, -1), N), K(0.14, S(XA, 1, { hL: { r: [2.6, -3.2] } }), rot180(SHOT())),
+  K(0.32, SPRAWL(-8.8, 1), { p: [-1.6, 3], f: -1, lean: 70, fL: [2.4, 0.3], fR: [3.2, 0.3], hL: { o: 'knL' }, hR: { o: 'knR' } }),
+  K(0.56, FHL_A({ lean: 64 }), FHL_O({ lean: 78, p: [-1.6, 3.3] }), N),
+  K(1, FHL_A(), FHL_O(), [-14, 20])],
+  loop: [{ a: FHL_A(), o: FHL_O() }, { a: FHL_A({ lean: 62 }), o: FHL_O({ lean: 74 }) }] });
+// gator roll (after the user's reference video): from the front headlock, head and arm locked, he drops to his hip and rolls; the two roll a
+// full circle together. Halfway both are on their backs, heads together and legs opposite (the exposure), then they keep rolling and end
+// back in the front-headlock start position, one body width over.
+const FHL_O_Z = (z, k) => FHL_O({ z, fL: [2, 0.3, 0.6 + z], fR: [2.4, 0.3, -0.8 + z], hL: [-5.6, 0, 0.8 + z], hR: [-6, 0, -1 + z], ...k });
+CLIPS.gator = () => ({ n: 20, dur: 1.25, pin: true, kf: [
+  K(0, FHL_A(), FHL_O(), [-14, 20]),
+  K(0.2, { p: [-8.8, 2.6], z: 0.8, lean: 74, roll: -90, fL: { b: [-6, 2, 0.6] }, fR: { b: [-6.6, 1, -0.6] }, hL: { o: 'neck', d: [0.2, 0.2, 0] }, hR: { o: 'shR', d: [0, 0.2, 0] } },
+    { p: [-2, 3.6], z: 1, f: -1, lean: 76, roll: 80, fL: { b: [-5.6, 2.4, 0] }, fR: { b: [-6.2, 1.6, 0] }, hL: [-6.6, 0.4, 2], hR: { r: [2, 0.6] } }, [-24, 22]),
+  K(0.4, { p: [-8.8, 1.4], z: 2, lean: 86, roll: -180, fL: { b: [-6.4, 1.4, 0.6] }, fR: { b: [-6.6, 1, -0.6] }, hL: { o: 'neck', d: [0.2, 0, 0] }, hR: { o: 'shR', d: [0, 0, 0] } },
+    { p: [-2.4, 2.6], z: 2, f: -1, lean: 84, roll: 180, fL: { b: [-5, 3, 0] }, fR: { b: [-5.8, 2.2, 0] }, hL: { b: [1, 2.4, -1] }, hR: { b: [0.6, 2.2, 1] } }, [-30, 24]),
+  K(0.6, { p: [-8.6, 1.5], z: 2.5, lean: 86, roll: -205, fL: { b: [-6.4, 1.4, 0.6] }, fR: { b: [-6.6, 1, -0.6] }, hL: { o: 'neck', d: [0.2, 0, 0] }, hR: { o: 'shR', d: [0, 0, 0] } },
+    { p: [-2.2, 2], z: 2.6, f: -1, lean: 86, roll: 205, fL: { b: [-5.2, 2.8, 0] }, fR: { b: [-6, 2, 0] }, hL: { b: [1, 2.4, -1] }, hR: { b: [0.6, 2.2, 1] } }, [-30, 24]),
+  K(0.8, { p: [-8.8, 2.6], z: 3.8, lean: 78, roll: -290, fL: { b: [-6.2, 1.8, 0] }, fR: { b: [-6.6, 1, 0] }, hL: { o: 'neck', d: [0.2, 0.2, 0] }, hR: { o: 'shR', d: [0, 0.2, 0] } },
+    { p: [-1.8, 3.2], z: 4, f: -1, lean: 76, roll: 290, fL: { b: [-5.6, 2.4, 0] }, fR: { b: [-6.2, 1.6, 0] }, hL: [-6, 0.4, 5.4], hR: { r: [2, 0.6] } }, [-26, 22]),
+  K(1, { ...FHL_A({ z: 4.8 }), roll: -360 }, { ...FHL_O_Z(4.8), roll: 360 }, [-14, 20])],
+  loop: [{ a: FHL_A({ z: 4.8 }), o: FHL_O_Z(4.8) }, { a: FHL_A({ z: 4.8, lean: 64 }), o: FHL_O_Z(4.8, { lean: 74 }) }] });
+// head pinch (after the user's reference video): from the front headlock he comes up, pinches head and arm, sits through to his back and pulls
+// him over: both on their backs, heads together, legs opposite (the exposure); then they roll back the way they came into the front headlock
+const PINCH_BACK = (ra, ro) => [
+  { p: [-8.8, 1.4], z: 1.8, lean: 86, roll: ra, fL: { b: [-4.6, 3.4, 0.8] }, fR: { b: [-5.4, 2.8, -0.6] }, hL: { o: 'head', d: [0, 0.2, 0] }, hR: { o: 'elR', d: [0, 0.2, 0] } },
+  { p: [-2.4, 2.3], z: 1.8, f: -1, lean: 85, roll: ro, fL: { b: [-6.4, 1.2, 0.4] }, fR: { b: [-6.8, 0.8, -0.4] }, hL: { b: [1, 2.4, -1] }, hR: { b: [0.6, 2.2, 1] } }];
+CLIPS.pinch = () => ({ n: 20, dur: 1.25, pin: true, kf: [
+  K(0, FHL_A(), FHL_O(), [-14, 20]),
+  K(0.16, { p: [-8.6, 5], z: 0.4, yaw: -15, lean: 40, fL: [-6.2, 0, 2.2], fR: [-10.8, 0.3, 0.2], hL: { o: 'head', d: [0, 0.4, 0] }, hR: { o: 'elR', d: [0, 0.4, 0] } }, FHL_O({ lean: 66 }), [-18, 20]),
+  K(0.34, { p: [-8.8, 2.6], z: 1, lean: 74, roll: -100, fL: { b: [-5, 3, 0.8] }, fR: { b: [-5.8, 2.4, -0.6] }, hL: { o: 'head', d: [0, 0.3, 0] }, hR: { o: 'elR', d: [0, 0.3, 0] } },
+    { p: [-2.2, 3.4], z: 1, f: -1, lean: 78, roll: 90, fL: { b: [-5.6, 2.4, 0] }, fR: { b: [-6.2, 1.6, 0] }, hL: [-6.6, 0.4, 1.8], hR: { r: [2, 0.6] } }, [-26, 22]),
+  K(0.5, ...PINCH_BACK(-180, 180), [-30, 24]),
+  K(0.66, ...PINCH_BACK(-192, 192), [-30, 24]),
+  K(0.82, { p: [-8.8, 2.6], z: 1, lean: 74, roll: -100, fL: { b: [-5, 3, 0.8] }, fR: { b: [-5.8, 2.4, -0.6] }, hL: { o: 'neck', d: [0.2, 0.3, 0] }, hR: { o: 'shR', d: [0, 0.3, 0] } },
+    { p: [-2.2, 3.4], z: 1, f: -1, lean: 78, roll: 90, fL: { b: [-5.6, 2.4, 0] }, fR: { b: [-6.2, 1.6, 0] }, hL: [-6.6, 0.4, 1.8], hR: { r: [2, 0.6] } }, [-26, 22]),
+  K(1, FHL_A(), FHL_O(), [-14, 20])],
+  loop: [{ a: FHL_A(), o: FHL_O() }, { a: FHL_A({ lean: 64 }), o: FHL_O({ lean: 74 }) }] });
+// duck-under to a belly-to-back suplex: under the arm, comes up behind him with a body lock, lifts, arches back and throws him over his head,
+// then turns to land on top (4/5)
+CLIPS.bbsuplex = () => ({ n: 18, dur: 1.2, pin: true, kf: [
+  K(0, S(XA, 1), S(XO, -1), N),
+  K(0.14, S(-4.2, 1, { hL: { o: 'elL', d: [0, 0.4, 0] }, hR: { o: 'neck' } }), S(4.2, -1, { hL: { o: 'neck', d: [-0.4, 0.2, 0] } })),
+  K(0.3, { p: [1.6, 4.6], z: 2.4, yaw: -40, lean: 48, fL: [3, 0, 1.8], fR: [-1, 0, 3.4], hL: { o: 'belly', d: [0, 0.4, 0] }, hR: { o: 'elL', d: [0, 0.6, 0] } },
+    UP(3.4, -1, { lean: 20, p: [3.4, 6.8] }), N),
+  K(0.42, { p: [6.4, 6], z: 0.4, yaw: -170, lean: 18, fL: [7.4, 0, -0.6], fR: [6.8, 0, 1.4], hL: { o: 'belly', d: [0, 0.6, 0] }, hR: { o: 'belly', d: [0, 0.6, 0] } },
+    UP(3.6, -1, { lean: 14, p: [3.6, 7] }), N),
+  K(0.54, { p: [6.4, 5.6], yaw: -180, lean: -14, fL: [7.4, 0, -0.6], fR: [6.6, 0, 1], hL: { o: 'belly', d: [0, 0.6, 0] }, hR: { o: 'belly', d: [0, 0.6, 0] } },
+    { p: [4.8, 10], f: -1, lean: -4, fL: { b: [-6.8, 1, 0] }, fR: { b: [-6.4, 1.8, 0] }, hL: { r: [1, 1.8] }, hR: { r: [0.6, 2] } }, N),
+  K(0.68, { p: [7, 5], yaw: -180, lean: -70, fL: [6, 0, -0.6], fR: [5.2, 0, 1], hL: { o: 'belly', d: [0, 0.6, 0] }, hR: { o: 'belly', d: [0, 0.6, 0] } },
+    { p: [9, 10.8], f: -1, lean: -120, fL: { b: [-6.8, 1, 0] }, fR: { b: [-6.4, 2, 0] }, hL: { b: [1.4, 2, 0] }, hR: { b: [1, 2.4, 0] } }, N),
+  K(0.82, { p: [8.2, 3.6], yaw: -180, lean: -116, fL: [5.4, 0, -0.6], fR: [4.4, 0, 1], hL: { o: 'belly', d: [0, 0.6, 0] }, hR: { o: 'belly', d: [0, 0.6, 0] } },
+    { p: [12.6, 3.6], f: -1, lean: -205, fL: { b: [-6.4, 2.2, 0] }, fR: { b: [-6.8, 1, 0] }, hL: { b: [1.4, 2.4, 0] }, hR: { b: [1, 2.6, 0] } }, [10, 20]),
+  K(1, { p: [10, 2.8], yaw: -180, lean: -74, roll: 180, fL: [4.8, 0.3, -0.6], fR: [5.6, 0.3, 1], hL: { o: 'chest' }, hR: { o: 'head' } },
+    { p: [13, 1.3], f: -1, lean: -100, fL: { b: [-4.8, 3.8, 0] }, fR: { b: [-6.8, 0.8, 0] }, hL: { b: [0.4, 0.6, -2.4] }, hR: { b: [1.4, 1.4, 0] } }, [24, 26])] });
+// counters to a high-crotch that roll the shooter through (freestyle exposure, no takedown). 'o' shoots, 'a' wraps him and rolls.
+const HC_IN = () => ({ p: [-2.4, 3.8], f: -1, lean: 52, fL: [-4.4, 0], fR: [0.8, 0.3], hL: { o: 'knR', d: [0.4, 0.6, 0] }, hR: { o: 'hip', d: [0.4, 0.4, 0] } });
+// chest wrap: arms locked round his chest from above, he sits to his side and rolls; the shooter goes over and lands on his back
+CLIPS.chestwrap = () => ({ n: 18, dur: 1.15, pin: true, kf: [
+  K(0, S(XA, 1), S(XO, -1), N), K(0.14, S(XA, 1, { hL: { r: [2.6, -3.2] } }), rot180(SHOT())),
+  K(0.3, { p: [-6.6, 5.2], lean: 50, fL: [-8.6, 0], fR: [-10.2, 0.3], hL: { o: 'chest', d: [0, 0.8, 0] }, hR: { o: 'belly', d: [0, 0.8, 0] } }, HC_IN(), N),
+  K(0.48, { p: [-6.8, 2.6], z: 0.6, lean: 70, roll: -90, fL: { b: [-6, 2.2, 0.4] }, fR: { b: [-6.6, 1, -0.4] }, hL: { o: 'chest', d: [0, 0.6, 0] }, hR: { o: 'belly', d: [0, 0.6, 0] } },
+    { p: [-3, 3.6], z: 0.8, f: -1, lean: 70, roll: 70, fL: { b: [-5.4, 2.6, 0] }, fR: { b: [-6.2, 1.8, 0] }, hL: { o: 'knR' }, hR: { r: [2, 1] } }, [-24, 22]),
+  K(0.68, { p: [-6.6, 1.5], z: 2, lean: 86, roll: -190, fL: { b: [-6.4, 1.4, 0.6] }, fR: { b: [-6.6, 1, -0.6] }, hL: { o: 'chest', d: [0, 0.4, 0] }, hR: { o: 'belly', d: [0, 0.4, 0] } },
+    { p: [-3.2, 3.6], z: 2.2, f: -1, lean: 84, roll: 150, fL: { b: [-5, 3, 0] }, fR: { b: [-5.8, 2.2, 0] }, hL: { b: [1, 2.4, -1] }, hR: { b: [0.6, 2.2, 1] } }, [-30, 24]),
+  K(0.86, { p: [-6.2, 2.4], z: 3.2, lean: 78, roll: -300, fL: { b: [-6.2, 1.8, 0] }, fR: { b: [-6.6, 1, 0] }, hL: { o: 'chest', d: [0, 0.4, 0] }, hR: { o: 'belly', d: [0, 0.4, 0] } },
+    { p: [-2.6, 1.4], z: 3.2, f: -1, lean: 88, roll: 180, fL: { b: [-6.4, 1.2, 0] }, fR: { b: [-6.8, 0.8, 0] }, hL: { b: [0.6, 2, -1.8] }, hR: { b: [1, 2.2, 1.6] } }, [-30, 26]),
+  K(1, { p: [-5.8, 2.8], z: 3.4, lean: 74, roll: -360, fL: [-10.2, 0.3, 2.8], fR: [-10.8, 0.3, 4.4], hL: { o: 'chest', d: [0, 0.4, 0] }, hR: { o: 'head', d: [0, 0.4, 0] } },
+    { p: [-2.4, 1.3], z: 3.4, f: -1, lean: 88, roll: 180, fL: { b: [-6.6, 1, -0.6] }, fR: { b: [-6.8, 0.8, 0.6] }, hL: { b: [0.4, 1, -2.4] }, hR: { b: [1.4, 1.4, 0] } }, [-26, 26])] });
+// crotch lift: over the top of the shooter he reaches through for the far leg, lifts it high and flips him over onto his back
+CLIPS.crotchlift = () => ({ n: 18, dur: 1.2, pin: true, kf: [
+  K(0, S(XA, 1), S(XO, -1), N), K(0.14, S(XA, 1, { hL: { r: [2.6, -3.2] } }), rot180(SHOT())),
+  K(0.3, { p: [-6.6, 5.2], lean: 54, fL: [-8.6, 0], fR: [-10.2, 0.3], hL: { o: 'belly', d: [0, 0.8, 0] }, hR: { o: 'knL', d: [0, 0.6, 0] } }, HC_IN(), N),
+  // he sits back with the far leg in his arm: the shooter's hips come up off the mat
+  K(0.46, { p: [-7.4, 4.4], lean: -8, fL: [-4.4, 0], fR: [-5.2, 0.3], hL: { o: 'belly', d: [0, 0.6, 0] }, hR: { o: 'knL', d: [0, 0.6, 0] } },
+    { p: [-4.6, 6], f: -1, lean: 115, fL: { b: [-6, 2.4, 0] }, fR: { b: [-6.8, 1.2, 0] }, hL: { o: 'hip' }, hR: { b: [1, 2, 0] } }, N),
+  // falling back, he lifts him right over the top of himself
+  K(0.62, { p: [-7.8, 3], lean: -48, fL: [-3.8, 0.3], fR: [-4.6, 0.3], hL: { o: 'belly', d: [0, 0.6, 0] }, hR: { o: 'knL', d: [0, 0.6, 0] } },
+    { p: [-8.2, 8.8], f: -1, lean: 190, fL: { b: [-6.8, 1, 0] }, fR: { b: [-6.4, 2, 0] }, hL: { b: [1.4, 2, 0] }, hR: { b: [1, 2.4, 0] } }, [-6, 20]),
+  K(0.8, { p: [-7.6, 2], lean: -84, fL: { b: [-5.6, 2.6, 0] }, fR: { b: [-6.4, 1.6, 0] }, hL: { o: 'chest', d: [0, 0.6, 0] }, hR: { o: 'knL', d: [0, 0.6, 0] } },
+    { p: [-12, 4.4], f: -1, lean: 232, fL: { b: [-6.4, 2.2, 0] }, fR: { b: [-6.8, 1, 0] }, hL: { b: [1.4, 2.4, 0] }, hR: { b: [1, 2.6, 0] } }, [10, 22]),
+  // he lands behind him on his back, legs now pointing the other way; the scorer turns over onto his chest (= facing back over him, written as a roll)
+  K(1, { p: [-7.2, 2.8], lean: -74, roll: 180, fL: [-2.8, 0.3, -0.6], fR: [-2, 0.3, 0.8], hL: { o: 'chest' }, hR: { o: 'head' } },
+    { p: [-12.2, 1.3], f: -1, lean: 268, fL: { b: [-4.8, 3.8, 0] }, fR: { b: [-6.8, 0.8, 0] }, hL: { b: [0.4, 0.6, -2.4] }, hR: { b: [1.4, 1.4, 0] } }, [24, 26])] });
+
+// ----- folkstyle leg riding (2026-11-14): 'a' is the top man -----
+// leg ride: from the referee's position he throws in the near leg, hooks the near shin and drapes across his back (cross-body ride)
+const LR_A = k => ({ p: [4.2, 5], z: -1.4, yaw: 35, lean: 62, fR: { o: 'knL', d: [0.6, -0.8, -0.6] }, fL: [1, 0.3, -3.6], hL: { o: 'chest', d: [0, 0.6, 0] }, hR: { o: 'belly', d: [0, 0.6, 0] }, ...k });
+const LR_O = k => RB({ p: [4.6, 3.6], lean: 80, ...k });
+CLIPS.legride = () => ({ n: 14, dur: 1.0, kf: [
+  K(0, RT(), RB(), M),
+  K(0.3, { p: [2.8, 5.4], z: -2, lean: 46, fR: [3.6, 1.6, -1.2], fL: [0.6, 0.3, -2.8], hL: { o: 'belly', d: [0, 0.6, 0] }, hR: { o: 'shL', d: [0, 0.6, 0] } }, RB(), [-26, 24]),
+  K(0.62, LR_A({ p: [3.8, 5.4], lean: 54, fR: { o: 'knL', d: [0.6, -0.4, -0.6] } }), LR_O({ lean: 78 }), [-30, 25]),
+  K(1, LR_A(), LR_O(), [-30, 25])],
+  loop: [{ a: LR_A(), o: LR_O() }, { a: LR_A({ p: [4.3, 4.8], lean: 64 }), o: LR_O({ p: [4.6, 3.4], lean: 82 }) }] });
+// power half with the opposite hand: arm under his arm onto the back of the neck, drives the head down and turns him to his back over the leg
+CLIPS.powerhalf = () => ({ pin: true, n: 15, dur: 1.05, kf: [
+  K(0, LR_A(), LR_O(), [-30, 25]),
+  K(0.3, LR_A({ hL: { o: 'neck', d: [0, 0.6, 0] }, lean: 66 }), LR_O({ lean: 92, p: [4.6, 3], hL: [9.6, 0.4], hR: [10, 0.6] }), [-30, 25]),
+  K(0.6, { p: [5.4, 4], z: -2.4, yaw: 50, lean: 64, fR: { o: 'knL', d: [0.4, 0, -0.6] }, fL: { b: [-6.4, 1.6, 0] }, hL: { o: 'neck', d: [0, 0.4, 0] }, hR: { o: 'belly', d: [0, 0.4, 0.6] } },
+    FB({ roll: -90, p: [5, 2], fR: [3, 2.2, 1.2], hL: [10.6, 2.4], hR: { b: [0.6, 2, 0] } }), [-30, 26]),
+  K(1, { p: [6, 3], z: -2.6, yaw: 50, lean: 72, fR: { o: 'knL', d: [0.4, 0, -0.6] }, fL: { b: [-6.6, 0.8, -1] }, hL: { o: 'neck', d: [0.4, 0, 0.4] }, hR: { o: 'chest', d: [0, 0.4, 0.8] } },
+    FB({ roll: -176, p: [5, 1.3], fR: [2.4, 2.6, 0.8], fL: { b: [-6.8, 0.6, 0] }, hL: { b: [-0.6, 0.4, -2.6] }, hR: { b: [1.4, 1.2, 0] } }), M)] });
+// crossface with the same-side hand (a turn): legs in, he jumps his chest forward over the far shoulder, drives the forearm across the face
+// to the far arm and rolls him over the hooked leg onto his back (near fall)
+CLIPS.crossface = () => ({ pin: true, n: 16, dur: 1.1, kf: [
+  K(0, LR_A(), LR_O(), [-30, 25]),
+  K(0.22, LR_A({ p: [5.4, 6.4], yaw: 40, lean: 70, hR: { o: 'head', d: [0.4, 0.6, 0] }, hL: { o: 'chest', d: [0, 0.8, 0] }, fL: [1.6, 0.8, -3.6] }), LR_O(), [-30, 25]),
+  K(0.42, LR_A({ p: [6.2, 5], yaw: 55, lean: 82, hR: { o: 'elR', d: [0, 0.4, 0] }, hL: { o: 'chest', d: [0, 0.6, 0] }, fL: [2.2, 0.3, -3.8] }), LR_O({ p: [4.6, 3.1], lean: 88, hL: [10, 0.4], hR: [10.4, 1] }), [-30, 25]),
+  K(0.7, { p: [5.8, 4], z: -2.2, yaw: 50, lean: 68, fR: { o: 'knL', d: [0.4, 0, -0.6] }, fL: { b: [-6.4, 1.6, 0] }, hR: { o: 'elR', d: [0, 0.4, 0] }, hL: { o: 'head', d: [0, 0.4, 0] } },
+    FB({ roll: -95, p: [5, 2], fR: [3, 2.2, 1.2], hL: [10.6, 2.4], hR: { b: [0.6, 2, 0] } }), [-30, 26]),
+  K(1, { p: [6, 3], z: -2.6, yaw: 50, lean: 72, fR: { o: 'knL', d: [0.4, 0, -0.6] }, fL: { b: [-6.6, 0.8, -1] }, hR: { o: 'elR', d: [0, 0.4, 0] }, hL: { o: 'head', d: [0.4, 0, 0.4] } },
+    FB({ roll: -176, p: [5, 1.3], fR: [2.4, 2.6, 0.8], fL: { b: [-6.8, 0.6, 0] }, hL: { b: [-0.6, 0.4, -2.6] }, hR: { b: [1.4, 1.2, 0] } }), M)] });
+// banana split (after the user's reference photos): legs in, he slides to his side under the far leg, scissors the near leg with both of his
+// legs and pulls the far leg up toward the head with his arms: the bottom man ends on his back, legs split wide, the top man lying on his side
+// alongside him, head by head
+CLIPS.banana = () => ({ pin: true, n: 17, dur: 1.15, kf: [
+  K(0, LR_A(), LR_O(), [-30, 25]),
+  K(0.3, { p: [3.4, 4.2], z: -1, yaw: 30, lean: 54, fR: { o: 'knL', d: [0.6, -0.4, -0.6] }, fL: [0.6, 0.3, -3.2], hL: { o: 'knR', d: [0, 0.4, 0] }, hR: { o: 'ftR', d: [0, 0.4, 0] } }, LR_O(), [-34, 26]),
+  K(0.56, { p: [3.6, 2.4], z: -1.8, yaw: 15, lean: 72, roll: -50, fR: { o: 'knL', d: [0, 0.4, -0.6] }, fL: { o: 'ftL', d: [0, 0.6, -0.4] }, hL: { o: 'knR', d: [0, 0.4, 0] }, hR: { o: 'ftR', d: [0, 0.4, 0] } },
+    FB({ p: [5, 2], roll: -95, fL: [0.4, 0.3, -2.8], fR: [8.4, 3.8, 2.4], hL: [10.6, 2.4], hR: { b: [0.6, 2, 0] } }), [-34, 27]),
+  K(1, { p: [4.4, 1.6], z: -2, lean: 86, roll: -80, fR: { o: 'knL', d: [0, 0.4, -0.4] }, fL: { o: 'ftL', d: [0, 0.6, -0.2] }, hL: { o: 'knR', d: [0, 0.3, 0] }, hR: { o: 'ftR', d: [0, 0.3, 0] } },
+    FB({ p: [5, 1.4], roll: -176, fL: [-1.2, 0.3, -3.6], fR: [9.8, 4.6, 1.4], hL: { b: [-0.6, 0.4, -2.6] }, hR: { b: [1.4, 1.2, 0] } }), [-32, 28])] });
+// spladle (very rare counter to a single leg; after the user's reference photo): he laces the attacked leg round the shooter's leg, drops back,
+// and as the shooter goes to his back he ends lying back across his hips, his own legs wrapped round the near leg pulled up toward the
+// shooter's head and his arms pulling the other leg out: legs split wide
+CLIPS.spladle = () => ({ pin: true, n: 18, dur: 1.2, kf: [
+  K(0, S(XA, 1), S(XO, -1), N), K(0.14, S(XA, 1, { hL: { r: [2.6, -3.2] } }), rot180(SHOT())),
+  K(0.3, S(-7, 1, { lean: 30, fL: [-3.6, 1.6] }), { p: [-2.6, 3.6], f: -1, lean: 54, fL: [-0.8, 0.3], fR: [0.4, 0], hL: { o: 'knL', d: [0.2, 0.4, 0] }, hR: { o: 'ftL', d: [0.4, 0.4, 0] } }, N),
+  K(0.46, { p: [-6.4, 2], lean: -40, fL: { o: 'knR', d: [0, -0.4, 0.6] }, fR: [-9.6, 0.3, -1], hL: { o: 'knL', d: [0, 0.4, 0] }, hR: [-9.6, 0.3, 1] },
+    { p: [-2.8, 3.4], f: -1, lean: 64, fL: [-0.6, 0.3], fR: [1, 0.3, 1], hL: { r: [2.4, -2] }, hR: { r: [2, -2.4] } }, [-20, 22]),
+  K(0.68, { p: [-3.4, 2.4], z: 0.8, yaw: 90, lean: -40, roll: -30, fL: { o: 'knL', d: [0, 0.6, 0] }, fR: { o: 'ftL', d: [0, 0.6, 0.4] }, hL: { o: 'knR', d: [0, 0.4, 0] }, hR: { o: 'ftR', d: [0, 0.4, 0] } },
+    { p: [-2.6, 2.4], f: -1, lean: 82, roll: 100, fL: [-5.4, 3.2, -1.6], fR: [1.6, 0.3, 2.6], hL: { b: [1, 2.2, -1] }, hR: { b: [0.6, 2, 1] } }, [-26, 24]),
+  K(1, { p: [0, 1.8], z: 0.6, yaw: 180, lean: -78, roll: -60, fL: { o: 'knL', d: [0, 0.6, 0] }, fR: { o: 'ftL', d: [0, 0.6, 0.4] }, hL: { o: 'knR', d: [0, 0.4, 0] }, hR: { o: 'ftR', d: [0, 0.4, 0] } },
+    { p: [-2.2, 1.4], f: -1, lean: 88, roll: 180, fL: [-6.8, 4.6, -1.2], fR: [3.2, 0.3, 3.4], hL: { b: [0.4, 0.6, -2.4] }, hR: { b: [1.4, 1.4, 0] } }, [-28, 26])] });
+// leg pass (end of the 'handfight+legpass' chain; the user's description): 'o' shoots, 'a' dives forward under him and rolls across his shoulders
+// like a Granby (his shoulders land where the shooter's feet were), ends on his back under the legs, catches a leg, rolls over his side passing
+// it across his chest, comes up on his knees behind him and finishes on top. The roll is written yaw 0 / lean up to 220, then (same body)
+// yaw 180 / lean 140 / roll 180 so he can turn onto his side and sit up facing the same way as the shooter.
+CLIPS.legpass = () => ({ n: 20, dur: 1.3, kf: [
+  K(0, S(XA, 1), S(XO, -1), N), K(0.12, S(XA, 1, { hL: { r: [2.6, -3.2] } }), rot180(SHOT())),
+  K(0.24, { p: [-6.2, 4.4], lean: 70, fL: [-4.4, 0], fR: [-8.6, 0.3], hL: [-2.4, 0, 1.2], hR: [-2.6, 0, -1.2] },
+    { p: [-3, 4.6], f: -1, lean: 62, fL: [-0.6, 0], fR: [1.2, 0.3], hL: { o: 'knL' }, hR: { o: 'knR' } }, N),
+  K(0.36, { p: [-4.8, 6.4], lean: 150, fL: { b: [-4, 3, 0.8] }, fR: { b: [-5, 2, -0.8] }, hL: [-1.4, 0, 1.2], hR: [-1.6, 0, -1.2] },
+    { p: [-3.6, 6.2], f: -1, lean: 80, fL: [-1, 0], fR: [0.6, 0.3], hL: { r: [2, -2] }, hR: { r: [1.8, -2.4] } }, [-10, 18]),
+  K(0.48, { p: [-1, 4.4], lean: 220, fL: { b: [-3.4, 3.4, 0.8] }, fR: { b: [-4.2, 2.8, -0.8] }, hL: { b: [-1, 2.4, -1] }, hR: { b: [-1, 2.4, 1] } },
+    { p: [-3.4, 4.8], f: -1, lean: 76, fL: [0.8, 0.3, 0.8], fR: [0.4, 0.3, -0.8], hL: [-8.6, 0, 1], hR: [-8.8, 0, -1] }, [-16, 20],
+    { a2: { p: [-1, 4.4], yaw: 180, lean: 140, roll: 180, fL: { b: [-3.4, 3.4, 0.8] }, fR: { b: [-4.2, 2.8, -0.8] }, hL: { b: [-1, 2.4, -1] }, hR: { b: [-1, 2.4, 1] } } }),
+  K(0.6, { p: [2.8, 1.6], yaw: 180, lean: 92, roll: 180, fL: { b: [-5.6, 2.4, 0.6] }, fR: { b: [-6.2, 1.6, -0.6] }, hL: { o: 'ftR', d: [0, 0.3, 0] }, hR: { o: 'knR', d: [0, 0.3, 0] } },
+    { p: [-3, 3.8], f: -1, lean: 74, fL: [1, 0.3, 0.8], fR: [0.6, 0.3, -0.8], hL: [-8.4, 0, 1], hR: [-8.6, 0, -1] }, [-20, 22]),
+  K(0.74, { p: [2.2, 1.9], z: 0.8, yaw: 180, lean: 92, roll: 95, fL: { b: [-5.4, 2.6, 0] }, fR: { b: [-6.2, 1.6, 0] }, hL: { o: 'knR', d: [0, 0.3, 0] }, hR: { o: 'ftR', d: [0, 0.3, 0] } },
+    { p: [-2.8, 3.4], f: -1, lean: 76, roll: -20, fL: [1, 0.3, 0.8], fR: { o: 'chest', of: 'a', d: [0, 0.6, 0] }, hL: [-8.4, 0, 1], hR: [-8.6, 0, -1] }, [-10, 22]),
+  K(0.88, { p: [1, 4.2], z: 1.6, yaw: 180, lean: 40, fL: [3.6, 0.3, 2.4], fR: [4.4, 0.3, 0.6], hL: { o: 'belly', d: [0, 0.4, 0] }, hR: { o: 'knR', d: [0, 0.3, 0] } },
+    { p: [-3.4, 3.6], f: -1, lean: 78, fL: [0.4, 0.3, 0.8], fR: [0, 0.3, -0.8], hL: [-8.6, 0, 1], hR: [-8.8, 0, -1] }, [40, 22]),
+  K(1, rot180(RT()), rot180(RB()), [M[0] + 180, M[1]])] });
 
 // ---------- chained clips (2026-11-12) ----------
 // 'sprawl+double' plays the sprawl (he shoots, gets sprawled on, both back to their feet), then the double. A part written '~name' is the same
@@ -723,10 +914,10 @@ CLIPS.armspin = CLIPS.duck; CLIPS.slideby = CLIPS.snap;
 // is longer and the figures move between the two. The finish (turn, loop, label) is the LAST part's.
 export const CHAIN_NAMES = ['sprawl+double', 'club+double', 'whizzer+double', 'sprawl+highc', 'club+highc', 'handfight+single', 'sprawl+single', 'club+ankle', 'ties+ankle',
   'handfight+sweep', 'handfight+trip', 'ties+snap', 'ties+duck', '~sprawl+double', 'sprawl+sprawl', 'sprawl+~sprawl', 'sprawl+~sprawl+sprawl', 'sprawl+scramble', 'sprawl+whizzer',
-  '!matret+standup', 'snapdn+ankle', 'club+snap'];
+  '!matret+standup', 'snapdn+ankle', 'club+snap', 'legride+powerhalf', 'legride+crossface', 'legride+banana', 'handfight+legpass'];
 const CHAIN_LBL = { sprawl: 'RE-SHOT', club: 'CLUB AND SHOOT', whizzer: 'RE-ATTACK', handfight: 'HAND FIGHT', ties: 'OFF THE TIE', snapdn: 'SNAP AND PICK',
   '~sprawl+double': 'SPRAWL · COUNTER SHOT', 'sprawl+sprawl': 'SHOT · SPRAWL · RE-SHOT', 'sprawl+~sprawl': 'SHOT · SPRAWL · COUNTER SHOT', 'sprawl+~sprawl+sprawl': 'FLURRY',
-  'sprawl+scramble': 'SHOT · SPRAWL · SCRAMBLE', 'sprawl+whizzer': 'RE-SHOT · WHIZZER', '!matret+standup': 'STANDS AGAIN', 'club+snap': 'CLUB · SNAP' };
+  'sprawl+scramble': 'SHOT · SPRAWL · SCRAMBLE', 'sprawl+whizzer': 'RE-SHOT · WHIZZER', '!matret+standup': 'STANDS AGAIN', 'club+snap': 'CLUB · SNAP', 'legride+powerhalf': 'LEGS IN · POWER HALF', 'legride+crossface': 'LEGS IN · CROSSFACE', 'legride+banana': 'LEGS IN · BANANA SPLIT', 'handfight+legpass': 'ROLL-UNDER · LEG PASS' };
 const isChain = n => typeof n === 'string' && n.includes('+');
 const lastPart = n => n.split('+').pop().replace(/^[~!]/, '');
 export const known = n => !!(CLIPS[n] || (isChain(n) && n.split('+').every(p => CLIPS[p.replace(/^[~!]/, '')])));
@@ -836,8 +1027,9 @@ function frames(name, cols, camO, tn) {   // tn = { h: orientation at the start,
 }
 
 // which clip an event plays, and which wrestler is its 'a' figure
-const TD = { double: 1, single: 1, highc: 1, ankle: 1, snap: 1, duck: 1, scr: 1, counter: 1, sweep: 1, trip: 1, itrip: 1, pancake: 1, kickstand: 1, hcswitch: 1, armspin: 1, slideby: 1 }, THROW = { headlock: 1, armthrow: 1, lateral: 1, fireman: 1, lift: 1, suplex: 1 };
-const TURN = { half: 1, cradle: 1, tilt: 1, turk: 1, armbar: 1, wing: 1, gut: 1, lace: 1, alace: 1, armroll: 1, rollthru: 1 }, STUFF = { sprawl: 1, handfight: 1, hipout: 1, whizzer: 1, oob: 1, throw: 1 }, RIDE = { breakdown: 1, matret: 1, hips: 1, flat: 1, spiral: 1 };
+const TD = { double: 1, single: 1, highc: 1, ankle: 1, snap: 1, duck: 1, scr: 1, counter: 1, sweep: 1, trip: 1, itrip: 1, pancake: 1, kickstand: 1, hcswitch: 1, armspin: 1, slideby: 1, fhl: 1, spladle: 1, legpass: 1 }, THROW = { headlock: 1, armthrow: 1, lateral: 1, fireman: 1, lift: 1, suplex: 1, bbsuplex: 1 };
+const TURN = { half: 1, cradle: 1, tilt: 1, turk: 1, armbar: 1, wing: 1, gut: 1, lace: 1, alace: 1, armroll: 1, rollthru: 1, gator: 1, pinch: 1, chestwrap: 1, crotchlift: 1, powerhalf: 1, banana: 1, crossface: 1 }, STUFF = { sprawl: 1, handfight: 1, hipout: 1, whizzer: 1, oob: 1, throw: 1 }, RIDE = { breakdown: 1, matret: 1, hips: 1, flat: 1, spiral: 1, legride: 1 };
+const NFTD = { pancake: 'pancakeNF', kickstand: 'kickstandNF' };   // counters that can also score near falls (bout.js counterNF): the version that keeps him on his back
 const HAND = { club: 1, wrist: 1, elbow: 1, ties: 1, circle: 1, snapdn: 1 };
 const other = s => (s === 'A' ? 'B' : 'A');
 // Which side of the mat the pair is on when event i starts: every 'circle' clip ends with the two swapped, so from then on every clip
@@ -870,7 +1062,7 @@ export function orientAt(log, i) {
   return { flip: !!f, h, cut: 0 };
 }
 // freestyle 4/5-point moves (fs.js tags the shot or throw with the points: 'double4', 'suplex5') -> the clip that shows it
-const FS_BIG = { double4: 'lift', highc4: 'lift', single4: 'trip', sweep4: 'trip', counter4: 'headlock', headlock5: 'headlock', lateral5: 'lateral', fireman5: 'fireman', armthrow5: 'armthrow', suplex5: 'suplex' };
+const FS_BIG = { double4: 'lift', highc4: 'lift', single4: 'trip', sweep4: 'trip', counter4: 'headlock', headlock5: 'headlock', lateral5: 'lateral', fireman5: 'fireman', armthrow5: 'armthrow', suplex5: 'suplex', bbsuplex5: 'bbsuplex' };
 const FS_REF = { warn: 1, act: 1, pass: 1, caut: 1 };
 export function clipFor(res, last) {
   if (!last) return ['idleN', 'A'];
@@ -887,14 +1079,15 @@ export function clipFor(res, last) {
   if (fx === 'chal' && who) return ['chal', who];
   if (fx === 'break') return ['brk', 'A'];
   if (fx === 'td' && who) return [TD[mv] || THROW[mv] || (isChain(mv) && known(mv)) ? mv : 'double', who];
-  if ((fx === 'nf' || fx === 'fall') && who) return [THROW[mv] || TURN[mv] ? mv : /takedown plus|hits/.test(last.text || '') ? 'headlock' : 'half', who];
+  if ((fx === 'nf' || fx === 'fall') && who && NFTD[mv]) return [NFTD[mv], who];
+  if ((fx === 'nf' || fx === 'fall') && who) return [THROW[mv] || TURN[mv] || (isChain(mv) && known(mv)) ? mv : /takedown plus|hits/.test(last.text || '') ? 'headlock' : 'half', who];
   if (fx === 'esc' && who) return [mv === 'sitout' || mv === 'letup' || mv === 'granby' || (isChain(mv) && known(mv)) ? mv : 'standup', who];
   if (fx === 'rev' && who) return ['rev', who];
   if (fx === 'stuff' && who) return [STUFF[mv] || (isChain(mv) && known(mv)) ? mv : 'sprawl', who];
   if (fx === 'scramble' && who) return ['scramble', who];
   if (fx === 'hand' && !top) return [HAND[mv] ? mv : 'idleN', who || 'A'];
   if (fx === 'stall' && who && !top) return ['stall', who];
-  if (fx === 'ride' && top) return [RIDE[mv] ? mv : 'idleT', top];
+  if (fx === 'ride' && top) return [RIDE[mv] || (isChain(mv) && known(mv)) ? mv : 'idleT', top];
   return top ? ['idleT', top] : ['idleN', 'A'];
 }
 
@@ -902,7 +1095,7 @@ const LABEL = { td: 'TAKEDOWN!', esc: 'ESCAPE', rev: 'REVERSAL!', nf: 'NEAR FALL
   exp: 'EXPOSURE +2', big: 'BIG MOVE', funk: '2-2 EXCHANGE', so: 'STEP-OUT +1', up: 'STAND UP', warn: 'PASSIVITY WARNING', act: 'ACTIVITY CLOCK 0:30', pass: 'ACTIVITY POINT +1', caut: 'CAUTION +1', chal: 'CHALLENGE' };
 const MOVE = { headlock: 'HEADLOCK', armthrow: 'ARM THROW', lateral: 'LATERAL DROP', fireman: "FIREMAN'S CARRY", lift: 'BIG LIFT', cradle: 'CRADLE', tilt: 'TILT', wing: 'CHICKEN WING', armbar: 'ARM BAR', half: 'HALF NELSON', turk: 'TURK',
   club: 'HEAD CLUB', wrist: 'WRIST CONTROL', elbow: 'ELBOW PASS', ties: 'COLLAR TIES', matret: 'MAT RETURN', counter: 'COUNTER', duck: 'DUCK-UNDER', granby: 'GRANBY ROLL', switch: 'SWITCH', ankle: 'ANKLE PICK', snap: 'GO-BEHIND', scr: 'SCRAMBLE', sweep: 'SWEEP SINGLE', trip: 'SINGLE LEG TRIP',
-  highc: 'HIGH-CROTCH', itrip: 'INSIDE TRIP', gut: 'GUT WRENCH', lace: 'LEG LACE', alace: 'ANKLE LACE', armroll: 'ARM TRAP ROLL', rollthru: 'ROLL-THROUGH', armspin: 'ARM SPIN', slideby: 'SLIDE-BY', suplex: 'SUPLEX', pancake: 'PANCAKE', kickstand: 'KICKSTAND', hcswitch: 'SIT AND SWITCH', snapdn: 'SNAP-DOWN', spiral: 'SPIRAL RIDE' };
+  highc: 'HIGH-CROTCH', itrip: 'INSIDE TRIP', gut: 'GUT WRENCH', lace: 'LEG LACE', alace: 'ANKLE LACE', armroll: 'ARM TRAP ROLL', rollthru: 'ROLL-THROUGH', armspin: 'ARM SPIN', slideby: 'SLIDE-BY', suplex: 'SUPLEX', bbsuplex: 'BELLY-TO-BACK SUPLEX', fhl: 'FRONT HEADLOCK', gator: 'GATOR ROLL', pinch: 'HEAD PINCH', chestwrap: 'CHEST WRAP', crotchlift: 'CROTCH LIFT', legride: 'LEG RIDE', powerhalf: 'POWER HALF', crossface: 'CROSSFACE', banana: 'BANANA SPLIT', spladle: 'SPLADLE', legpass: 'LEG PASS', pancake: 'PANCAKE', kickstand: 'KICKSTAND', hcswitch: 'SIT AND SWITCH', pancakeNF: 'PANCAKE', kickstandNF: 'KICKSTAND', snapdn: 'SNAP-DOWN', spiral: 'SPIRAL RIDE' };
 const CHAMP = ['champJump', 'champCart', 'champToss', 'champFlex', 'champBack', 'champKneel'];
 
 // The mat (drawn under the wrestlers, never mirrored): opt.venue = { mat, line, logo, text } from js/data/venues.js; none = the neutral green mat.
@@ -927,13 +1120,14 @@ export function stage(res, last, col, opt = {}) {
   const fx = last ? last.fx : null, who = last ? last.who : null, end = last && last.type === 'end';
   let [name, aSide] = opt.clip ? [opt.clip, opt.a || 'A'] : clipFor(res, last);
   const champ = !opt.clip && end && opt.champ;   // NCAA title: one of three celebrations instead of the plain hand raise
-  if (champ) name = CHAMP[((res.seed >>> 0) % 7919) % CHAMP.length];
+  if (champ) name = opt.flag ? 'champFlag' : CHAMP[((res.seed >>> 0) % 7919) % CHAMP.length];   // freestyle World / Olympic title: the flag
   if (!known(name)) name = 'idleN';
   const cols = { a: col[aSide], o: col[other(aSide)], r: '#1d2126', band: opt.band ? { a: opt.band[aSide], o: opt.band[other(aSide)] } : null, trim: { a: col['trim' + aSide], o: col['trim' + other(aSide)] }, dec: { a: col['dec' + aSide], o: col['dec' + other(aSide)] } };
   const c0 = getClip(name); if (c0.noHg) cols.noHg = true;
   if (res.style === 'fs' || opt.fs) { cols.bare = true; cols.band = null; }   // freestyle: no headgear, no ankle bands
   // opt.orient = { flip, h, cut } (orientAt) or opt.flip alone: which side of the mat, how far the pair is turned, which way this move cuts
   const ori = opt.orient || { flip: !!opt.flip, h: 0, cut: 0 }, mirror = MIRROR(aSide, c0, ori.flip);
+  cols.mir = mirror; if (opt.flag || name === 'champFlag') cols.flag = opt.flag || 'us';   // Move Viewer / test pages: US flag
   const [px, pz] = pivotOf(c0), straight = end || c0.noHg;   // a mirrored clip turns the other way round in its own coordinates
   const tn = straight ? null : { h: (ori.h || 0) * mirror, d: (ori.cut || 0) * turnDeg(name) * mirror, px, pz, w: c0.tw };
   const { c, seq, loop } = frames(name, cols, opt.cam, tn);
@@ -958,13 +1152,13 @@ export function stage(res, last, col, opt = {}) {
   }
   if (mvName && !(fsEv && FS_REF[fx])) label = label ? `${mvName} · ${label}` : mvName;
   const lblCol = fx && who ? col[who] : '#f5b942';
-  const endTxt = end ? `${res.wrestlers[res.winner].name.split(' ').slice(-1)[0].toUpperCase()}${champ ? ' · NCAA CHAMPION!' : ` WINS${res.method === 'Fall' ? ' BY FALL' : ''}`}` : '';
+  const endTxt = end ? `${res.wrestlers[res.winner].name.split(' ').slice(-1)[0].toUpperCase()}${champ ? ` · ${typeof champ === 'string' ? champ : 'NCAA CHAMPION'}!` : ` WINS${res.method === 'Fall' ? ' BY FALL' : ''}`}` : '';
   return `<svg class="stage" viewBox="0 -14 200 106" preserveAspectRatio="xMidYMid meet">
     ${matSvg(opt.venue || ((res.style === 'fs' || opt.fs) ? FS_MAT : null))}
     <g transform="translate(100,${GY}) scale(${mirror},1)" fill="none" stroke-linecap="round">${body}</g>
     ${label && !end ? `<text class="lbl ${fx}" x="100" y="-3" text-anchor="middle" fill="${lblCol}"${label.length > 24 ? ' style="font-size:8px;letter-spacing:.5px"' : ''}>${label}</text>` : ''}
     ${champ ? confetti(res, col) : ''}
-    ${endTxt ? `<text class="lbl end" x="100" y="-3" text-anchor="middle" fill="#3fb27f">${endTxt}</text>` : ''}</svg>`;
+    ${endTxt ? `<text class="lbl end" x="100" y="-3" text-anchor="middle" fill="#3fb27f"${endTxt.length > 24 ? ` textLength="190" lengthAdjust="spacingAndGlyphs"` : ""}>${endTxt}</text>` : ''}</svg>`;
 }
 // NCAA title: confetti in the champion's colours falls over the celebration (CSS animation, looping). Colours: a signature singlet's body + detail (a near-black body is left out: gold + white for Iowa),
 // else the team colour (also when he wore white: the trim) + white; no team colour -> white + gold. Positions come from the bout seed (stable across re-renders).

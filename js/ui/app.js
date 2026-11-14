@@ -24,7 +24,11 @@ import { stage, singletColors, orientAt, clipTime } from './anim.js';
 import { seasonOf, careerOf, derived, KEYS, ensurePolls, flushStats, pendingStats } from '../game/stats.js';
 import * as LG from '../game/legacy.js';
 import * as FS from '../game/freestyle.js';
-import { FS_WEIGHTS } from '../engine/fs.js';
+import { iso2Of } from '../data/fsdata.js';
+// country flag image (assets/flags, same on every device); h = height in px, 4:3, thin outline so white flags show on the dark theme
+const flagImg = (code, h = 14) => { const c = iso2Of(code); return c ? `<img class="flag" src="assets/flags/${c}.svg" alt="${FS.countryName(code)}" title="${FS.countryName(code)}" loading="lazy" style="height:${h}px;width:${Math.round(h * 4 / 3)}px;border-radius:2px;box-shadow:0 0 0 1px rgba(255,255,255,.18);vertical-align:middle;flex:none">` : ''; };
+import { rtcName } from '../data/rtcnames.js';
+import { FS_WEIGHTS, simulateFsBout, fsParTerre, FS_OVR_W, FS_PT } from '../engine/fs.js';
 import * as PE from '../game/playeredit.js';
 
 import { initSaves, loadLast, loadSlot, saveGame, saveAs, copySlot, renameSlot, deleteSlot, listSaves, MAX_SLOTS } from '../game/saves.js';
@@ -58,7 +62,7 @@ const NS = ' <small class="muted" title="Second entry at this weight: no team po
 const wrank = w => { const p = (ensurePolls(G)[w.lw || w.natural] || []).indexOf(w.id) + 1; return p || 0; };
 const wtxt = w => { const st = seasonOf(w), p = wrank(w); return `${st[0]}-${st[1]}${p ? ' #' + p : ''}`; };
 const wstat = w => { const st = seasonOf(w), p = wrank(w); return `<span class="muted">${st[0]}-${st[1]}</span>${p ? ` <b class="rk">#${p}</b>` : ''}`; };
-const wl = (x, label) => { const id = typeof x === 'string' ? x : x && x.id, w = id && (G.wrestlers[id] || LG.archived(G, id)); const nm = label ?? (w ? w.name : '?'); return w ? `<a class="wlink" data-act="profile" data-v="${id}">${nm}</a>` : nm; };   // archived = departed wrestler whose profile is kept (legacy.js)
+const wl = (x, label) => { const id = typeof x === 'string' ? x : x && x.id, w = id && (G.wrestlers[id] || (G.fsw && G.fsw[id]) || LG.archived(G, id)); const nm = label ?? (w ? w.name : '?'); return w ? `<a class="wlink" data-act="profile" data-v="${id}">${nm}</a>` : nm; };   // archived = departed wrestler whose profile is kept (legacy.js)
 const tnl = (id, label) => (G.teams[id] ? `<a class="wlink" data-act="team" data-v="${id}">${label ?? G.teams[id].name}</a>` : label ?? '');   // team name link without the logo
 // plain message text -> the same text with school, tournament and wrestler names linked to their profiles (inbox)
 const LINK = { key: '', re: null, map: null };
@@ -105,12 +109,12 @@ function render() {
   const label = G.phase === 'seasonEnd' ? 'Begin offseason ▶' : G.phase === 'offseason' ? ({ leaving: 'Continue → Cut players ▶', cut: 'Done cutting → Progression ▶', progress: 'Continue → Recruiting ▶', recruit: 'Done recruiting → Schedule ▶' }[offStep(G)] || fsLabel() || `Start ${G.season + 1} season ▶`) : ev && ev.type === 'tourney' && ev.ref.kind === 'dual' && D.inProgress(ev.ref) ? 'Resume tournament ▶' : ev && !ev.done ? (ev.type === 'dual' ? 'Go to dual day ▶' : 'Go to tournament ▶') : ev && liveTourney() ? 'Resume tournament ▶' : ev ? 'Finish week ▶' : G.week === G.cal.selWeek && SEL.selActive(G) ? 'Selection show ▶' : G.week === G.cal.selWeek ? 'Advance (selection week) ▶' : 'Advance (bye week) ▶';
   const body = { home, roster, lineup, schedule, standings, rankings: rankingsScreen, stats: statsScreen, profile, team: teamProfile, tprofile: tournamentProfile, offseason: offseasonScreen, freestyle: freestyleScreen, dualday, dual, recruit: recruiting, train: training, injuries, tourneyday, tourney, selection, dtourney }[ui.screen]();
   $app.innerHTML = `
-  <div class="top"><b>${tn(G.userTeam, 28)}</b><span class="muted">Coach ${G.coach}</span><span class="muted">${G.phase === 'seasonEnd' ? `Season over · ${seasonLbl(G.season)}` : G.phase === 'offseason' ? `Offseason ${G.season}` : `Week ${G.week} · ${fmtDate(G.week, true)}`}</span>
+  <div class="top"><b>${tn(G.userTeam, 28)}</b><span class="muted">Coach ${G.coach}</span><span class="muted">${G.phase === 'seasonEnd' ? `Season over · ${seasonLbl(G.season)}` : G.phase === 'offseason' ? `Off-Season ${G.season + 1}` : `Week ${G.week} · ${fmtDate(G.week, true)}`}</span>
     <span class="muted">Record ${rec.w}-${rec.l}</span>
     <span style="margin-left:auto"></span>
     <button data-act="continue">${label}</button>
     <button class="secondary" data-act="save">Save</button><button class="secondary" data-act="saveas" title="Copy this career into a new save slot">Save as…</button><button class="secondary" data-act="menu">Menu</button></div>
-  <div class="layout"><nav>${NAV.concat(FS.fsOn(G) ? [['freestyle', 'Freestyle']] : [], G.phase === 'offseason' ? [['offseason', 'Offseason']] : G.phase === 'season' && G.ncaa && G.ncaa.show && G.week >= G.cal.selWeek ? [['selection', 'NCAA selection']] : []).map(([k, n, off]) => `<a data-act="nav" data-v="${k}" class="${ui.screen === k ? 'on' : ''} ${off ? 'off' : ''}">${n}${off ? ' <small>soon</small>' : ''}${k === 'injuries' ? injBadge() : ''}</a>`).join('')}
+  <div class="layout"><nav>${NAV.concat(FS.fsOn(G) ? [['freestyle', 'Freestyle']] : [], G.phase === 'offseason' ? [['offseason', 'Off-Season']] : G.phase === 'season' && G.ncaa && G.ncaa.show && G.week >= G.cal.selWeek ? [['selection', 'NCAA selection']] : []).map(([k, n, off]) => `<a data-act="nav" data-v="${k}" class="${ui.screen === k ? 'on' : ''} ${off ? 'off' : ''}">${n}${off ? ' <small>soon</small>' : ''}${k === 'injuries' ? injBadge() : ''}</a>`).join('')}
     <hr><a href="moves.html" class="off2">Move viewer</a><a href="lab.html" class="off2">Match Lab</a><a href="harness.html" class="off2">Balance harness</a></nav>
   <section class="content">${body}</section></div>${ui.modal ? modalHtml() : ''}`;
   bind();
@@ -181,8 +185,14 @@ function act(a, d) {
         if (!confirm('Start the new season? Portal decisions will be resolved and your offers and schedule are final.')) return;
         startNewSeason(G); save(); ui.rec.tab = 'targets'; return go('home');
       }
+      if (step === 'fs' && FS.fsLiveOpen(G) && L.isLive(G.fs.live)) {   // freestyle event still being revealed: go there / finish it
+        if (ui.screen !== 'freestyle') { ui.fstab = 'season'; ui.fsbr = false; return go('freestyle'); }
+        stopTimers(); if (ui.view && ui.view.fsw) ui.view = null; L.advanceLive(G.fs.live, 'all'); save(); return render();
+      }
+      const wasRun = step === 'fs' && !FS.fsLiveOpen(G) && G.fs.step !== 'done';
       const res = advanceOffseason(G);
       if (!res.ok) { alert(res.msg); return go('offseason'); }
+      if (step === 'fs') { ui.fstab = 'season'; ui.fsbr = false; ui.fstv = wasRun ? 'feed' : ui.fstv; ui.view = null; stopTimers(); }
       save(); const nxt = offStep(G); if (nxt === 'recruit') ui.rec.tab = 'portal';
       return go(nxt === 'recruit' ? 'recruit' : nxt === 'schedule' ? 'schedule' : nxt === 'fs' ? 'freestyle' : 'offseason');
     }
@@ -250,6 +260,28 @@ function act(a, d) {
     if (!b || !b.seed || (ui.view && (ui.view.tw || ui.view.live))) return render();
     clearInterval(ui.vtimer); ui.view = { idx: -1, res: replayBout(b), shown: 0, playing: true, rnd: tRound(t, +d.wt, m), ids: { A: m.a, B: m.b }, title: t.kind === 'ncaa' && !!m.c && m.rl === 'Finals', venue: tourneyVenue(t) }; return startFeed();
   }
+  if (a === 'fswatch') {   // freestyle bout replay: re-simulated from the stored seed and snapshots (same result)
+    const b = G.fs && G.fs.ev[d.ev] && G.fs.ev[d.ev].bouts[+d.v]; if (!b || (ui.view && ui.view.live)) return render();
+    clearInterval(ui.vtimer);
+    ui.view = { idx: -1, res: simulateFsBout(b.snapA, b.snapB, { seed: b.seed, kg: b.kg }), shown: 0, playing: true, rnd: b.label.split(' · ').slice(1).join(' · ') || b.label, ids: { A: b.a, B: b.b }, fs: true, fsIntl: d.ev === 'worlds' || d.ev === 'olympics', title: (d.ev === 'worlds' || d.ev === 'olympics') && / Final$/.test(b.label) ? (d.ev === 'olympics' ? 'OLYMPIC CHAMPION' : 'WORLD CHAMPION') : false };
+    return startFeed();
+  }
+  if (a === 'fstab') { ui.fstab = d.v; return render(); }
+  if (a === 'fsrk') { ui.fsrk = d.v; return render(); }
+  // freestyle live event (G.fs.live): same reveal rules as a folkstyle tournament (live.js)
+  if (a === 'fstwatch') {
+    const T = G.fs && G.fs.live; if (!T || !L.isLive(T) || ui.view) return render();
+    const p = d.v === 'user' ? L.advanceToUser(T) : L.peekNext(T); if (!p) { save(); return render(); }
+    save(); ui.view = { ...fsViewOf(T, p.wt, p.m), fsw: true }; return startFeed();
+  }
+  if (a === 'fstadv') { stopTimers(); if (ui.view && ui.view.fsw) ui.view = null; const T = G.fs && G.fs.live; if (T && L.isLive(T)) { L.advanceLive(T, d.v, +ui.fsrwt || FS_WEIGHTS[0]); save(); } return render(); }
+  if (a === 'fstview') { ui.fstv = d.v; return render(); }
+  if (a === 'fsbr') { ui.fsbr = d.v === '1'; ui.fstv = 'bracket'; return render(); }
+  if (a === 'fswm') {   // replay a revealed bout of the event (bracket boxes, results feed)
+    const T = G.fs && G.fs.live, m = T && T.result.weights[d.kg]?.matches[+d.v];
+    if (!m || (ui.view && (ui.view.fsw || ui.view.live))) return render();
+    clearInterval(ui.vtimer); ui.view = fsViewOf(T, +d.kg, m); return startFeed();
+  }
   if (a === 'cancelmove') { cancelWeightMove(G, d.v); save(); return render(); }
   if (a === 'rectab') { ui.rec.tab = d.v; return render(); }
   if (a === 'recsel') { ui.rec.sel = d.v; ui.rec.msg = ''; return render(); }
@@ -305,7 +337,9 @@ function act(a, d) {
 }
 // a bout watched with "Watch next match" counts as revealed in the dual once the viewer finishes or closes
 const simTo = (du, n, assist) => { while (!du.done && du.result.bouts.length < n) stepDual(G, du, { assist }); };
-function revealWatched() { const v = ui.view; if (v && v.tw) { const t = G.tournaments.find(x => x.id === v.tw); v.tw = null; if (t && L.isLive(t)) { L.advanceLive(t, 'match'); save(); } }
+function revealWatched() { const v = ui.view;
+  if (v && v.fsw) { v.fsw = false; const T = G.fs && G.fs.live; if (T && L.isLive(T)) { L.advanceLive(T, 'match'); save(); } }
+  if (v && v.tw) { const t = G.tournaments.find(x => x.id === v.tw); v.tw = null; if (t && L.isLive(t)) { L.advanceLive(t, 'match'); save(); } }
    if (v && v.reveal != null && ui.dual) ui.dual.shown = Math.max(ui.dual.shown, Math.min(10, v.reveal + 1)); }
 // profile screens (wrestler, team, tournament) chain: Back returns to the previous profile or screen
 function openProf(screen, key, val) { (ui.stack ||= []).push({ screen: ui.screen, prof: ui.prof, tm: ui.tm, tp: ui.tp }); ui[key] = val; return go(screen); }
@@ -332,6 +366,8 @@ function chg(k, el) {
   if (k === 'usereal') { ui.useReal = el.checked; return; }
   if (k === 'usefs') { ui.useFs = el.checked; return; }
   if (k === 'fskg') { const e = FS.setKg(G, el.dataset.id, +el.value); if (e) alert(e); save(); return render(); }
+  if (k === 'fsrwt') { ui.fsrwt = +el.value; return render(); }
+  if (k === 'fstwt') { ui.fstwt = +el.value; return render(); }
   if (k === 'fsent') { FS.setEntry(G, el.dataset.ev, el.dataset.id, el.checked); save(); return; }
   if (k === 'recmode') { G.rec.mode = el.value; save(); return render(); }
   if (k === 'recdiff') { G.rec.diff = el.value; save(); return render(); }
@@ -530,7 +566,7 @@ function home() {
   const rm = rankMap(), t = me(), du = userDual(G), rk = rankings(G);
   let next;
   const ev = userEvent(G);
-  if (G.phase === 'offseason') next = `<b>Offseason ${G.season}</b> — step ${Math.max(1, offSteps(G).findIndex(s => s[0] === offStep(G)) + 1)} of ${offSteps(G).length}: <b>${(offSteps(G).find(s => s[0] === offStep(G)) || [])[1]}</b>. Go to the <a data-act="nav" data-v="offseason">Offseason</a> page, and use the top-right button to move to the next step. Roster has scholarships, Training has weight moves.`;
+  if (G.phase === 'offseason') next = `<b>Off-Season ${G.season + 1}</b> — step ${Math.max(1, offSteps(G).findIndex(s => s[0] === offStep(G)) + 1)} of ${offSteps(G).length}: <b>${(offSteps(G).find(s => s[0] === offStep(G)) || [])[1]}</b>. Go to the <a data-act="nav" data-v="offseason">Offseason</a> page, and use the top-right button to move to the next step. Roster has scholarships, Training has weight moves.`;
   else if (G.phase === 'seasonEnd') {
     const h = G.history[G.history.length - 1], rec = records(G)[G.userTeam];
     next = `<b>Season complete.</b> Dual record ${rec.w}-${rec.l}.` + (h ? `<br>NCAA champion: <b>${tn(h.champion)}</b>. ${h.userFinish ? `You finished <b>#${h.userFinish}</b> (${h.userPts} pts) with ${h.userAA} All-American${h.userAA === 1 ? '' : 's'} and ${h.userChamps} national champion${h.userChamps === 1 ? '' : 's'}.` : 'You had no NCAA qualifiers.'}` : '');
@@ -753,18 +789,25 @@ function statsScreen() {
 // ---------- wrestler profile ----------
 function profile() {
   const w = G.wrestlers[ui.prof], back = `<button class="secondary" data-act="profback">◀ Back</button>`;
+  if (!w && G.fsw && G.fsw[ui.prof]) return fsProfile(G.fsw[ui.prof], back);
   if (!w) { const a = LG.archived(G, ui.prof); return a ? archProfile(a, back) : `<div class="card"><p>This wrestler is no longer on a roster (graduated or left) and no profile was kept for him.</p>${back}</div>`; }
   const pend = syncStats();
   const mine = w.team === G.userTeam, t = G.teams[w.team], wt = w.lw || w.natural;
   const poll = ensurePolls(G)[wt] || [], pr = poll.indexOf(w.id) + 1;
   const tierC = v => (v >= 18 ? 't4' : v >= 15 ? 't3' : v >= 11 ? 't2' : 't1');
   const bars = ATTR_KEYS.map(k => `<div class="attr"><span>${ATTR_LABELS[k]}</span><div class="bar"><i class="${tierC(w.attrs[k])}" style="width:${w.attrs[k] * 5}%"></i></div><b>${w.attrs[k]}</b></div>`).join('');
+  // freestyle ratings (freestyle mode): derived from the same 14 attributes, nothing hidden (fs.js FS_OVR_W, FS_PT)
+  const wtl = W => Object.entries(W).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${ATTR_LABELS[k]} ${Math.round(v / Object.values(W).reduce((s, x) => s + x, 0) * 100)}%`).join(', ');
+  const fsBar = (n, v, tip) => `<div class="attr" title="${tip}"><span>${n}</span><div class="bar"><i class="${tierC(v)}" style="width:${v * 5}%"></i></div><b>${v.toFixed(1)}</b></div>`;
+  const ptr = fsParTerre(w.attrs);
+  const fsBlock = FS.fsOn(G) ? `<h3 style="margin-top:14px">Freestyle</h3><div class="cols2">${fsBar('Freestyle OVR', FS.fsOvr(w), 'Weights: ' + wtl(FS_OVR_W))}${fsBar('Par terre offense', ptr.off, 'Gut wrenches, leg laces, gator rolls. Weights: ' + wtl(FS_PT.off))}${fsBar('Par terre defense', ptr.def, 'Stopping turns from the bottom. Weights: ' + wtl(FS_PT.def))}</div>${G.fs && G.fs.init ? `<p style="margin:6px 0 0">Freestyle ranking: ${fsRankText(w.id)}</p>` : ''}<p class="hint" style="margin:4px 0 0">Derived from the ratings above (hover for the weights); freestyle has no separate attributes.</p>${fsResHtml(w.id)}` : '';
   const info = [
     ['Team', tn(w.team, 18)], ['Class', CLASS_NAMES[w.cls] + (w.real ? '' : '')], ['Weight', `${w.natural} lbs${wt !== w.natural ? ` (wrestling ${wt})` : ''}`],
-    ['Hometown', w.hm ? w.hm.replace(' / ', ' · ') : '—'], ['Style', ARCHETYPES[w.archetype] ? ARCHETYPES[w.archetype].label : '—'],
+    ['Hometown', w.hm ? w.hm.replace(' / ', ' · ') : '—'], ...(FS.natOf(G, w.id) !== 'USA' ? [['Country', `${flagImg(FS.natOf(G, w.id), 14)} ${FS.countryName(FS.natOf(G, w.id))}${FS.fsOn(G) ? ' <small class="muted">(freestyle: no US Open / Trials; wrestles for his country at the Worlds)</small>' : ''}`]] : []), ['Style', ARCHETYPES[w.archetype] ? ARCHETYPES[w.archetype].label : '—'],
     ['Weight-class rank', pr ? `#${pr} at ${wt}` : `unranked at ${wt}`],
     ['Status', w.injury ? `<span class="neg">Injured: ${w.injury.what}, ${w.injury.weeks}w</span>` : w.rehab ? `<span class="warn">Back from ${w.rehab.what} (re-injury risk raised, ${w.rehab.left}w)</span>` : '<span class="pos">Healthy</span>'],
     ['Fatigue', `${Math.round(w.fatigue)} / 100`],
+    ...(FS.fsOn(G) && G.fs.st && G.fs.st[w.id] ? [['Freestyle', `${G.fs.st[w.id].w}-${G.fs.st[w.id].l} senior freestyle record (${FS.affil(G, w.id)})`]] : []),
     ['Potential', mine ? potLabel(w) : '<span class="muted">unscouted</span>'], ['Work ethic', mine ? ethicLabel(w) : '<span class="muted">unscouted</span>'],
     ['Durability', mine ? durability(w) : '<span class="muted">unscouted</span>'], ['Scholarship', mine ? `${Math.round((w.aid || 0) * 100)}%` : '<span class="muted">—</span>'],
   ].map(([k, v]) => `<tr><td class="muted">${k}</td><td>${v}</td></tr>`).join('');
@@ -802,7 +845,7 @@ function profile() {
     <div style="display:flex;align-items:center;gap:14px;margin-top:10px">${schoolLogo(w.team, t.name, 56)}
       <div><h2 style="margin:0">${w.name}${w.real ? '' : ''}</h2><div class="muted">${CLASS_NAMES[w.cls]} · ${w.natural} lbs · ${tnl(w.team)}${pr ? ` · #${pr} at ${wt}` : ''}${hofBadge(w.id)}</div></div>
       <div style="margin-left:auto;text-align:right"><div class="muted" style="font-size:12px">OVERALL</div><div style="font-size:34px;font-weight:700;line-height:1">${ovr(w)}</div></div></div>${pend}
-    <div class="cols2" style="margin-top:14px;align-items:start"><div><h3>Info</h3><table class="tbl">${info}</table></div><div><h3>Ratings</h3><div class="cols2">${bars}</div>${tourCard(w, hide)}</div></div>
+    <div class="cols2" style="margin-top:14px;align-items:start"><div><h3>Info</h3><table class="tbl">${info}</table></div><div><h3>Ratings</h3><div class="cols2">${bars}</div>${fsBlock}${tourCard(w, hide)}</div></div>
     <h3 style="margin-top:14px">Stats</h3>${statTable}
     <p class="muted">Career: ${cs[0]}-${cs[1]}${cs[0] + cs[1] ? ` (${Math.round(cs[0] / (cs[0] + cs[1]) * 100)}%)` : ''} · ${cs[2]} pins · ${cs[12]} All-American finish${cs[12] === 1 ? '' : 'es'} · ${cs[13]} national title${cs[13] === 1 ? '' : 's'}. Career counts start when you began the game.</p>
     <h3 style="margin-top:14px">${mineW ? `Matches this season <small class="muted">${log.length}</small>` : 'Recent matches'}</h3>
@@ -1228,7 +1271,8 @@ function recruitDetail(r) {
   const me_ = r.interest[G.userTeam] || 0, offr = r.offers[G.userTeam], open = r.status === 'open';
   const need = r.needs, caresShow = me_ > 0 || r.scout >= 2;
   const names = { pres: 'Program prestige', pt: 'Playing time', acad: 'Academics', loc: 'Staying close to home', aid: 'Scholarship money' };
-  const cares = caresShow ? Object.entries(need).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${names[k]} ${Math.round(v * 100)}%`).join(' · ') : '<span class="muted">Contact him to learn what he cares about.</span>';
+  const fsCare = R.fsMode(G) ? R.rtcCare(r) : 0;
+  const cares = caresShow ? Object.entries(need).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${names[k]} ${Math.round(v * 100)}%`).join(' · ') + (R.fsMode(G) ? ` · <span title="How much a senior freestyle career (RTC) matters to him: pitch 'RTC / freestyle success'">Freestyle future: <b>${fsCare >= 0.55 ? 'big' : fsCare >= 0.3 ? 'some' : 'little'}</b></span>` : '') : '<span class="muted">Contact him to learn what he cares about.</span>';
   const attrs = r.scout >= 2 ? `<div class="cols2">${ATTR_KEYS.map(k => `<div class="attr"><span>${ATTR_LABELS[k]}</span><div class="bar"><i class="${tier(R.shownAttr(r, k))}" style="width:${R.shownAttr(r, k) * 5}%"></i></div><b>${r.scout >= 3 ? '' : '~'}${R.shownAttr(r, k)}</b></div>`).join('')}</div>` : '<p class="muted">Scout him to level 2 to see attributes.</p>';
   const aidOpts = [0, 0.25, 0.5, 0.75, 1].map(a => `<option value="${a}" ${(offr ?? 0.5) === a ? 'selected' : ''}>${a * 100}%</option>`).join('');
   const pitch = open ? R.fit(G, r, G.userTeam, offr ?? 0) : null;
@@ -1242,7 +1286,7 @@ function recruitDetail(r) {
     ${open ? `${ui.rec.msg ? `<p class="pos"><b>${ui.rec.msg}</b></p>` : ''}
     <div class="row" style="margin-top:8px"><button data-act="recscout" data-v="${r.id}" ${r.scout >= 3 ? 'disabled' : ''}>Scout (${r.scout >= 2 ? 2 : 1}h)</button>${actBtn(r, 'dm', 'Social DM')}${actBtn(r, 'call', 'Phone call')}${actBtn(r, 'visit', 'Campus visit')}${actBtn(r, 'home', 'Home visit')}
     ${R.onBoard(G, r.id) ? `<button class="secondary" data-act="recrem" data-v="${r.id}">Remove from board</button>` : `<button data-act="recadd" data-v="${r.id}">＋ Add to board</button>`}</div>
-    <div class="row" style="margin-top:8px"><label>Pitch <select id="pitchsel">${Object.entries(R.PITCH_TOPICS).map(([k, n]) => `<option value="${k}">${n}${r.pitched?.[k] ? ' ✓' : ''} — you score ${Math.round(R.teamStrengths(G, r, G.userTeam)[k] * 100)}%</option>`).join('')}</select></label>${actBtn(r, 'pitch', 'Sell pitch')}</div>
+    <div class="row" style="margin-top:8px"><label>Pitch <select id="pitchsel">${Object.entries(R.pitchTopics(G)).map(([k, n]) => `<option value="${k}">${n}${r.pitched?.[k] ? ' ✓' : ''} — you score ${Math.round(R.teamStrengths(G, r, G.userTeam)[k] * 100)}%</option>`).join('')}</select></label>${actBtn(r, 'pitch', 'Sell pitch')}</div>
     <div class="row" style="margin-top:8px"><label>Offer <select id="aidsel">${aidOpts}</select></label><button data-act="recoffer" data-v="${r.id}">${offr != null ? 'Update offer' : 'Make offer'}</button>${offr != null ? `<button class="secondary" data-act="recwithdraw" data-v="${r.id}">Withdraw</button>` : ''}</div>
     <p class="hint">Your pitch score right now: <b>${pitch.toFixed(0)}</b>. He commits when his best-scoring school (among those who offered) reaches about 30 after his decision week, so keep building interest and match what he cares about.</p>` : `<p><b>${r.status === 'committed' ? `Committed to ${G.teams[r.team].name}` : 'Unsigned'}</b></p>`}</div>`;
 }
@@ -1269,15 +1313,21 @@ function commitsTab() {
 // ---------- offseason (5 steps: wrestlers leaving, cut, progression, recruiting, schedule) ----------
 function offBar() {
   const idx = offSteps(G).findIndex(s => s[0] === offStep(G));
-  return `<div class="card"><div class="row"><b>Offseason ${G.season}</b> ${offSteps(G).map(([k, n], i) => `<span class="${i === idx ? '' : 'muted'}" style="${i === idx ? 'font-weight:700;color:var(--tc)' : ''}">${i < idx ? '✓' : i + 1}. ${n}</span>`).join(' <span class="muted">›</span> ')}</div></div>`;
+  return `<div class="card"><div class="row"><b>Off-Season ${G.season + 1}</b> ${offSteps(G).map(([k, n], i) => `<span class="${i === idx ? '' : 'muted'}" style="${i === idx ? 'font-weight:700;color:var(--tc)' : ''}">${i < idx ? '✓' : i + 1}. ${n}</span>`).join(' <span class="muted">›</span> ')}</div></div>`;
 }
 // ---------- freestyle season (optional mode, js/game/freestyle.js, docs/freestyle.md) ----------
-const fsName = id => { const a = FS.ath(G, id); return a ? (G.wrestlers[id] ? wl(id) : wl(id, a.name)) : '?'; };
+const fsNat = id => { const c = FS.natOf(G, id); return c === 'USA' ? '' : ` <small class="warn" title="Not a US citizen: no US Open or World Team Trials; can enter the Bill Farrell and wrestle for ${FS.countryName(c)} at the Worlds / Olympics">${FS.countryName(c)}</small>`; };
+const fsName = (id, fb) => { const a = FS.ath(G, id); return a ? (G.wrestlers[id] ? wl(id) : wl(id, a.name)) : fb || '?'; };   // fb: stored name of an athlete who has since retired
 function fsLabel() {
   if (!FS.fsOn(G) || G.phase !== 'offseason') return null;
   const st = offStep(G);
   if (st === 'schedule') return 'Done → Freestyle season ▶';
   if (st !== 'fs') return null;
+  if (FS.fsLiveOpen(G)) {
+    const T = G.fs.live, nm = FS.EV_NAME[T.ev];
+    if (L.isLive(T)) return ui.screen === 'freestyle' ? `Finish the ${nm} ▶▶` : `Go to the ${nm} ▶`;
+    return T.next === 'done' ? 'Done → season review ▶' : `Done → ${FS.EV_NAME[T.next === 'worlds' ? FS.worldsKey(G) : T.next]} ▶`;
+  }
   const s = G.fs.step;
   return s === 'roster' ? 'Rosters set → Bill Farrell ▶' : s === 'open' ? 'Run the US Open ▶' : s === 'trials' ? 'Run the World Team Trials ▶' : s === 'worlds' ? `Run the ${FS.EV_NAME[FS.worldsKey(G)]} ▶` : null;
 }
@@ -1287,19 +1337,29 @@ function freestyleScreen() {
   const fs = G.fs, live = G.phase === 'offseason' && offStep(G) === 'fs' && fs.year === FS.fsYear(G);
   const steps = FS.FS_STEPS.map(([k, n]) => [k, k === 'worlds' ? FS.EV_NAME[FS.worldsKey(G)] : n]), order = ['roster', 'farrell', 'open', 'trials', 'worlds', 'done'], cur = live ? order.indexOf(fs.step === 'roster' ? 'roster' : fs.step) : -1;
   const bar = live ? `<div class="card"><div class="row"><b>Freestyle ${fs.year}</b> ${steps.map(([k, n], i) => `<span class="${i === cur ? '' : 'muted'}" style="${i === cur ? 'font-weight:700;color:var(--tc)' : ''}">${i < cur ? '✓' : i + 1}. ${n}</span>`).join(' <span class="muted">›</span> ')}</div>
-    <p class="muted" style="margin:6px 0 0">${fs.step === 'done' ? 'The freestyle season is over. Use the top-right button to start the next college season.' : 'Use the top-right button to run the next event.'}</p></div>` : '';
+    <p class="muted" style="margin:6px 0 0">${FS.fsLiveOpen(G) ? (L.isLive(fs.live) ? `The ${FS.EV_NAME[fs.live.ev]} is under way: reveal it below, or use the top-right button to finish it.` : 'All bouts are in. Use the top-right button to close the event.') : fs.step === 'done' ? 'The freestyle season is over. Use the top-right button to start the next college season.' : 'Use the top-right button to run the next event.'}</p></div>` : '';
+  const tab = ['season', 'rank', 'history', 'records', 'hof'].includes(ui.fstab) ? ui.fstab : 'season';
+  const tabs = `<div class="card"><div class="chips">${[['season', `${fs.year || FS.fsYear(G)} season`], ['rank', 'Rankings'], ['history', 'World Teams & medals'], ['records', 'Records'], ['hof', 'Hall of Fame']].map(([k, n]) => `<a data-act="fstab" data-v="${k}" class="chip ${k === tab ? 'on' : ''}">${n}</a>`).join('')}</div></div>`;
   let body = '';
-  if (live && fs.step === 'roster') body += fsRosterPanel();
-  else if (live && ['open', 'trials', 'worlds'].includes(fs.step)) body += fsEntryPanel(fs.step);
-  if (live && fs.step === 'roster') body += fsEntryPanel('farrell');
-  body += fsResultsPanel() + fsHistoryPanel();
-  return `<div class="card"><h2>Freestyle <small class="muted">${G.teams[G.userTeam].name} RTC</small></h2><p class="muted">Senior men's freestyle (international rules). Your RTC has no size limit; your college wrestlers can only wrestle for your RTC. RTC results (World Team spots, medals, US Open titles) raise your program's prestige a little.</p></div>` + bar + body;
+  const open = live && FS.fsLiveOpen(G);
+  if (tab === 'season' && (open || (ui.fsbr && fs.live))) body += fsTourney(fs.live);
+  else if (tab === 'season') {
+    if (live && fs.step === 'roster') body += fsRosterPanel();
+    else if (live && ['open', 'trials', 'worlds'].includes(fs.step)) body += fsEntryPanel(fs.step);
+    if (live && fs.step === 'roster') body += fsEntryPanel('farrell');
+    body += fsCarryPanel() + fsResultsPanel();
+  } else if (tab === 'history') body += fsHistoryPanel() || '<div class="card"><p class="muted">No freestyle season finished yet.</p></div>';
+  else if (tab === 'rank') body += fsRankPanel();
+  else if (tab === 'records') body += fsRecordsPanel();
+  else body += fsHofPanel();
+  body = boutView() + (open && L.isLive(fs.live) ? '' : tabs) + body;   // no Records / Hall of Fame while an event is being revealed (spoilers)
+  return `<div class="card"><h2>Freestyle <small class="muted">${rtcName(G.teams[G.userTeam].name)}</small></h2><p class="muted">Senior men's freestyle (international rules). Your RTC has no size limit; your college wrestlers can only wrestle for your RTC. RTC results (World Team spots, medals, US Open titles) raise your program's prestige a little.</p></div>` + bar + body;
 }
 function fsRosterPanel() {
   const fs = G.fs, me = G.userTeam, mine = (fs.rtc[me] || []).slice().sort((x, y) => FS.kgOf(G, x) - FS.kgOf(G, y) || FS.fsOvr(FS.ath(G, y)) - FS.fsOvr(FS.ath(G, x)));
   const src = id => (FS.isCollege(G, id) ? 'College' : G.fsw[id] && G.fsw[id].src === 'grad' ? 'Graduate' : 'Senior');
   const kgSel = id => { const a = FS.ath(G, id), k = FS.kgOf(G, id), base = a._kg0 ?? k, i = FS_WEIGHTS.indexOf(base); return `<select data-chg="fskg" data-id="${id}">${FS_WEIGHTS.filter((_, j) => Math.abs(j - i) <= 1).map(w => `<option value="${w}" ${w === k ? 'selected' : ''}>${w} kg${w !== base ? (w > base ? ' (up)' : ' (down)') : ''}</option>`).join('')}</select>`; };
-  const row = (id, act) => { const a = FS.ath(G, id); return `<tr><td>${fsName(id)}</td><td>${act === 'drop' ? kgSel(id) : FS.kgOf(G, id) + ' kg'}</td><td>${FS.ageOf(G, id)}</td><td><b>${FS.fsOvr(a).toFixed(1)}</b></td><td class="muted">${act === 'drop' ? src(id) : FS.isCollege(G, id) ? 'College ' + CLASS_NAMES[G.wrestlers[id].cls] : FS.affil(G, id)}</td><td><button class="secondary" data-act="fs${act}" data-v="${id}">${act === 'drop' ? 'Drop' : 'Add'}</button></td></tr>`; };
+  const row = (id, act) => { const a = FS.ath(G, id); return `<tr><td>${fsName(id)}${fsNat(id)}</td><td>${act === 'drop' ? kgSel(id) : FS.kgOf(G, id) + ' kg'}</td><td>${FS.ageOf(G, id)}</td><td><b>${FS.fsOvr(a).toFixed(1)}</b></td><td class="muted">${act === 'drop' ? src(id) : FS.isCollege(G, id) ? 'College ' + CLASS_NAMES[G.wrestlers[id].cls] : FS.affil(G, id)}</td><td><button class="secondary" data-act="fs${act}" data-v="${id}">${act === 'drop' ? 'Drop' : 'Add'}</button></td></tr>`; };
   const head = `<tr><th>Wrestler</th><th>Weight</th><th>Age</th><th>FS OVR</th><th></th><th></th></tr>`;
   const college = G.teams[me].roster.filter(id => !mine.includes(id)).map(id => G.wrestlers[id]).sort((x, y) => FS.fsOvr(y) - FS.fsOvr(x)).slice(0, 12).map(w => w.id);
   const fa = FS.freeAgents(G).slice(0, 20).map(a => a.id);
@@ -1316,31 +1376,174 @@ function fsEntryPanel(ev) {
   if (ev === 'worlds') { const t = fs.team || {}; return `<div class="card"><h3 style="margin-top:0">US team for the ${FS.EV_NAME[FS.worldsKey(G)]}</h3><table class="tbl">${FS_WEIGHTS.map(kg => `<tr><td>${kg} kg</td><td>${t[kg] ? fsName(t[kg]) : '—'}</td><td class="muted">${t[kg] ? FS.affil(G, t[kg]) : ''}</td></tr>`).join('')}</table></div>`; }
   const why = id => (ev === 'trials' ? ((fs.q || {})[id] || (Object.values(fs.prev.team).includes(id) ? `${fs.year - 1} World Team` : 'needs an at-large bid')) : '');
   return `<div class="card"><h3 style="margin-top:0">Your entries: ${FS.EV_NAME[ev]}</h3>${ev === 'trials' ? `<p class="muted">Qualifiers: top ${FS.FS_Q.trialsTop} at the Bill Farrell or the US Open, last year's World Team, last season's NCAA champions, then at-large bids by rating up to ${FS.FS_Q.trialsField}. Last year's World medalist at a weight waits in the best-of-3 final.</p>` : ''}
-    ${mine.length ? `<table class="tbl"><tr><th>Enter</th><th>Wrestler</th><th>Weight</th><th>FS OVR</th>${ev === 'trials' ? '<th>Qualified</th>' : ''}</tr>${mine.map(id => `<tr><td><input type="checkbox" data-chg="fsent" data-ev="${ev}" data-id="${id}" ${!(fs.ent[ev] && fs.ent[ev][id] === false) ? 'checked' : ''}></td><td>${fsName(id)}</td><td>${FS.kgOf(G, id)}</td><td>${FS.fsOvr(FS.ath(G, id)).toFixed(1)}</td>${ev === 'trials' ? `<td class="muted">${why(id)}</td>` : ''}</tr>`).join('')}</table>` : '<p class="muted">Your RTC is empty.</p>'}</div>`;
+    ${mine.length ? `<table class="tbl"><tr><th>Enter</th><th>Wrestler</th><th>Weight</th><th>FS OVR</th>${ev === 'trials' ? '<th>Qualified</th>' : ''}</tr>${mine.map(id => `<tr><td><input type="checkbox" data-chg="fsent" data-ev="${ev}" data-id="${id}" ${!(fs.ent[ev] && fs.ent[ev][id] === false) && (ev === 'farrell' || FS.isUSA(G, id)) ? 'checked' : ''} ${ev === 'farrell' || FS.isUSA(G, id) ? '' : 'disabled'}></td><td>${fsName(id)}${fsNat(id)}${ev === 'farrell' || FS.isUSA(G, id) ? '' : ' <small class="muted">not eligible (US citizens only)</small>'}</td><td>${FS.kgOf(G, id)}</td><td>${FS.fsOvr(FS.ath(G, id)).toFixed(1)}</td>${ev === 'trials' ? `<td class="muted">${why(id)}</td>` : ''}</tr>`).join('')}</table>` : '<p class="muted">Your RTC is empty.</p>'}</div>`;
 }
 function fsResultsPanel() {
   const fs = G.fs, keys = ['farrell', 'open', 'trials', FS.worldsKey(G)].filter(k => fs.ev && fs.ev[k]);
   if (!keys.length) return '';
   const k = keys.includes(ui.fsev) ? ui.fsev : keys[keys.length - 1], R = fs.ev[k];
   const tabs = keys.map(x => `<a data-act="fsev" data-v="${x}" class="chip ${x === k ? 'on' : ''}">${FS.EV_NAME[x]}</a>`).join('');
-  const pl = p => `${p.place}. ${fsName(p.id)} <small class="muted">${p.aff}</small>`;
+  const pl = p => `${p.place}. ${fsName(p.id, p.name)} <small class="muted">${p.aff}</small>`;
   const rows = FS_WEIGHTS.map(kg => { const r = R.kg[kg]; if (!r) return '';
     let extra = '';
     if (k === 'trials') extra = r.final ? `<div><b>Final (best of 3):</b> ${fsName(r.final.a)} ${r.final.wins[0]}-${r.final.wins[1]} ${fsName(r.final.b)}${r.bye && r.final.a === r.bye ? ' <small class="muted">(medalist bye)</small>' : ''} → <b>${r.winnerName}</b></div>` : r.winner ? `<div>World Team: <b>${r.winnerName}</b></div>` : '';
     if (r.us) extra = `<div>USA: ${fsName(r.us.id)} — ${r.us.place && r.us.place <= 3 ? `<b>${['', 'GOLD', 'SILVER', 'BRONZE'][r.us.place]}</b>` : r.us.place === 5 ? '5th' : 'no medal'}</div>`;
     return `<tr><td><b>${kg}</b><br><small class="muted">${r.field} entered</small></td><td>${extra}${r.places.map(pl).join('<br>')}</td></tr>`; }).join('');
-  const mine = (R.bouts || []).map(b => { const side = FS.isMine(G, b.a) ? 'A' : 'B', me = side === 'A' ? b.a : b.b, op = side === 'A' ? b.b : b.a, won = b.w === side;
-    return `<tr><td>${b.kg}</td><td>${fsName(me)}</td><td class="muted">${b.label}</td><td>${fsName(op)} <small class="muted">${FS.affil(G, op)}</small></td><td class="${won ? 'tcwin' : 'neg'}">${won ? 'W' : 'L'} ${b.d}</td></tr>`; }).join('');
-  return `<div class="card"><h3 style="margin-top:0">Results ${fs.year}</h3><div class="chips">${tabs}</div><table class="tbl" style="margin-top:8px">${rows}</table>
-    ${mine ? `<h4>Your athletes' bouts</h4><table class="tbl dense"><tr><th>kg</th><th>Wrestler</th><th>Round</th><th>Opponent</th><th>Result</th></tr>${mine}</table>` : ''}</div>`;
+  const usa = k === 'worlds' || k === 'olympics';   // at the Worlds / Olympics you coach the whole US team
+  const mine = (R.bouts || []).map((b, i) => { const side = FS.isMineAt(G, k, b.a) ? 'A' : 'B', me = side === 'A' ? b.a : b.b, op = side === 'A' ? b.b : b.a, won = b.w === side;
+    return `<tr><td>${b.kg}</td><td>${fsName(me, (side === 'A' ? b.snapA : b.snapB).name)}</td><td class="muted">${b.label}</td><td>${fsName(op, (side === 'A' ? b.snapB : b.snapA).name)} <small class="muted">${FS.affil(G, op) || (side === 'A' ? b.snapB : b.snapA).school}</small></td><td class="${won ? 'tcwin' : 'neg'}">${won ? 'W' : 'L'} ${b.d}</td><td>${b.seed != null ? `<a class="bplay" data-act="fswatch" data-ev="${k}" data-v="${i}" title="Watch the bout">▶ Watch</a>` : ''}</td></tr>`; }).join('');
+  const brk = fs.live && fs.live.closed && fs.live.ev === k ? ` <button class="secondary" data-act="fsbr" data-v="1">Brackets &amp; all bouts</button>` : '';
+  return `<div class="card"><h3 style="margin-top:0">Results ${fs.year}${brk}</h3><div class="chips">${tabs}</div><table class="tbl" style="margin-top:8px">${rows}</table>
+    ${mine ? `<h4>${usa ? 'Team USA bouts' : "Your athletes' bouts"}</h4><table class="tbl dense"><tr><th>kg</th><th>Wrestler</th><th>Round</th><th>Opponent</th><th>Result</th><th></th></tr>${mine}</table>` : ''}</div>`;
+}
+// ----- freestyle live tournament: fs.live = { ev, wts, result: { weights: { kg: { matches } } }, snaps, rv, next, closed } (freestyle.js runFsEvent)
+const fsSn = (T, id) => T.snaps[id] || { name: '?', school: '' };
+const fsN = (T, id) => fsName(id, fsSn(T, id).name);
+function fsViewOf(T, kg, m) {
+  const usa = T.ev === 'worlds' || T.ev === 'olympics';
+  return { idx: -1, res: simulateFsBout(T.snaps[m.a], T.snaps[m.b], { seed: m.seed, kg }), shown: 0, playing: true, rnd: m.lb, ids: { A: m.a, B: m.b }, fs: true, fsIntl: usa,
+    title: usa && m.lb === 'Final' ? (T.ev === 'olympics' ? 'OLYMPIC CHAMPION' : 'WORLD CHAMPION') : false };
+}
+function fsRname(T, l, kg, c) {
+  for (const w of (kg ? [kg] : FS_WEIGHTS)) { const m = T.result.weights[w].matches.find(x => x.l === l && x.rl && (c === undefined || !!x.c === c)); if (m) return m.rl; }
+  return `Round ${l}`;
+}
+// revealed index of each athlete's last bout at a weight (an athlete's place shows once his last bout is revealed)
+function fsLast(T, kg) { const o = L.orderOf(T, kg), last = {}; o.forEach((m, k) => { last[m.a] = k; last[m.b] = k; }); return { last, n: L.isLive(T) ? T.rv.cnt[kg] : o.length, all: o.length }; }
+const fsMineAt = (T, id) => FS.isMineAt(G, T.ev, id);
+const fsRlb = (T, m, w) => { const rn = fsRname(T, m.l, w, !!m.c); return m.lb && !rn.startsWith(m.lb) ? `${rn} · ${m.lb}` : rn; };   // round + the bout's own label (no 'Quarterfinals · Quarterfinal')
+function fsTourney(T) {
+  const live = L.isLive(T), nm = FS.EV_NAME[T.ev], R = G.fs.ev[T.ev], usa = T.ev === 'worlds' || T.ev === 'olympics';
+  const view = ['feed', 'bracket', 'mine'].includes(ui.fstv) ? ui.fstv : 'feed';
+  const kg = FS_WEIGHTS.includes(+ui.fstwt) ? +ui.fstwt : FS_WEIGHTS[0];
+  const tabs = [['feed', live ? 'Results so far' : 'Results'], ['bracket', 'Brackets'], ['mine', usa ? 'Team USA' : 'My athletes']].map(([k, n]) => `<button class="${view === k ? '' : 'secondary'}" data-act="fstview" data-v="${k}">${n}</button>`).join(' ');
+  let controls;
+  if (live) {
+    const cr = L.currentRound(T), done = L.revealedTotal(T), total = L.totalOf(T), pct = total ? Math.round(done / total * 100) : 100;
+    const avail = FS_WEIGHTS.filter(w => L.canRoundAt(T, w));
+    let rwt = +ui.fsrwt; if (!avail.includes(rwt)) rwt = avail[0] || FS_WEIGHTS[0]; ui.fsrwt = rwt;
+    controls = `<div class="card"><h2>${nm} <small class="muted">${G.fs.year}</small></h2>
+      <p><b>${cr != null ? fsRname(T, cr) : ''}</b> · ${done} of ${total} bouts revealed (${pct}%)<span class="muted"> — a round can't start anywhere until the previous round is finished at every weight.</span></p>
+      <div class="bar" style="max-width:420px;margin-bottom:10px"><i class="t2" style="width:${pct}%"></i></div>
+      <div class="row"><button data-act="fstwatch" data-v="next" ${ui.view || !L.peekNext(T) ? 'disabled' : ''}>👁 Watch next bout</button><button data-act="fstwatch" data-v="user" ${ui.view || !L.userMatchesAhead(T) ? 'disabled' : ''} title="Plays every bout before your athlete's next one, then shows his">👁 Watch next ${usa ? 'Team USA' : 'RTC'} bout</button>
+        <button data-act="fstadv" data-v="match">Next bout ▶</button>
+        <label>Weight <select data-chg="fsrwt">${FS_WEIGHTS.map(w => `<option value="${w}" ${w === rwt ? 'selected' : ''} ${avail.includes(w) ? '' : 'disabled'}>${w} kg${avail.includes(w) ? '' : ' (round done)'}</option>`).join('')}</select></label>
+        <button data-act="fstadv" data-v="wround" ${avail.length ? '' : 'disabled'}>Finish round at ${rwt} kg ▶</button>
+        <button data-act="fstadv" data-v="round">Finish round (all weights) ▶</button>
+        <button class="secondary" data-act="fstadv" data-v="all">Finish event ▶▶</button></div></div>`;
+  } else controls = `<div class="card"><h2>${nm} <small class="muted">${G.fs.year}</small></h2><p class="muted">${T.closed ? 'Final results.' : 'All bouts are in. Use the top-right button to close the event.'}</p>
+    ${T.closed ? '<button class="secondary" data-act="fsbr" data-v="0">◀ Back to the season</button>' : ''}</div>`;
+  // one result line
+  const line = (w, m, watch = true) => {
+    const wId = m.w === 'A' ? m.a : m.b, lId = m.w === 'A' ? m.b : m.a, mineM = fsMineAt(T, m.a) || fsMineAt(T, m.b);
+    return `<tr class="${mineM ? 'me' : ''}"><td class="muted">${w}</td><td>${fsRlb(T, m, w)}</td><td class="${fsMineAt(T, wId) ? 'tcname' : 'pos'}">${fsN(T, wId)} <small class="muted">${fsSn(T, wId).school}</small></td><td>def.</td><td class="${fsMineAt(T, lId) ? 'neg' : ''}">${fsN(T, lId)} <small class="muted">${fsSn(T, lId).school}</small></td><td class="muted">${m.d}</td><td>${watch && !(ui.view && ui.view.fsw) ? `<a class="bplay" data-act="fswm" data-kg="${w}" data-v="${m.i}" title="Watch the bout">▶</a>` : ''}</td></tr>`;
+  };
+  // places (and the extra line: Trials winner, US result at the Worlds) once they are decided in what has been revealed
+  const placesOf = w => { const r = R.kg[w], { last, n, all } = fsLast(T, w); if (!r) return '';
+    const shown = r.places.filter(p => last[p.id] == null || last[p.id] < n);
+    let extra = '';
+    if (n >= all && r.winner) extra = `<div>World Team: <b>${fsName(r.winner, r.winnerName)}</b>${r.final ? ` <small class="muted">(final ${Math.max(...r.final.wins)}-${Math.min(...r.final.wins)})</small>` : ''}</div>`;
+    if (n >= all && r.us) extra = `<div>USA: ${fsName(r.us.id)} — ${r.us.place && r.us.place <= 3 ? `<b>${['', 'GOLD', 'SILVER', 'BRONZE'][r.us.place]}</b>` : r.us.place === 5 ? '5th' : 'no medal'}</div>`;
+    return extra + (shown.length ? shown.map(p => `${p.place}. ${fsName(p.id, p.name)} <small class="muted">${p.aff}</small>`).join('<br>') : '<span class="muted">No places decided yet.</span>'); };
+  let body;
+  if (view === 'feed') {
+    const feed = live ? T.rv.feed.slice(-15).reverse().map(([w, i]) => line(w, T.result.weights[w].matches[i])).join('') : '';
+    body = `${live ? `<h3 style="margin-top:4px">Latest results</h3><table class="tbl dense">${feed || '<tr><td class="muted">Nothing revealed yet. Press Next bout or Finish round.</td></tr>'}</table>` : ''}
+      <h3 style="margin-top:14px">${live ? 'Placings so far' : 'Placings'}</h3><table class="tbl">${FS_WEIGHTS.map(w => `<tr><td><b>${w} kg</b><br><small class="muted">${(R.kg[w] || {}).field || 0} entered</small></td><td>${placesOf(w)}</td></tr>`).join('')}</table>`;
+  } else if (view === 'bracket') {
+    body = `<label>Weight <select data-chg="fstwt">${FS_WEIGHTS.map(w => `<option value="${w}" ${w === kg ? 'selected' : ''}>${w} kg</option>`).join('')}</select></label> <span class="muted">${(R.kg[kg] || {}).field || 0} entered</span>${fsBracketHtml(T, kg, usa)}`;
+  } else {
+    const ids = Object.keys(T.snaps).filter(id => fsMineAt(T, id)).sort((x, y) => (T.snaps[x].weight || 0) - (T.snaps[y].weight || 0));
+    const rows = [], bouts = [];
+    for (const w of FS_WEIGHTS) {
+      const W = T.result.weights[w], o = L.orderOf(T, w), rev = live ? L.revealedSet(T, w) : new Set(o.map(m => m.i));
+      for (const id of ids.filter(x => W.matches.some(m => m.a === x || m.b === x))) {
+        let wn = 0, ls = 0; for (const m of W.matches) if (rev.has(m.i) && (m.a === id || m.b === id)) ((m.w === 'A' ? m.a : m.b) === id ? wn++ : ls++);
+        const next = o.find(m => !rev.has(m.i) && (m.a === id || m.b === id) && ((m.a === id ? m.pa : m.pb) === -1 || rev.has(m.a === id ? m.pa : m.pb)));
+        const pending = o.some(m => !rev.has(m.i) && (m.a === id || m.b === id)), pl = (R.kg[w] && R.kg[w].places.find(p => p.id === id)) || null;
+        const st = next ? `Next: ${fsRlb(T, next, w)}` : pending ? '<span class="muted">waiting</span>' : pl ? `<b class="${pl.place === 1 ? 'tcwin' : ''}">Finished ${pl.place}${['st', 'nd', 'rd'][pl.place - 1] || 'th'}</b>` : '<span class="muted">Eliminated</span>';
+        rows.push(`<tr><td>${w}</td><td>${fsN(T, id)} <small class="muted">${fsSn(T, id).school}</small></td><td>${wn}-${ls}</td><td>${st}</td></tr>`);
+      }
+      for (const m of o) if (rev.has(m.i) && (fsMineAt(T, m.a) || fsMineAt(T, m.b))) bouts.push(line(w, m));
+    }
+    body = `<table class="tbl"><tr><th>kg</th><th>Wrestler</th><th>Record</th><th>Status</th></tr>${rows.join('') || '<tr><td colspan="4" class="muted">No entries.</td></tr>'}</table>
+      <h3 style="margin-top:14px">Bouts${live ? ' so far' : ''}</h3><table class="tbl dense">${bouts.join('') || '<tr><td class="muted">None yet.</td></tr>'}</table>`;
+  }
+  return `${controls}<div class="card"><div class="row">${tabs}</div>${body}</div>`;
+}
+function fsBracketHtml(T, kg, usa) {
+  const ms = T.result.weights[kg].matches, live = L.isLive(T), rev = live ? L.revealedSet(T, kg) : new Set(ms.map(m => m.i));
+  if (!ms.length) return '<p class="muted">No bouts at this weight.</p>';
+  const slot = (m, side) => {
+    const id = side === 'A' ? m.a : m.b, feeder = side === 'A' ? m.pa : m.pb, seed = side === 'A' ? m.sa : m.sb;
+    if (!(feeder === -1 || rev.has(feeder))) return '<div class="bs tbd"><span class="muted">TBD</span></div>';
+    const done = rev.has(m.i), win = done && m.w === side, lose = done && m.w !== side;
+    return `<div class="bs ${win ? 'w' : lose ? 'l' : ''} ${fsMineAt(T, id) ? 'mine' : ''}"><span class="tn"><span><small class="muted">${seed}</small> ${fsN(T, id)} <small class="muted">${fsSn(T, id).school}</small></span></span></div>`;
+  };
+  const box = m => `<div class="bm">${slot(m, 'A')}${slot(m, 'B')}<div class="bd">${rev.has(m.i) ? `<span>${m.lb} · ${m.d}</span>${ui.view && ui.view.fsw ? '' : `<a class="bplay" data-act="fswm" data-kg="${kg}" data-v="${m.i}" title="Watch the bout">▶ Watch</a>`}` : `<span class="muted">${m.lb}</span>`}</div></div>`;
+  const sect = (champ, title) => {
+    const lv = [...new Set(ms.filter(m => !!m.c === champ).map(m => m.l))].sort((x, y) => x - y);
+    return lv.length ? `<h4 style="margin:12px 0 6px">${title}</h4><div class="bkt">${lv.map(l => `<div class="bcol"><div class="bhead">${fsRname(T, l, kg, champ)}</div>${ms.filter(m => !!m.c === champ && m.l === l).map(box).join('')}</div>`).join('')}</div>` : '';
+  };
+  const R = G.fs.ev[T.ev].kg[kg], { last, n } = fsLast(T, kg);
+  const placed = (R ? R.places : []).filter(p => last[p.id] == null || last[p.id] < n).map(p => `<tr class="${fsMineAt(T, p.id) ? 'me' : ''}"><td>${p.place}</td><td>${fsName(p.id, p.name)}</td><td class="muted">${p.aff}</td></tr>`).join('');
+  return `${placed ? `<table class="tbl" style="max-width:460px"><tr><th>Place</th><th>Wrestler</th><th></th></tr>${placed}</table>` : '<p class="muted">No places decided yet.</p>'}
+    ${sect(true, usa ? 'Main bracket' : 'Championship bracket')}${sect(false, usa ? 'Repechage and bronze medal bouts' : 'Consolation / placement bouts')}`;
+}
+// college wrestlers back from the freestyle summer (development, injuries)
+function fsCarryPanel() {
+  const c = G.fs.carry; if (!c || !c.length || G.fs.step !== 'done') return '';
+  const mine = c.filter(x => x.team === G.userTeam), hurt = c.filter(x => x.inj === 'severe').length;
+  const row = x => `<tr><td>${wl(x.id, x.name)}</td><td>${G.teams[x.team] ? tn(x.team, 16) : ''}</td><td>${x.n}</td><td>${x.ups.map(k => ATTR_LABELS[k]).join(', ') || '—'}</td><td class="${x.inj === 'severe' ? 'neg' : 'muted'}">${x.inj === 'severe' ? `${x.what}, out ~${x.weeks}w` : x.inj ? 'hurt, healed by fall' : ''}</td></tr>`;
+  return `<div class="card"><h3 style="margin-top:0">College wrestlers back from freestyle</h3><p class="muted">Freestyle bouts sharpen takedowns and hand fighting a little; most summer injuries heal by the fall, a serious one costs the first weeks of the college season. Nationwide: ${c.length} wrestlers affected, ${hurt} with an injury that carries over.</p>
+    ${mine.length ? `<table class="tbl dense"><tr><th>Wrestler</th><th>Team</th><th>Bouts</th><th>Improved</th><th>Injury</th></tr>${mine.map(row).join('')}</table>` : '<p class="muted">None of your college wrestlers changed.</p>'}</div>`;
+}
+// freestyle record books (separate from the college books): career and season lists, honors, RTCs
+// world / US top 10 per weight (FS.fsRankings: results of the last two seasons + rating)
+function fsRankPanel() {
+  const Rk = FS.fsRankings(G); if (!Rk) return '<div class="card"><p class="muted">Rankings start with the first freestyle season.</p></div>';
+  const scope = ui.fsrk === 'us' ? 'us' : 'world', T = Rk[scope];
+  const chips = [['world', 'World rankings'], ['us', 'US rankings']].map(([k, n]) => `<a data-act="fsrk" data-v="${k}" class="chip ${k === scope ? 'on' : ''}">${n}</a>`).join('');
+  const evN = { worlds: 'Worlds', olympics: 'Olympics', open: 'US Open', farrell: 'Farrell', trials: 'Trials', team: 'World Team' };
+  const res = b => (!b ? '<span class="muted">—</span>' : b.ev === 'team' ? `${b.y} World Team` : `${b.y} ${evN[b.ev] || b.ev} ${b.place === 9 ? 'entrant' : (b.ev === 'worlds' || b.ev === 'olympics') && b.place <= 3 ? ['', '🥇', '🥈', '🥉'][b.place] : b.place + (['st', 'nd', 'rd'][b.place - 1] || 'th')}${b.kg !== undefined ? '' : ''}`);
+  const who = r => { const fl = flagImg(r.nat, 12), tid = r.usa && FS.rtcOf(G, r.id); return `${scope === 'world' && fl ? fl + ' ' : tid ? schoolLogo(tid, G.teams[tid].name, 14) + ' ' : ''}${fsName(r.id, r.name)}`; };
+  const mineR = r => FS.isMine(G, r.id);
+  const card = kg => `<div class="card" style="margin:0"><h3 style="margin-top:0">${kg} kg</h3><table class="tbl dense"><tr><th>#</th><th>Wrestler</th><th>${scope === 'world' ? 'Country' : 'Club'}</th><th>FS OVR</th><th>Best recent</th></tr>
+    ${T[kg].map((r, i) => `<tr class="${mineR(r) ? 'me' : ''}"><td>${i + 1}</td><td>${who(r)}</td><td class="muted">${scope === 'world' ? FS.countryName(r.nat) : r.aff}</td><td>${r.ovr.toFixed(1)}</td><td>${res(r.best)}</td></tr>`).join('')}</table></div>`;
+  return `<div class="card"><h3 style="margin-top:0">Freestyle rankings <small class="muted">after ${Rk.year || '—'}</small></h3><div class="chips">${chips}</div>
+    <p class="hint" style="margin:8px 0 0">Results of the last two freestyle seasons (this one in full, last one at half value: Worlds/Olympics, US Open, Farrell, Trials, World Team spots) plus current rating. Only finished events count.</p></div>
+    <div class="cols2" style="gap:12px">${FS_WEIGHTS.map(card).join('')}</div>`;
+}
+function fsRecordsPanel() {
+  const fs = G.fs, nm = r => (FS.ath(G, r.id) ? wl(r.id, r.name) : r.name), act = r => (r.active ? ' <small class="tag">active</small>' : '');
+  const list = (title, rows, val, extra = () => '') => `<div class="card"><h3 style="margin-top:0">${title}</h3>${rows.length ? `<table class="tbl dense">${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${nm(r)}${act(r)}</td><td class="muted">${r.aff || ''}</td><td><b>${val(r)}</b></td><td class="muted">${extra(r)}</td></tr>`).join('')}</table>` : '<p class="muted">Nothing yet.</p>'}</div>`;
+  const car = FS.careerRows(G), hon = Object.entries(fs.honors || {}).map(([id, x]) => ({ id, ...x, active: !!FS.ath(G, id) }));
+  const med = x => x.gold + x.silver + x.bronze, top = (a, f, n = 10) => a.filter(x => f(x) > 0).sort((x, y) => f(y) - f(x)).slice(0, n);
+  const rtc = {};
+  for (const h of fs.hist || []) for (const kg in h.team) { const t = h.team[kg], k = t.aff || '?'; const r = rtc[k] = rtc[k] || { aff: k, team: 0, med: 0, gold: 0 }; r.team++; if (t.place && t.place <= 3) r.med++; if (t.place === 1) r.gold++; }
+  const rtcRows = Object.values(rtc).sort((a, b) => b.gold - a.gold || b.med - a.med || b.team - a.team).slice(0, 12);
+  return `<div class="card"><h3 style="margin-top:0">Freestyle record books</h3><p class="muted">Senior freestyle only (Bill Farrell, US Open, Trials, Worlds / Olympics), from the start of this game; separate from the college record books. Career and season lists are US athletes; the medal lists include every country.</p></div>
+  <div class="cols2">${list('Career wins', top(car, r => r.w), r => r.w, r => `${r.w}-${r.l}`)}${list('Career tech falls', top(car, r => r.tf), r => r.tf, r => `${r.fa} fall${r.fa === 1 ? '' : 's'}`)}
+  ${list('Season wins', ((fs.rec && fs.rec.sw) || []).filter(r => r.usa), r => r.w, r => `${r.year} · ${r.w}-${r.l}`)}${list('Season tech falls', ((fs.rec && fs.rec.stf) || []).filter(r => r.usa), r => r.tf, r => `${r.year}`)}
+  ${list('World / Olympic titles', top(hon, x => x.gold), x => x.gold, x => `${med(x)} medal${med(x) === 1 ? '' : 's'}${x.oly ? `, ${x.oly} Olympic` : ''}`)}${list('World / Olympic medals', top(hon, med), med, x => `${x.gold}-${x.silver}-${x.bronze}`)}
+  ${list('US World / Olympic Teams', top(hon.filter(x => x.usa), x => x.teams), x => x.teams)}${list('US Open titles', top(hon.filter(x => x.usa), x => x.opens), x => x.opens)}</div>
+  <div class="card"><h3 style="margin-top:0">RTCs <small class="muted">US World / Olympic Team spots and medals, all time</small></h3>${rtcRows.length ? `<table class="tbl dense"><tr><th>RTC</th><th>Team spots</th><th>Medals</th><th>Golds</th></tr>${rtcRows.map(r => `<tr><td>${r.aff}</td><td>${r.team}</td><td>${r.med}</td><td>${r.gold}</td></tr>`).join('')}</table>` : '<p class="muted">Nothing yet.</p>'}</div>`;
+}
+function fsHofPanel() {
+  const fs = G.fs, hof = (fs.hof || []).slice().reverse();
+  const cand = Object.entries(fs.honors || {}).filter(([id, x]) => FS.ath(G, id) && FS.hofWhy(x)).map(([id, x]) => ({ id, ...x }));
+  const row = h => `<tr><td>${h.cls}</td><td>${h.name}</td><td class="muted">${h.aff}</td><td>${h.gold}-${h.silver}-${h.bronze}</td><td>${h.oly || ''}</td><td>${h.teams}</td><td>${h.w}-${h.l}</td><td class="muted">${h.why}</td></tr>`;
+  return `<div class="card"><h3 style="margin-top:0">US Freestyle Hall of Fame</h3><p class="muted">Inducted when they retire: an Olympic title, two World/Olympic titles, or four World/Olympic medals. Separate from the college Halls of Fame.</p>
+    ${hof.length ? `<table class="tbl dense"><tr><th>Class of</th><th>Athlete</th><th>Last RTC</th><th>Medals (G-S-B)</th><th>Olympic</th><th>US teams</th><th>FS record</th><th>Why</th></tr>${hof.map(row).join('')}</table>` : '<p class="muted">Nobody inducted yet.</p>'}
+    ${cand.length ? `<h4>Already qualified, still competing</h4><p>${cand.map(x => `${fsName(x.id)} <small class="muted">${FS.hofWhy(x)}</small>`).join(' · ')}</p>` : ''}</div>`;
 }
 function fsHistoryPanel() {
   const fs = G.fs; if (!fs.hist || !fs.hist.length) return '';
   const teams = fs.hist.slice().reverse().map(h => `<tr><td><b>${h.year}</b> <small class="muted">${h.oly ? 'Olympics' : 'Worlds'}</small></td><td>${FS_WEIGHTS.map(kg => { const t = h.team[kg]; return t ? `${kg}: ${t.name}${t.place && t.place <= 3 ? ` <b>${['', '🥇', '🥈', '🥉'][t.place]}</b>` : ''}` : ''; }).filter(Boolean).join(' · ')}</td></tr>`).join('');
-  const hon = Object.values(fs.honors).filter(x => x.gold + x.silver + x.bronze > 0).sort((a, b) => b.gold - a.gold || (b.gold + b.silver + b.bronze) - (a.gold + a.silver + a.bronze)).slice(0, 25);
+  const hon = Object.entries(fs.honors).map(([id, x]) => ({ ...x, id })).filter(x => x.gold + x.silver + x.bronze > 0).sort((a, b) => b.gold - a.gold || (b.gold + b.silver + b.bronze) - (a.gold + a.silver + a.bronze)).slice(0, 25);
   return `<div class="card"><h3 style="margin-top:0">US World / Olympic Teams</h3><table class="tbl dense">${teams}</table></div>
     <div class="card"><h3 style="margin-top:0">World and Olympic medalists <small class="muted">most golds first, all countries</small></h3><table class="tbl dense"><tr><th>Wrestler</th><th></th><th>Gold</th><th>Silver</th><th>Bronze</th><th>Olympic</th><th>US teams</th></tr>
-    ${hon.map(x => `<tr class="${x.usa ? '' : 'muted'}"><td>${x.name}</td><td>${x.aff}</td><td>${x.gold}</td><td>${x.silver}</td><td>${x.bronze}</td><td>${x.oly}</td><td>${x.teams || ''}</td></tr>`).join('')}</table></div>`;
+    ${hon.map(x => `<tr class="${x.usa ? '' : 'muted'}"><td>${FS.ath(G, x.id) ? wl(x.id, x.name) : x.name}</td><td>${x.aff}</td><td>${x.gold}</td><td>${x.silver}</td><td>${x.bronze}</td><td>${x.oly}</td><td>${x.teams || ''}</td></tr>`).join('')}</table></div>`;
 }
 function offseasonScreen() {
   const step = offStep(G);
@@ -1587,21 +1790,25 @@ function boutView() {
   const done = v.shown >= res.log.length;
   const feed = log.map(ev => `<div class="ev ${ev.type}"><span class="t">${ev.period} ${ev.clock}</span>${ev.text}</div>`).join('');
   const kt = ui.screen === 'tourney' ? G.tournaments.find(x => x.id === ui.tid) : ui.dual && ui.dual.tid ? G.tournaments.find(x => x.id === ui.dual.tid) : null;   // tournament: fixed singlets
-  const st = res.stats, col = singletColors(G, res, TEAM_COLORS, kt ? tourneyKit(G, kt) : null), bd = bandSides(col, v.home);
-  return `<div class="card${v.paused ? ' vpaused' : ''}" id="boutcard" style="--spd:${SPEEDS[ui.speed].ms / 1000};--a:${BAND[bd.A]};--b:${BAND[bd.B]}"><div class="scoreboard"><div class="A"><div class="pts">${last ? last.a : 0}</div>${sbName(v, res, 'A')}${rtBox(last, 0)}</div>
-    <div class="clock">${res.wrestlers.A.weight ? `<small class="cwt">${res.wrestlers.A.weight} lbs</small>` : ''}<span>${last ? last.clock : '3:00'}</span><small>${last ? last.period : ''}</small>${v.rnd ? `<small class="crd">${v.rnd}</small>` : ''}</div><div class="B"><div class="pts">${last ? last.b : 0}</div>${sbName(v, res, 'B')}${rtBox(last, 1)}</div></div>
+  const fsb = res.style === 'fs';   // freestyle: red and blue singlets, no ankle bands, no riding time
+  const st = res.stats, col = fsb ? FS_COL : singletColors(G, res, TEAM_COLORS, kt ? tourneyKit(G, kt) : null), bd = bandSides(col, v.home);
+  const sbA = fsb ? FS_COL.A : BAND[bd.A], sbB = fsb ? FS_COL.B : BAND[bd.B];
+  return `<div class="card${v.paused ? ' vpaused' : ''}" id="boutcard" style="--spd:${SPEEDS[ui.speed].ms / 1000};--a:${sbA};--b:${sbB}"><div class="scoreboard"><div class="A"><div class="pts">${last ? last.a : 0}</div>${sbName(v, res, 'A')}${fsb ? '' : rtBox(last, 0)}</div>
+    <div class="clock">${fsb ? `<small class="cwt">${res.kg} kg</small>` : res.wrestlers.A.weight ? `<small class="cwt">${res.wrestlers.A.weight} lbs</small>` : ''}<span>${last ? last.clock : '3:00'}</span><small>${last ? last.period : ''}</small>${v.rnd ? `<small class="crd">${v.rnd}</small>` : ''}</div><div class="B"><div class="pts">${last ? last.b : 0}</div>${sbName(v, res, 'B')}${fsb ? '' : rtBox(last, 1)}</div></div>
     <div class="row">${done || v.asking ? '' : `<button data-act="viewpause">${v.paused ? '▶ Resume' : '⏸ Pause'}</button>`}<button class="secondary" data-act="viewjump" ${done ? 'disabled' : ''}>⏭ Jump to result</button><button class="secondary" data-act="viewclose">Close</button>
       <label class="spd">Speed <input type="range" min="0" max="2" step="1" value="${ui.speed}" data-chg="vspeed"> <b>${SPEEDS[ui.speed].n}</b></label>${v.live && v.live.tid ? tChoiceBox() : ''}</div>
-    ${stage(res, last, col, { band: { A: BAND[bd.A], B: BAND[bd.B] }, champ: !!v.title, orient: orientAt(res.log, v.shown - 1), venue: v.venue })}
+    ${stage(res, last, col, { band: fsb ? null : { A: BAND[bd.A], B: BAND[bd.B] }, champ: v.title || false, flag: fsb && v.title && v.ids && v.ids[res.winner] ? iso2Of(FS.natOf(G, v.ids[res.winner])) || null : null, orient: orientAt(res.log, v.shown - 1), venue: v.venue })}
     ${v.asking ? askPanel(v, res, last) : ''}
     <div id="feed">${feed}</div>
-    ${done ? `<div class="result"><b>${res.detail}</b> · ${res.teamPoints} team points · Takedowns ${st.A.takedowns}-${st.B.takedowns} · Escapes ${st.A.escapes}-${st.B.escapes} · Near-fall pts ${st.A.nfPoints}-${st.B.nfPoints} · Ride ${fmtClock(st.A.ride)}-${fmtClock(st.B.ride)}</div>` : ''}</div>`;
+    ${done && fsb ? `<div class="result"><b>${res.detail}</b>${res.crit ? ` (${res.crit})` : ''} · classification points ${res.cp[0]}:${res.cp[1]} · Takedowns ${st.A.takedowns}-${st.B.takedowns} · 4-point takedowns ${st.A.fourPts}-${st.B.fourPts} · Exposures ${st.A.exposures}-${st.B.exposures} · Step-outs ${st.A.stepOuts}-${st.B.stepOuts} · Cautions ${st.A.cautions}-${st.B.cautions}</div>` : ''}
+    ${done && !fsb ? `<div class="result"><b>${res.detail}</b> · ${res.teamPoints} team points · Takedowns ${st.A.takedowns}-${st.B.takedowns} · Escapes ${st.A.escapes}-${st.B.escapes} · Near-fall pts ${st.A.nfPoints}-${st.B.nfPoints} · Ride ${fmtClock(st.A.ride)}-${fmtClock(st.B.ride)}</div>` : ''}</div>`;
 }
 
 // ---------- ankle bands, scoreboard names ----------
 // Folkstyle ankle bands are red and green. In a dual the home team wears green; at tournaments and neutral-site duals the wrestler whose singlet
 // is nearer red wears red and the other green. The scoreboard numbers use the same colours.
 const BAND = { red: '#e5534b', green: '#3fb27f' };
+const FS_COL = { A: '#d0312d', B: '#2456c8' };   // freestyle: red and blue singlets (UWW)
 function bandSides(col, home) {
   if (home) return { [home]: 'green', [home === 'A' ? 'B' : 'A']: 'red' };
   const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)), d = (h, t) => rgb(h).reduce((s, v, i) => s + (v - t[i]) ** 2, 0);
@@ -1613,7 +1820,11 @@ const dualViewCtx = b => ({ ids: { A: b.wa, B: b.wb }, rk: b.rk ? { A: b.rk[0], 
 function dualVenue() { const du = ui.dual && !ui.dual.tid && findDual(ui.dual.id); return du && G.teams[du.a] ? teamVenue(du.a, G.teams[du.a].name) : NEUTRAL_MAT; }
 // scoreboard name: logo, poll rank, linked name, school + season record, and an S flag for each stalling call so far
 function sbName(v, res, side) {
-  const id = v.ids && v.ids[side], w = id && G.wrestlers[id], nm = res.wrestlers[side].name;
+  const id = v.ids && v.ids[side], nm = res.wrestlers[side].name;
+  if (v.fs) {   // freestyle: the country flag for foreign athletes and for everyone at the Worlds / Olympics, else the RTC's school logo
+    const tid = id && G.fs ? FS.rtcOf(G, id) : null, nat = id && FS.ath(G, id) ? FS.natOf(G, id) : null, fl = nat && (nat !== 'USA' || v.fsIntl) ? flagImg(nat, 22) : '';
+    return `<div class="nm bn">${fl || (tid ? schoolLogo(tid, G.teams[tid].name, 26) : '')}<div><div class="bnm">${id ? wl(id, nm) : nm}</div><div class="wsub">${(id && FS.affil(G, id)) || res.wrestlers[side].school}</div></div></div>`; }
+  const w = id && G.wrestlers[id];
   const tid = w ? w.team : Object.keys(G.teams).find(k => G.teams[k].name === res.wrestlers[side].school);
   const rk = v.rk ? v.rk[side] : w ? wrank(w) : 0, st = w ? seasonOf(w) : null;
   const calls = res.log.slice(0, v.shown).filter(e => e.fx === 'stall' && e.who === side).length;
@@ -1658,6 +1869,44 @@ function hofBadge(id) {
   return L.hof.some(m => m.id === id) ? ' · <b class="tcwin">🏅 National Hall of Fame</b>' : Object.values(L.shof).some(l => l.some(m => m.id === id)) ? ' · <b>🏅 School Hall of Fame</b>' : '';
 }
 // profile of a departed wrestler kept in the archive (graduated or left): career numbers, tournament history, honours
+// world (top 25) / US (top 25, US athletes) ranking of one athlete: 'World #3 · US #1' or 'Unranked'
+function fsRankText(id) {
+  const Rk = FS.fsRankings(G, 25); if (!Rk) return '';
+  const pos = T => { for (const kg in T) { const i = T[kg].findIndex(r => r.id === id); if (i >= 0) return { i: i + 1, kg }; } return null; };
+  const w = pos(Rk.world), u = FS.isUSA(G, id) ? pos(Rk.us) : null;
+  if (!w && !u) return '<span class="muted">Unranked</span>';
+  return [w ? `<b>World #${w.i}</b> at ${w.kg} kg` : '<span class="muted">World unranked</span>', u ? `US #${u.i}` : ''].filter(Boolean).join(' · ');
+}
+// results history (fs.res, written when an event closes; 2026 Worlds seeded at the start): newest first
+function fsResHtml(id) {
+  const L0 = (G.fs.res || {})[id]; if (!L0 || !L0.length) return '';
+  const ord = p => (p === 9 ? 'no medal' : `${p}${['st', 'nd', 'rd'][p - 1] || 'th'}`);
+  const nm = k => (k === 'team' ? 'World Team Trials' : FS.EV_NAME[k] || k);
+  const rows = L0.slice().reverse().map(([y, k, kg, p]) => `<tr><td>${y}</td><td>${nm(k)}</td><td>${kg} kg</td><td>${k === 'team' ? '<b>won the World Team spot</b>' : (k === 'worlds' || k === 'olympics') && p <= 3 ? `<b>${['', '🥇 Gold', '🥈 Silver', '🥉 Bronze'][p]}</b>` : ord(p)}</td></tr>`).join('');
+  return `<h3 style="margin-top:14px">Freestyle results</h3><table class="tbl dense">${rows}</table>`;
+}
+// senior / international freestyle athlete (G.fsw, freestyle.js): ratings, freestyle record, honors, this season's events
+function fsProfile(a, back) {
+  const id = a.id, fs = G.fs, tid = FS.rtcOf(G, id), nat = FS.natOf(G, id), st = (fs.st || {})[id] || (fs.xs || {})[id], sy = (fs.sy || {})[id], hon = (fs.honors || {})[id];
+  const tierC = v => (v >= 18 ? 't4' : v >= 15 ? 't3' : v >= 11 ? 't2' : 't1');
+  const bars = ATTR_KEYS.map(k => `<div class="attr"><span>${ATTR_LABELS[k]}</span><div class="bar"><i class="${tierC(a.attrs[k])}" style="width:${a.attrs[k] * 5}%"></i></div><b>${a.attrs[k]}</b></div>`).join('');
+  const ptr = fsParTerre(a.attrs), fo = FS.fsOvr(a);
+  const fbar = (n, v) => `<div class="attr"><span>${n}</span><div class="bar"><i class="${tierC(v)}" style="width:${v * 5}%"></i></div><b>${v.toFixed(1)}</b></div>`;
+  const years = hon && hon.years && hon.years.length ? hon.years.join(' · ') : '';
+  const info = [['Represents', `${flagImg(nat, 14)} ${FS.countryName(nat)}`], ['Club', tid ? `${schoolLogo(tid, G.teams[tid].name, 16)} ${rtcName(G.teams[tid].name)}` : a.ctry && a.ctry !== 'USA' ? `${FS.countryName(a.ctry)} national team` : 'Unattached'],
+    ['Weight', `${FS.kgOf(G, id)} kg`], ['Ranking', fsRankText(id)], ['Age', FS.ageOf(G, id)], ['Style', ARCHETYPES[a.arch] ? ARCHETYPES[a.arch].label : '—'],
+    ...(a.src === 'grad' && a.from && G.teams[a.from] ? [['College', tn(a.from, 16)]] : []),
+    ['Freestyle record', st ? `${st.w}-${st.l} (${st.tf} tech falls, ${st.fa} falls)${sy ? ` · this year ${sy.w}-${sy.l}` : ''}` : '—'],
+    ...(hon ? [['World / Olympic medals', `${hon.gold} gold, ${hon.silver} silver, ${hon.bronze} bronze${hon.oly ? ` (${hon.oly} Olympic)` : ''}`], ...(nat === 'USA' ? [['US World Teams', hon.teams || 0], ['US Open titles', hon.opens || 0]] : [])] : []),
+    ...(years ? [['Medals', years]] : [])].map(([k, v]) => `<tr><td class="muted">${k}</td><td>${v}</td></tr>`).join('');
+  return `<div class="card"><div class="row">${back}</div>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:10px">${nat !== 'USA' ? flagImg(nat, 42) : tid ? schoolLogo(tid, G.teams[tid].name, 56) : ''}
+      <div><h2 style="margin:0">${a.name}</h2><div class="muted">Senior freestyle · ${FS.kgOf(G, id)} kg · ${FS.affil(G, id)}</div></div>
+      <div style="margin-left:auto;text-align:right"><div class="muted" style="font-size:12px">FREESTYLE OVR</div><div style="font-size:34px;font-weight:700;line-height:1">${fo.toFixed(1)}</div></div></div>
+    <div class="cols2" style="margin-top:14px;align-items:start"><div><h3>Info</h3><table class="tbl">${info}</table>
+      ${fsResHtml(id) || '<p class="muted" style="margin-top:14px">No freestyle results yet.</p>'}</div>
+      <div><h3>Ratings</h3><div class="cols2">${bars}</div><h3 style="margin-top:14px">Freestyle</h3><div class="cols2">${fbar('Freestyle OVR', fo)}${fbar('Par terre offense', ptr.off)}${fbar('Par terre defense', ptr.def)}</div></div></div></div>`;
+}
 function archProfile(a, back) {
   const line = (label, st, cls = '') => { const d = derived(st); return `<tr class="${cls}"><td>${label}</td>${COLS.map(c => `<td>${c.fmt(st, d)}</td>`).join('')}</tr>`; };
   const car = a.hist.reduce((x, h) => x.map((v, i) => v + (h[i + 1] || 0)), KEYS.map(() => 0));

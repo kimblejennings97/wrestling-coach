@@ -42,7 +42,7 @@ export function pTakedown(O, D) {
   return 1 / (1 + Math.exp(-((1 - t) * mid + t * elite)));
 }
 // Match flow knobs (2026-11-09 scoring retune): how often wrestlers shoot, get turned (near-falls), escape or reverse.
-export const FLOW = { rideK: 1, letUp: 0.9, letLead: 3, letMin: 40, shotPow: 3, act: 0.28, turn: 0.0035, level: 0.12, esc: 0.07, rev: 0.05 };   // 2026-11-09 tech-fall pass: letUp/letLead (dominant wrestlers let opponents up to score again), shotPow (stronger wrestler takes more of the shots); was act .58 / turn .014 / level 0 / esc .08 / rev .18 before the scoring retune
+export const FLOW = { cntNF: 0.35, rideK: 1, letUp: 0.9, letLead: 3, letMin: 40, shotPow: 3, act: 0.28, turn: 0.0035, level: 0.12, esc: 0.07, rev: 0.05 };   // 2026-11-09 tech-fall pass: letUp/letLead (dominant wrestlers let opponents up to score again), shotPow (stronger wrestler takes more of the shots); was act .58 / turn .014 / level 0 / esc .08 / rev .18 before the scoring retune
 // pace by weight class: lighter weights are quicker and score more, heavyweights shoot less (real scoring falls steadily from 125 to 285)
 export const PACE = new Proxy({ 125: 1.1, 133: 1.07, 141: 1.04, 149: 1.02, 157: 1.0, 165: 0.99, 174: 0.97, 184: 0.94, 197: 0.9, 285: 0.8 }, { get: (t, k) => t[k] ?? 1 });
 export const ELITE = { amp: 0, from: 14, span: 4 };   // off: the elite takedown curve (TD) already separates the top tier
@@ -145,14 +145,14 @@ export function simulateBout(wA, wB, opts = {}) {
     const a = W[t].attrs;
     const opts = [
       ['a half nelson', a.str + a.topt], ['a cradle', a.flex + a.topt], ['a tilt', a.iq + a.topt],
-      ['a leg ride and turk', a.topc + a.str * 0.5], ['an arm bar', a.str + a.topt * 0.5], ['a cross-face cradle', a.flex + a.topc * 0.5], ['a chicken wing', a.topc + a.iq * 0.5],   // one rng draw whatever the list length: results unchanged
+      ['a turk', a.topc + a.str * 0.5], ['an arm bar', a.str + a.topt * 0.5], ['a cross-face cradle', a.flex + a.topc * 0.5], ['a chicken wing', a.topc + a.iq * 0.5],   // one rng draw whatever the list length: results unchanged
     ];
     return rng.weighted(opts, o => Math.pow(Math.max(1, o[1] - 5), 2))[0];
   };
   // move name -> animation key (viewer only)
   const MV = { 'a blast double': 'double', 'a low single': 'single', 'a high-crotch': 'highc', 'an ankle pick': 'ankle', 'a double leg': 'double', 'a snap and go-behind': 'snap', 'a duck-under': 'duck', 'a sweep single': 'sweep', 'a high single and trip': 'trip', 'an inside trip': 'itrip', 'out of a wild scramble': 'scr',
     'a huge arm throw': 'armthrow', 'a headlock': 'headlock', 'a lateral drop': 'lateral', "a fireman's carry": 'fireman', 'a high-amplitude lift': 'lift',
-    'a half nelson': 'half', 'a cradle': 'cradle', 'a tilt': 'tilt', 'a leg ride and turk': 'turk', 'an arm bar': 'armbar', 'a cross-face cradle': 'cradle', 'a chicken wing': 'wing' };
+    'a half nelson': 'half', 'a cradle': 'cradle', 'a tilt': 'tilt', 'a turk': 'turk', 'an arm bar': 'armbar', 'a cross-face cradle': 'cradle', 'a chicken wing': 'wing' };
   const BIG = ['a huge arm throw', 'a headlock', 'a lateral drop', "a fireman's carry", 'a high-amplitude lift'];
   const fmtRT = sec => fmtClock(Math.abs(sec));
 
@@ -219,6 +219,19 @@ export function simulateBout(wA, wB, opts = {}) {
     }
   }
 
+  // pancake / kickstand counters put the shooter on his back: like a throw, they can add near-fall points (FLOW.cntNF) or end in a fall.
+  // A pin from these scrambly counters stands only 35% of the time (else just the near fall), so falls stay where they were. Returns true when the bout is over. (Which counter is shown is still picked by vk; the near-fall roll is a real rng draw since 2026-11-14.)
+  function counterNF(def, att, mv, what) {
+    if (S.over || !rng.chance(FLOW.cntNF)) {
+      say('score', `${nm(def)} ${what.replace(' to his back', ' down')} — takedown, ${WORDS[RULES.takedown]} points! (${scoreLine()})`, 'td', def, null, mv);
+      return S.over;
+    }
+    const x = exposure(def, att, 'turn');
+    if (x.pin && rng.chance(0.35)) { say('fall', `${nm(def)} ${what} and holds him there... FALL!`, 'fall', def, null, mv); doFall(def); return true; }
+    say('score', `${nm(def)} ${what}! Takedown plus ${x.pts} near-fall points. (${scoreLine()})`, 'nf', def, null, mv);
+    return false;
+  }
+
   function neutralTick() {
     const dt = Math.min(rng.range(8, 13), S.remaining);
     advance(dt);
@@ -270,10 +283,12 @@ export function simulateBout(wA, wB, opts = {}) {
       ST[def].counters++; ST[def].takedowns++; award(def, RULES.takedown); S.pos = 'top' + def;
       // which counter is shown depends on the shot (viewer only, no rng): pancake vs a double / high-crotch, sit-and-switch vs a high-crotch,
       // kickstand vs a single; otherwise a spin behind or sprawl-and-shoot-back
-      const cb = MV[how], cv = vk(6), A3 = nm(att), D3 = nm(def), sc = `(${scoreLine()})`;
-      if ((cb === 'double' || cb === 'highc') && cv < 2) say('score', `${D3} crossfaces hard on ${how}, locks up the head and arm and pancakes ${A3} to his back! ${cap(WORDS[RULES.takedown])} for ${D3}. ${sc}`, 'td', def, null, 'pancake');
+      const cb = MV[how], cv = vk(6), cr = vk(25), A3 = nm(att), D3 = nm(def), sc = `(${scoreLine()})`;
+      if ((cb === 'single' || cb === 'sweep' || cb === 'trip') && cr === 7) say('score', `${D3} laces ${A3}'s leg with his own, hooks the far leg and stretches him back into a spladle! ${cap(WORDS[RULES.takedown])} for ${D3}. ${sc}`, 'td', def, null, 'spladle');
+      else if ((cb === 'double' || cb === 'single' || cb === 'highc') && cr === 13) say('score', `${A3} shoots ${how}; ${D3} sits back, rolls underneath, passes the leg across his chest and comes up on top! ${cap(WORDS[RULES.takedown])} for ${D3}. ${sc}`, 'td', def, null, 'handfight+legpass');
+      else if ((cb === 'double' || cb === 'highc') && cv < 2) { if (counterNF(def, att, 'pancake', `crossfaces hard on ${how}, locks up the head and arm and pancakes ${A3} to his back`)) return; }
       else if (cb === 'highc' && cv < 4) say('score', `${D3} sits to his hip against the high-crotch, hits a switch and comes out on top! ${cap(WORDS[RULES.takedown])} for ${D3}. ${sc}`, 'td', def, null, 'hcswitch');
-      else if ((cb === 'single' || cb === 'sweep' || cb === 'trip') && cv < 3) say('score', `${A3} stands up with the leg between his legs, but ${D3} kickstands: foot hooked on the far knee, arm behind the near knee, and sits him to his back! ${cap(WORDS[RULES.takedown])} for ${D3}. ${sc}`, 'td', def, null, 'kickstand');
+      else if ((cb === 'single' || cb === 'sweep' || cb === 'trip') && cv < 3) { if (counterNF(def, att, 'kickstand', `kickstands ${A3} as he stands up with the leg: foot hooked on the far knee, arm behind the near knee, and sits him to his back`)) return; }
       else if (cv === 5) say('score', `${D3} sprawls on ${how} from ${A3} and shoots right back — ${WORDS[RULES.takedown]} for ${D3}! ${sc}`, 'td', def, null, '~sprawl+double');
       else say('score', `${A3} goes for ${how}, but ${D3} counters and gets behind! ${cap(WORDS[RULES.takedown])} for ${D3}. ${sc}`, 'td', def, null, 'counter');
     } else if (r < pCounter + 0.2) {
@@ -324,10 +339,14 @@ export function simulateBout(wA, wB, opts = {}) {
     const r = rng();
     if (r < turnP) {
       S.ride[T] += dt * FLOW.rideK;
-      const how = turnName(T);
+      let how = turnName(T), tmv = MV[how];
+      const lv = vk(4);   // leg riding series (viewer only, no rng): some half nelsons are a power half off the legs, some turks a banana split
+      if (tmv === 'half' && lv === 0) { how = 'the legs in and a power half'; tmv = 'legride+powerhalf'; }
+      else if (tmv === 'turk' && lv < 2) { how = 'the legs in and a banana split'; tmv = 'legride+banana'; }
+      else if (tmv === 'tilt' && lv < 2) { how = 'the legs in and a crossface roll'; tmv = 'legride+crossface'; }
       const x = exposure(T, Bt, 'turn');
-      if (x.pin) { say('fall', `${nm(T)} locks up ${how} and puts ${nm(Bt)} on his back... the referee is down — FALL!`, 'fall', T, null, MV[how]); doFall(T); return; }
-      say('score', `${nm(T)} catches ${nm(Bt)} with ${how} — near fall, ${x.pts} points. (${scoreLine()})`, 'nf', T, null, MV[how]);
+      if (x.pin) { say('fall', `${nm(T)} locks up ${how} and puts ${nm(Bt)} on his back... the referee is down — FALL!`, 'fall', T, null, tmv); doFall(T); return; }
+      say('score', `${nm(T)} catches ${nm(Bt)} with ${how} — near fall, ${x.pts} points. (${scoreLine()})`, 'nf', T, null, tmv);
     } else if (r < turnP + escP) {
       const pRev = clamp(FLOW.rev + 0.015 * (e(Bt, 'speed') + e(Bt, 'iq') - 20), 0.02, 0.5);
       if (rng.chance(pRev)) {
@@ -348,7 +367,9 @@ export function simulateBout(wA, wB, opts = {}) {
         const R2 = [`${nm(T)} rides tight, breaking ${nm(Bt)} down to the mat.`, `${nm(Bt)} tries to stand, but ${nm(T)} returns him to the mat.`,
           `${nm(T)} keeps heavy hips on ${nm(Bt)}; the riding time clock is running.`, `${nm(Bt)} is flat to the mat as ${nm(T)} looks for a turn.`,
           `${nm(T)} spirals around ${nm(Bt)}'s hips, keeping him flat on the mat.`], rTxt = pick(R2);
-        say('info', rTxt, 'ride', T, null, ['breakdown', 'matret', 'hips', 'flat', 'spiral'][R2.indexOf(rTxt)]);
+        const rv = vk(18);   // leg riding (viewer only, no rng): legs in from the referee's position
+        if (rv === 0) say('info', `${nm(T)} throws in the legs and drapes across ${nm(Bt)} in a cross-body ride.`, 'ride', T, null, 'legride');
+        else say('info', rTxt, 'ride', T, null, ['breakdown', 'matret', 'hips', 'flat', 'spiral'][R2.indexOf(rTxt)]);
       }
     }
     tiredCheck();

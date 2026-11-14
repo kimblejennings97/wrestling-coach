@@ -14,6 +14,9 @@ export const FS_TF = 10;
 // par-terre skills count; riding (topc) and folkstyle escapes (botEsc) barely matter.
 export const FS_OVR_W = { tdd: 1.6, tdo: 1.6, speed: 1.4, hand: 0.8, iq: 0.7, str: 0.7, topt: 0.6, botRes: 0.6, big: 0.6, cardio: 0.6, flex: 0.5, comp: 0.4, topc: 0.15, botEsc: 0.15 };
 const FS_OVR_SUM = Object.values(FS_OVR_W).reduce((a, b) => a + b, 0);
+// par-terre skill for display (wrestler profile): the same weights as ptAtt / ptDef in simulateFsBout, on the raw attributes (no fatigue)
+export const FS_PT = { off: { topt: 0.65, str: 0.2, iq: 0.1, topc: 0.05 }, def: { botRes: 0.55, flex: 0.3, str: 0.15 } };
+export const fsParTerre = at => Object.fromEntries(Object.entries(FS_PT).map(([k, W]) => [k, Object.keys(W).reduce((s, a) => s + at[a] * W[a], 0)]));
 export const fsOvrOfAttrs = at => Object.keys(FS_OVR_W).reduce((s, k) => s + at[k] * FS_OVR_W[k], 0) / FS_OVR_SUM;
 
 // Match flow knobs (fitted with fs_harness.html, see docs/freestyle.md for the targets).
@@ -24,9 +27,13 @@ export const FS = {
   four: 0.06,       // share of leg-attack takedowns finished straight to the back (4 points), rises with str/big edge
   funk: 0.07,       // share of takedowns where the defender rolls the attacker through for 2 of his own on the way down
   cntr: 1.0,        // counter scaling (as folkstyle counters)
-  turn: 0.20,       // par terre: chance per tick an even top man turns the bottom man (gut wrench / leg lace), before the skill edge
+  turn: 0.12,       // par terre: chance per tick an even top man turns the bottom man (gut wrench / leg lace), before the skill edge
   turnK: 0.30,      // logistic slope of the turn chance on the par-terre skill edge
   turnDecay: 0.85,  // each further turn in the same sequence is a little harder
+  again: { lace: 0.5, gator: 0.42, alace: 0.3, gut: 0.26, pinch: 0.22, armroll: 0.14 },   // chance to keep the lock and roll him again right away (x par-terre edge, x againK per extra roll); leg lace most, then the gator roll
+  againK: 0.7,
+  fhl: 0.16,        // share of counter takedowns that go from the front headlock straight to his back (gator roll / head pinch: 2 + 2), rises with big
+  wrap: 0.35,       // share of counters to a high-crotch that are a chest wrap / crotch lift rolling the shooter through (2 to the defender, no takedown)
   standUp: 0.65,    // chance per failed par-terre tick that the referee stands them up
   rev: 0.03,        // bottom man reverses / rolls through (counter exposure) per par-terre tick, before skill
   pin: 0.02,        // fall chance per 2-point exposure at an even skill edge (4/5-pointers x pinBig)
@@ -91,11 +98,12 @@ export function simulateFsBout(wA, wB, opts = {}) {
   // tech = a technical point (holds, step-outs): counts for "last technical point" and for "highest-value move"
   const award = (s, pts, tech = true) => {
     S.score[s] += pts;
+    if (!S.firstPt && pts > 0) S.firstPt = s;   // first point of any kind (UWW 4.1: a 1-1 of two passivity points goes to the first scorer)
     if (tech) { S.moves[s].push(pts); S.lastTech = s; }
     if (S.act && s === S.act.who) S.act = null;   // the passive man scored: activity period over, no point
     if (Math.abs(S.score.A - S.score.B) >= FS_TF) { S.over = true; S.method = 'TF'; S.winner = S.score.A > S.score.B ? 'A' : 'B'; }
   };
-  const unaward = (s, pts) => { S.score[s] -= pts; const i = S.moves[s].lastIndexOf(pts); if (i >= 0) S.moves[s].splice(i, 1); };
+  const unaward = (s, pts) => { S.score[s] -= pts; const i = S.moves[s].lastIndexOf(pts); if (i >= 0) S.moves[s].splice(i, 1); if (S.score.A + S.score.B === 0) S.firstPt = null; };
   const doFall = t => { S.over = true; S.method = 'Fall'; S.winner = t; };
   const caution = (s, why) => {
     S.caut[s]++; ST[s].cautions++;
@@ -147,7 +155,17 @@ export function simulateFsBout(wA, wB, opts = {}) {
     ], o => Math.pow(Math.max(1, o[2] - 5), 2));
   };
   const FOUR_OK = { double: 1.6, highc: 1.4, single: 0.8, sweep: 0.5 };   // shots that can be finished straight to the back (lift and dump)
-  const BIG = [['a headlock', 'headlock'], ['a lateral drop', 'lateral'], ["a fireman's carry", 'fireman'], ['an arm throw', 'armthrow'], ['a suplex', 'suplex']];
+  const BIG = [['a headlock', 'headlock'], ['a lateral drop', 'lateral'], ["a fireman's carry", 'fireman'], ['an arm throw', 'armthrow'], ['a suplex', 'suplex'], ['a duck-under to a belly-to-back suplex', 'bbsuplex']];
+
+  // keep the lock and roll him again (leg laces most of all, then gator rolls); each extra roll is a separate 2-point exposure
+  function rollAgain(T, Bt, mv, edge) {
+    let k = 0;
+    while (!S.over && rng.chance(clamp((FS.again[mv] || 0) * 2 * sig(0.25 * edge) * Math.pow(FS.againK, k), 0, 0.85))) {
+      k++; S.turns++;
+      const sec = Math.min(2, S.remaining); S.remaining -= sec; S.elapsed += sec;
+      if (!exposure(T, Bt, 2, ['keeps the lock and rolls him again', 'rolls him a third time', 'keeps rolling — another turn'][Math.min(k - 1, 2)], mv)) break;
+    }
+  }
 
   // ---------- neutral ----------
   function takedown(att, def, how, mv) {
@@ -207,14 +225,14 @@ export function simulateFsBout(wA, wB, opts = {}) {
       // passivity: the referee acts on the clearly more passive man (verbal warning first, then a 30 s activity period)
       if (!S.act && S.remaining > 30) {
         const p = S.passive.A - S.passive.B, s = p > 0 ? 'A' : 'B';
-        const forced = S.periodNo === 1 && S.elapsed >= 120 && S.score.A === 0 && S.score.B === 0;
+        const forced = S.score.A === 0 && S.score.B === 0 && ((S.periodNo === 1 && S.elapsed >= 120) || (S.periodNo === 2 && S.remaining <= 90));   // 0-0: the activity clock is forced (2:00 of the 1st; again with 1:30 left in the 2nd)
         if (forced || (Math.abs(p) > 1.5 && rng.chance(FS.passWarn * Math.min(3, Math.abs(p))))) {
           const who = Math.abs(p) > 0.3 ? s : (rng.chance(0.5) ? 'A' : 'B');
           S.passive[who] = 0;
           if (!S.warned[who] && !forced) { S.warned[who] = true; say('info', `The referee stops it: verbal warning to ${nm(who)} for passivity.`, 'warn', who, 'passive'); }
           else {
             S.warned[who] = true; S.act = { who, until: S.elapsed + 30 };
-            say('info', `${forced ? 'Still 0-0 at 2:00 — ' : ''}${nm(who)} is put on the activity clock: he must score in 30 seconds.`, 'act', who, 'passive');
+            say('info', `${forced ? `Still 0-0${S.periodNo === 1 ? ' at 2:00' : ''} — ` : ''}${nm(who)} is put on the activity clock: he must score in 30 seconds.`, 'act', who, 'passive');
           }
           tiredCheck(); return;
         }
@@ -244,10 +262,21 @@ export function simulateFsBout(wA, wB, opts = {}) {
     if (rng.chance(pTD)) { takedown(att, def, how, mv); tiredCheck(); return; }
     const pCounter = sig(0.12 * (ss(def) - ss(att)) - 2.0) * counterScale(def, att) * FS.cntr * ({ aggressive: 1.5, conservative: 0.6 }[plan[att]] ?? 1);
     const r = rng();
-    if (r < pCounter) {
+    if (r < pCounter && mv === 'highc' && rng.chance(FS.wrap)) {   // he locks a chest wrap (or lifts the crotch) and rolls the shooter through: exposure, no takedown
+      ST[def].counters++; S.pos = 'neutral';
+      const w = rng.chance(0.5);
+      exposure(def, att, 2, w ? `chest wraps ${nm(att)} on the high-crotch and rolls him through to his back` : `lifts ${nm(att)}'s far leg on the high-crotch and rolls him through to his back`, w ? 'chestwrap' : 'crotchlift');
+      if (!S.over) S.pos = 'neutral';
+    } else if (r < pCounter) {
       ST[def].counters++; ST[def].takedowns++; S.pos = 'top' + def; S.turns = 0;
       const before = { lastTech: S.lastTech, kind: 'td' };
       award(def, 2);
+      if (rng.chance(clamp(FS.fhl * (1 + (e(def, 'big') - 10) / 10), 0.03, 0.4))) {   // snapped into a front headlock and taken straight to his back
+        say('score', `${nm(def)} sprawls on ${how}, snaps ${nm(att)} into a front headlock — takedown, two points. (${scoreLine()})`, 'td', def, 'fhl');
+        const g = rng.chance(0.55);
+        if (exposure(def, att, 2, g ? `rolls through with a gator roll, head and arm trapped` : `pinches the head, sits through and turns him to his back`, g ? 'gator' : 'pinch')) rollAgain(def, att, g ? 'gator' : 'pinch', ptAtt(def) - ptDef(att));
+        tiredCheck(); return;
+      }
       const v = Math.round(S.elapsed * 10) % 3;
       say('score', [`${nm(def)} sprawls on ${how}, spins behind — two points. (${scoreLine()})`, `${nm(def)} stuffs ${how} from ${nm(att)} and snaps him down to go behind. Two. (${scoreLine()})`,
         `${nm(att)} shoots ${how}; ${nm(def)} sprawls and shoots right back — takedown ${nm(def)}. (${scoreLine()})`][v], 'td', def, ['counter', 'counter', '~sprawl+double'][v]);
@@ -277,7 +306,7 @@ export function simulateFsBout(wA, wB, opts = {}) {
     if (r < pTurn) {
       S.turns++;
       const [how, mv] = turnName(T);
-      exposure(T, Bt, 2, how, mv);
+      if (exposure(T, Bt, 2, how, mv)) rollAgain(T, Bt, mv, edge);
     } else if (r < pTurn + pRev) {
       if (rng.chance(0.5)) { ST[Bt].reversals++; award(Bt, 1); S.pos = 'top' + Bt; S.turns = 0; say('score', `${nm(Bt)} comes out the back and reverses ${nm(T)} — one point. (${scoreLine()})`, 'rev', Bt, 'rev'); }
       else { S.pos = 'neutral'; exposure(Bt, T, 2, `catches ${nm(T)}'s turn and rolls him through`, 'rollthru'); if (!S.over) S.pos = 'neutral'; }
@@ -313,12 +342,16 @@ export function simulateFsBout(wA, wB, opts = {}) {
   if (!S.over) {
     S.remaining = 0;
     if (S.score.A !== S.score.B) S.winner = S.score.A > S.score.B ? 'A' : 'B';
-    else {   // criteria: highest-value move, number of them, fewer cautions, last technical point
+    else {   // UWW criteria (rulebook Art. "victory by points"): 1 highest-value action/hold, 2 number of those, 3 fewer cautions, 4 last technical point;
+      // only technical points count as holds (caution, passivity/activity and lost-challenge points do not); 4.1: with no technical point at all
+      // (e.g. 1-1 from two passivity points) the first point scored decides
       const hi = s => Math.max(0, ...S.moves[s]), cnt = s => S.moves[s].filter(v => v === hi(s)).length;
       if (hi('A') !== hi('B')) { S.winner = hi('A') > hi('B') ? 'A' : 'B'; crit = `bigger move (${hi(S.winner)})`; }
       else if (cnt('A') !== cnt('B')) { S.winner = cnt('A') > cnt('B') ? 'A' : 'B'; crit = `more ${hi(S.winner)}-point moves`; }
       else if (S.caut.A !== S.caut.B) { S.winner = S.caut.A < S.caut.B ? 'A' : 'B'; crit = 'fewer cautions'; }
-      else { S.winner = S.lastTech || (rng.chance(0.5) ? 'A' : 'B'); crit = 'last point scored'; }
+      else if (S.lastTech) { S.winner = S.lastTech; crit = 'last technical point'; }
+      else if (S.firstPt) { S.winner = S.firstPt; crit = 'first point scored'; }
+      else { S.winner = rng.chance(0.5) ? 'A' : 'B'; crit = 'referee decision'; }   // 0-0: practically unreachable (forced activity clocks in both periods)
     }
     S.method = 'Dec';
   }

@@ -1,6 +1,8 @@
 // Recruiting: HS class generation, scouting uncertainty, scholarship (aid) accounting, user actions, AI recruiting, commit decisions,
 // and the transfer portal. All state lives in G (plain JSON): G.recruits, G.rec, G.portal.
 import { makeRng } from '../engine/rng.js';
+import { rtcNames } from '../data/rtcnames.js';
+import { INTL_RECRUITS, COUNTRIES, NAME_POOLS } from '../data/fsdata.js';
 import { ATTR_KEYS } from '../engine/bout.js';
 import { generateWrestler, WEIGHTS, ARCHETYPES, randomName } from '../data/gen.js';
 import { STATE_NQ, STATE_REGION, stateBoost } from '../data/states.js';
@@ -113,6 +115,20 @@ export const estPot = r => r.pot + r.noise * noiseK[r.scout] * 0.8;
 export const potWord = p => (p >= 17.5 ? 'Elite' : p >= 15.5 ? 'High' : p >= 13 ? 'Solid' : 'Limited');
 export const shownAttr = (r, k) => (r.scout >= 3 ? r.attrs[k] : r.scout === 2 ? clamp(Math.round(r.attrs[k] + (hash(r.id + k) - 0.5) * 3), 1, 20) : null);
 
+// ---------- international recruits ----------
+// A few recruits each class are from abroad (INTL_RECRUITS.share; hash of the id, so no rng draw and nothing else in the class changes): name
+// from that country's pool, state = the country, region 'International' (nobody is "close to home" for them). Their nationality (w.nat) follows
+// them to college: no US Open / World Team Trials in freestyle mode; they wrestle for their country at the Worlds (freestyle.js).
+function intlRecruit(G, r) {
+  const key = `${G.seed}:${r.id}`;   // per career
+  if (hash(key + 'nat') >= INTL_RECRUITS.share) return;
+  const F = Object.entries(INTL_RECRUITS.from), tot = F.reduce((s, x) => s + x[1], 0);
+  let u = hash(key + 'ctry') * tot, code = F[0][0]; for (const [c, wt] of F) { if (u < wt) { code = c; break; } u -= wt; }
+  const c = COUNTRIES.find(x => x[0] === code), P = NAME_POOLS[c[4]] || NAME_POOLS.ang;
+  r.name = `${P[0][Math.floor(hash(key + 'fn') * P[0].length)]} ${P[1][Math.floor(hash(key + 'ln') * P[1].length)]}`;
+  r.nat = code; r.state = c[1]; r.region = 'International';
+}
+
 // ---------- class generation ----------
 export function generateRecruitClass(G, rng) {
   const out = {}, archKeys = Object.keys(ARCHETYPES), list = [];
@@ -133,6 +149,7 @@ export function generateRecruitClass(G, rng) {
     const stars = i < 12 ? 5 : i < 52 ? 4 : i < 152 ? 3 : i < 272 ? 2 : 1;
     out[id] = { id, name: c.name, weight: c.weight, state: c.state, region: c.region, arch: c.arch, attrs: c.attrs, pot: c.pot, needs: c.needs, noise: c.noise, stars, rank: i + 1,
       decideWeek: rng.int(4, G.cal.lastDualWeek), interest: {}, offers: {}, scout: 0, status: 'open', team: null, year: G.season + 1 };
+    intlRecruit(G, out[id]);
   });
   return out;
 }
@@ -149,8 +166,25 @@ export const ptScore = (G, t, ov, wt) => clamp((ov - nextBest(G, t, wt) + 3) / 7
 export function fit(G, r, tid, offerAid, phase) {   // phase: 'sign' = final signing day (forced choice)
   const t = G.teams[tid], n = r.needs, d = recDiff(G);
   const f = n.pres * (t.prestige / 100) + n.pt * ptScore(G, t, overall(r), r.weight) + n.acad * (t.acad / 20) + n.loc * (t.state === r.state ? 1 : t.region === r.region ? 0.6 : 0.2) + n.aid * clamp(offerAid ?? 0, 0, 1);
-  return f * 60 + (r.interest[tid] || 0) * d.intK - levelPenalty(G, r, tid, offerAid, phase, d);
+  return f * 60 + (r.interest[tid] || 0) * d.intK - levelPenalty(G, r, tid, offerAid, phase, d) + (fsMode(G) ? rtcCare(r) * rtcStrength(G, tid) * RTC_FIT : 0);
 }
+// ---------- freestyle mode: RTC success as a recruiting draw ----------
+// How much a recruit cares about a senior freestyle career is derived from what he already values (no new rng draws, so recruit
+// classes are unchanged): more for higher-rated and prestige-minded recruits. RTC strength = recent US World Team spots and medals
+// won by the school's RTC (last three freestyle seasons, most recent counts most) plus the depth of senior athletes on it.
+export const RTC_FIT = 4;   // fit points for a recruit who cares fully about an RTC that delivers fully (a 5% need is worth 3 points)
+export const fsMode = G => !!(G.fs && G.fs.on);
+export function rtcCare(r) { let h = 0; for (const c of String(r.id)) h = (h * 31 + c.charCodeAt(0)) | 0; return clamp(0.07 * r.stars + r.needs.pres * 0.6 + ((Math.abs(h) % 7) - 3) * 0.04, 0.05, 0.9); }
+export function rtcStrength(G, tid) {
+  const fs = G.fs; if (!fs || !fs.init) return 0;
+  const nm = rtcNames(G.teams[tid].name), W = [1, 0.7, 0.5];
+  let s = 0;
+  (fs.hist || []).slice(-3).reverse().forEach((h, i) => { for (const kg in h.team) { const t = h.team[kg]; if (!nm.includes(t.aff)) continue; s += W[i] * (0.5 + (t.place && t.place <= 3 ? 0.5 : 0) + (t.place === 1 ? 0.5 : 0)); } });
+  s += Math.min(0.6, (fs.rtc && fs.rtc[tid] || []).filter(id => G.fsw && G.fsw[id]).length * 0.08);
+  return clamp(s / 5, 0, 1);   // ~1 = a World Team spot and a medal or two a year
+}
+export const pitchTopics = G => (fsMode(G) ? { ...PITCH_TOPICS, rtc: 'RTC / freestyle success' } : PITCH_TOPICS);
+export const careOf = (r, k) => (k === 'rtc' ? rtcCare(r) : Math.min(1, r.needs[k] * 2.5));
 // harder difficulties: a highly ranked recruit discounts a program below his level, and a low offer
 function levelPenalty(G, r, tid, offerAid, phase, d) {
   if (!d.gap || r.stars < 3) return 0;
@@ -219,7 +253,7 @@ export function clearClosedTargets(G) {
 // how well does MY school deliver on each thing a recruit might care about (0..1)?
 export function teamStrengths(G, r, tid) {
   const t = G.teams[tid], off = r.offers[tid];
-  return { pres: t.prestige / 100, pt: ptScore(G, t, overall(r), r.weight), acad: t.acad / 20, loc: t.state === r.state ? 1 : t.region === r.region ? 0.6 : 0.2, aid: off != null ? clamp(off, 0, 1) : 0 };
+  return { pres: t.prestige / 100, pt: ptScore(G, t, overall(r), r.weight), acad: t.acad / 20, loc: t.state === r.state ? 1 : t.region === r.region ? 0.6 : 0.2, aid: off != null ? clamp(off, 0, 1) : 0, ...(fsMode(G) ? { rtc: rtcStrength(G, tid) } : {}) };
 }
 const thisWeek = (G, r) => { if (!r.done || r.done.w !== G.week) r.done = { w: G.week, t: [] }; return r.done.t; };
 export const doneThisWeek = (G, r, type) => !!r.done && r.done.w === G.week && r.done.t.includes(type);
@@ -241,12 +275,13 @@ export function doAction(G, rid, type, rng, topic) {
   else if (type === 'visit') gain = 16 + rng() * 6;
   else if (type === 'home') gain = 13 + rng() * 6;
   else {   // pitch
-    if (!PITCH_TOPICS[topic]) return { ok: false, msg: 'Pick something to pitch.' };
+    const TOP = pitchTopics(G);
+    if (!TOP[topic]) return { ok: false, msg: 'Pick something to pitch.' };
     if (topic === 'aid' && r.offers[tid] == null) return { ok: false, msg: 'Make a scholarship offer before you pitch the money.' };
-    const care = Math.min(1, r.needs[topic] * 2.5), deliver = teamStrengths(G, r, tid)[topic];
+    const care = careOf(r, topic), deliver = teamStrengths(G, r, tid)[topic];
     gain = 2 + 11 * care * deliver;
     const react = care * deliver;
-    msg = react >= 0.55 ? `${PITCH_TOPICS[topic]} landed — he lit up.` : react >= 0.25 ? `${PITCH_TOPICS[topic]}: he listened politely.` : care < 0.45 ? `${PITCH_TOPICS[topic]} isn't a big deal to him.` : `${PITCH_TOPICS[topic]} matters to him, but ${G.teams[tid].name} doesn't stack up.`;
+    msg = react >= 0.55 ? `${TOP[topic]} landed — he lit up.` : react >= 0.25 ? `${TOP[topic]}: he listened politely.` : care < 0.45 ? `${TOP[topic]} isn't a big deal to him.` : `${TOP[topic]} matters to him, but ${G.teams[tid].name} doesn't stack up.`;
   }
   // diminishing returns as interest climbs
   gain = Math.max(1, Math.round(gain * (1 - cur / (type === 'visit' || type === 'home' ? 160 : 130)) * recDiff(G).gain));
@@ -453,9 +488,9 @@ const recRng = (G, salt) => makeRng(G.seed + G.week * 6151 + salt + Math.round(G
 // the pitch topic he cares about most that my school actually delivers on (null if nothing is worth the hours)
 function bestPitch(G, r) {
   const st = teamStrengths(G, r, G.userTeam); let best = null;
-  for (const k of Object.keys(PITCH_TOPICS)) {
+  for (const k of Object.keys(pitchTopics(G))) {
     if (k === 'aid' && r.offers[G.userTeam] == null) continue;
-    const v = Math.min(1, r.needs[k] * 2.5) * st[k];
+    const v = careOf(r, k) * st[k];
     if (!best || v > best.v) best = { k, v };
   }
   return best && best.v >= 0.12 ? best.k : null;

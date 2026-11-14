@@ -15,7 +15,7 @@
 ## Individual tournaments (js/game/tourney.js, live.js)
 - NCAA-style double elimination; `roundPlan(k)` sets reveal order (consolation rounds as soon as they exist, placement matches, **Finals last**; pigtail = level 0); matches store `l`, `rl` (round name).
 - `runEvent(G, spec, {keep:true})` simulates everything up front and stores `res.weights[wt].matches` + `ent`, and a replay snapshot `bt` for every non-user match (so any match is watchable; pruned with the bracket).
-- Live reveal `t.rv` (`advanceLive`: match / wround / round / all); round N can't show anywhere until round N-1 is done everywhere. `liveScores` = revealed points + **guaranteed placement points** (`floorPlace` reruns the bracket with the wrestler losing everything unrevealed; semifinal win = 2nd, quarterfinal win >= 6th). Equals final `teamScores` at the end.
+- Live reveal `t.rv` (`advanceLive`: match / wround / round / all; the helpers use `t.wts || WEIGHTS`, so freestyle events reuse them, freestyle.md); round N can't show anywhere until round N-1 is done everywhere. `liveScores` = revealed points + **guaranteed placement points** (`floorPlace` reruns the bracket with the wrestler losing everything unrevealed; semifinal win = 2nd, quarterfinal win >= 6th). Equals final `teamScores` at the end.
 - Watch next match / Watch next user match (`advanceToUser`); the match is revealed when the viewer finishes/jumps/closes.
 - Outstanding Wrestler per individual event (`result.mow`: champion with the most team points per match). Per-wrestler history `w.tr[season] = {c, n}` (conference/NCAA place, 9 = competed without placing). `G.tHist[event]` winners + champions (with ids) via `recordTHist` in finishWeek.
 - `FORM` per-event rating shift for upsets (see engine.md).
