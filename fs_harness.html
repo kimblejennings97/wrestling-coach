@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Freestyle harness</title>
+<style>body{font:13px/1.4 ui-monospace,Consolas,monospace;background:#111;color:#ddd;margin:16px}</style></head>
+<body>
+<h3>Freestyle engine calibration</h3>
+<p>?n=4000 bouts per population. Targets: real Worlds/Olympics 2022-25 men's freestyle (1,111 bouts, docs/freestyle.md).</p>
+<pre id="o">running...</pre>
+<script type="module">
+import { simulateFsBout, fsOvrOfAttrs, FS_OF_LBS } from './js/engine/fs.js';
+import { generateWrestler, WEIGHTS, ARCHETYPES } from './js/data/gen.js';
+import { makeRng } from './js/engine/rng.js';
+const q = new URLSearchParams(location.search), N = +(q.get('n') || 4000);
+const out = [];
+const P = s => out.push(s);
+const ARCH = Object.keys(ARCHETYPES);
+// populations: quality = average attribute level of generated wrestlers
+const POPS = {
+  elite: r => [r.range(16, 18.5), r.range(16, 18.5)],
+  worlds: r => [0, 0].map(() => { const x = r(); return x < 0.3 ? r.range(16, 18.5) : x < 0.7 ? r.range(13.5, 16) : r.range(10, 13.5); }),
+  even: r => { const v = r.range(11, 18); return [v, v]; },
+};
+for (const [pop, qf] of Object.entries(POPS)) {
+  const rng = makeRng(12345);
+  const M = {}, tot = { pts: 0, td: 0, four: 0, exp: 0, so: 0, pass: 0, caut: 0, chal: 0, big: 0, rev: 0 };
+  let dec = 0, decW = 0, decL = 0, w2 = 0, l0 = 0, crit = 0, fav = 0, favN = 0;
+  const gap = {}, perW = {};
+  for (let i = 0; i < N; i++) {
+    const wt = WEIGHTS[i % 10], [qa, qb] = qf(rng);
+    const A = generateWrestler(rng, { weight: wt, quality: qa, archetype: rng.pick(ARCH) });
+    const B = generateWrestler(rng, { weight: wt, quality: qb, archetype: rng.pick(ARCH) });
+    const res = simulateFsBout(A, B, { seed: (rng() * 4294967296) >>> 0 });
+    M[res.method] = (M[res.method] || 0) + 1;
+    const kg = FS_OF_LBS[wt]; perW[kg] = perW[kg] || { n: 0, tf: 0 }; perW[kg].n++; if (res.method === 'Tech Fall') perW[kg].tf++;
+    const ws = res.score[res.winner], ls = res.score[res.loser];
+    tot.pts += ws + ls;
+    for (const s of ['A', 'B']) { const t = res.stats[s]; tot.td += t.takedowns; tot.four += t.fourPts; tot.exp += t.exposures; tot.so += t.stepOuts; tot.pass += t.passPts; tot.caut += t.cautions; tot.chal += t.challenges; tot.big += t.bigMoves; tot.rev += t.reversals; }
+    if (res.method === 'Decision') { dec++; decW += ws; decL += ls; if (ws - ls <= 2) w2++; if (res.crit) crit++; }
+    if (ls === 0) l0++;
+    const oa = fsOvrOfAttrs(A.attrs), ob = fsOvrOfAttrs(B.attrs), g = Math.abs(oa - ob);
+    if (g > 0.3) { favN++; const fw = (oa > ob) === (res.winner === 'A'); if (fw) fav++; const b = Math.min(6, Math.floor(g)); gap[b] = gap[b] || [0, 0]; gap[b][0]++; if (fw) gap[b][1]++; }
+  }
+  const pc = x => (100 * x / N).toFixed(1) + '%';
+  P(`== ${pop} (${N} bouts)`);
+  P('methods: ' + Object.entries(M).map(([k, v]) => `${k} ${pc(v)}`).join(', '));
+  P(`decision avg ${(decW / dec).toFixed(2)}-${(decL / dec).toFixed(2)}; within 2 (of all) ${pc(w2)}; criteria (of all) ${pc(crit)}; loser scoreless ${pc(l0)}; pts/bout ${(tot.pts / N).toFixed(2)}`);
+  P(`per bout: TD ${(tot.td / N).toFixed(2)} (4-pt ${(tot.four / N).toFixed(2)}), exposures ${(tot.exp / N).toFixed(2)}, step-outs ${(tot.so / N).toFixed(2)}, passivity pts ${(tot.pass / N).toFixed(2)}, cautions ${(tot.caut / N).toFixed(2)}, challenges ${(tot.chal / N).toFixed(2)}, throws tried ${(tot.big / N).toFixed(2)}, reversals ${(tot.rev / N).toFixed(2)}`);
+  P(`favourite (FS OVR) wins ${(100 * fav / favN).toFixed(0)}%; by gap: ` + Object.entries(gap).map(([k, v]) => `${k}-${+k + 1}: ${(100 * v[1] / v[0]).toFixed(0)}% (${v[0]})`).join(', '));
+  P('TF by weight: ' + Object.entries(perW).map(([k, v]) => `${k} ${(100 * v.tf / v.n).toFixed(0)}%`).join(', '));
+  P('');
+}
+P('targets  worlds: Dec 59 / TF 34.5 / Fall 6.3; dec avg 6.3-2.6; within 2 21%; criteria ~3%; loser scoreless 39%');
+P('targets  elite : Dec 64 / TF 27 / Fall 6.5; dec avg 6.7-2.9; within 2 ~23%; loser scoreless 33%');
+document.getElementById('o').textContent = out.join('\n');
+</script>
+</body></html>

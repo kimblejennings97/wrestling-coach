@@ -1,5 +1,6 @@
 // Match Lab UI: build two wrestlers, simulate, watch the play-by-play or jump to the result.
 import { simulateBout, ATTR_KEYS, ATTR_LABELS, fmtClock } from '../engine/bout.js';
+import { simulateFsBout, FS_OF_LBS, fsOvrOfAttrs } from '../engine/fs.js';
 import { generateWrestler, WEIGHTS, ARCHETYPES } from '../data/gen.js';
 import { makeRng } from '../engine/rng.js';
 import { loadGame, newGame, wrestlerAt, overall, CLASS_NAMES, potLabel } from '../game/core.js';
@@ -16,6 +17,7 @@ const cfg = { A: { src: 'gen', team: LG.teams['penn-state'] ? 'penn-state' : tea
   B: { src: 'gen', team: LG.teams['oklahoma-state'] ? 'oklahoma-state' : teamList[1].id, wid: null, quality: 14, archetype: 'rider', plan: 'balanced' } };
 let result = null, timer = null, idx = 0;
 
+const isFs = () => $('style').value === 'fs';
 const tier = v => (v >= 18 ? 't4' : v >= 15 ? 't3' : v >= 11 ? 't2' : 't1');
 
 const rosterOf = tid => LG.teams[tid].roster.map(id => LG.wrestlers[id]).sort((x, y) => x.natural - y.natural || overall(y) - overall(x));
@@ -86,7 +88,7 @@ function reset() {
 function simulate(newSeed = true) {
   if (newSeed) $('seed').value = (Math.random() * 1e9) | 0;
   W.A.plan = cfg.A.plan; W.B.plan = cfg.B.plan;
-  result = simulateBout(W.A, W.B, { seed: +$('seed').value });
+  result = (isFs() ? simulateFsBout : simulateBout)(W.A, W.B, { seed: +$('seed').value });
   reset();
 }
 function addEvent(ev) {
@@ -100,6 +102,14 @@ function showResult() {
   const r = result, a = r.stats.A, b = r.stats.B, w = r.wrestlers[r.winner];
   const row = (l, x, y) => `<tr><td>${l}</td><td>${x}</td><td>${y}</td></tr>`;
   $('result').hidden = false;
+  if (r.style === 'fs') {
+    $('result').innerHTML = `<b>${w.name}</b> (${w.school}) wins — <b>${r.detail}</b>${r.crit ? ` (${r.crit})` : ''} · classification points ${r.cp[0]}:${r.cp[1]}
+    <table class="stats" style="margin-top:8px"><tr><th></th><th style="color:var(--a)">${W.A.name}</th><th style="color:var(--b)">${W.B.name}</th></tr>
+    ${row('Final score', r.score.A, r.score.B)}${row('Freestyle OVR', fsOvrOfAttrs(W.A.attrs).toFixed(1), fsOvrOfAttrs(W.B.attrs).toFixed(1))}${row('Shots', a.shots, b.shots)}${row('Takedowns', a.takedowns, b.takedowns)}${row('4-point takedowns', a.fourPts, b.fourPts)}
+    ${row('Exposures (pts)', `${a.exposures} (${a.expPoints})`, `${b.exposures} (${b.expPoints})`)}${row('Step-outs', a.stepOuts, b.stepOuts)}${row('Throws tried', a.bigMoves, b.bigMoves)}
+    ${row('Activity-clock points', a.passPts, b.passPts)}${row('Cautions', a.cautions, b.cautions)}${row('Challenges', a.challenges, b.challenges)}${row('Energy at end', Math.round(a.energy), Math.round(b.energy))}</table>`;
+    return;
+  }
   $('result').innerHTML = `<b>${w.name}</b> (${w.school}) wins — <b>${r.detail}</b> · ${r.teamPoints} team points
     <table class="stats" style="margin-top:8px"><tr><th></th><th style="color:var(--a)">${W.A.name}</th><th style="color:var(--b)">${W.B.name}</th></tr>
     ${row('Final score', r.score.A, r.score.B)}${row('Shots', a.shots, b.shots)}${row('Takedowns', a.takedowns, b.takedowns)}${row('Escapes', a.escapes, b.escapes)}
@@ -121,8 +131,10 @@ function jump() {
 }
 
 $('leagueNote').textContent = 'Team rosters come from the ' + leagueNote + '. Choose "From a team roster" on either side to test real wrestlers; the weight box is the weight they compete at (changing it picks a starter at that weight).';
-$('weight').innerHTML = WEIGHTS.map(w => `<option ${w === 157 ? 'selected' : ''}>${w}</option>`).join('');
+$("weight").innerHTML = WEIGHTS.map(w => `<option value="${w}" ${w === 157 ? "selected" : ""}>${w} lbs · ${FS_OF_LBS[w]} kg</option>`).join('');
 $('weight').onchange = () => newMatchup();
+$('style').onchange = () => simulate(true);
+if (new URLSearchParams(location.search).get('style') === 'fs') $('style').value = 'fs';   // lab.html?style=fs
 function newMatchup() {
   const rng = makeRng((Math.random() * 4294967296) >>> 0);
   for (const sd of ['A', 'B']) if (cfg[sd].src === 'team') { cfg[sd].wid = cfg[sd].wid && LG.wrestlers[cfg[sd].wid]?.natural === +$('weight').value ? cfg[sd].wid : null; pickerHtml(sd); }

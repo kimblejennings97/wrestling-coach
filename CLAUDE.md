@@ -13,6 +13,7 @@ Football-Manager-style college wrestling coach game (NCAA D1 men's folkstyle), t
 | Stats, record books, Hall of Fame, archive | `docs/stats-legacy.md` |
 | Screens, links, profiles, bout viewer, saves, player editor, iPad layout | `docs/ui.md` |
 | Real rosters pipeline, rating overrides, logos, team colours, conference alignment, custom leagues | `docs/data.md` |
+| Freestyle mode (optional RTC season: engine, events, Trials, Worlds) | `docs/freestyle.md` |
 
 Keep these files current: when you change a system, update its topic file (current design + knobs + measured results), not a dated log. Add a new topic file if a new area grows big. The pre-split CLAUDE.md (dated session logs with every past measurement) is in git history at commit `193d11b`.
 
@@ -48,7 +49,7 @@ Works autonomously and reports briefly; concise answers with a recommendation an
 - `js/engine/bout.js` (+ rng.js): bout sim and tunables.
 - `js/game/`: `core.js` (state G, new game, real rosters, lineups, duals, finishWeek, training, injuries, rankings, save/migrate), `tourney.js`, `live.js`, `selection.js`, `dualtourney.js`, `dualcoach.js`, `sched.js`, `recruit.js`, `offseason.js`, `prestige.js`, `stats.js`, `legacy.js`, `saves.js`, `playeredit.js`, `league.js` (custom leagues).
 - `js/data/`: gen, schools, practice, tournaments, realteams (generated), realtop, overrides, ncaa2026, states, logos, teamcolors, venues (bout viewer mat). `assets/logos/` school logos, `assets/logos/org/` conference + NCAA logos.
-- Tools/tests kept: `animsheet.html`, `harness.html`, `diag.html`, `sim_balance.html`, `longrun.html`, `tools/*.py`.
+- Tools/tests kept: `animsheet.html`, `harness.html`, `fs_harness.html` (freestyle calibration), `diag.html`, `sim_balance.html`, `longrun.html`, `tools/*.py`.
 
 ## Invariants and gotchas
 - **Viewer-only changes must not change rng draws** (engine tags, move names, chain/counter variants): verify 3,000 bouts identical vs the previous commit's bout.js.
