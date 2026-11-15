@@ -1350,22 +1350,22 @@ function fsLabel() {
   if (st === 'schedule') return 'Done → Freestyle season ▶';
   if (st !== 'fs') return null;
   if (FS.fsLiveOpen(G)) {
-    const T = G.fs.live, nm = FS.EV_NAME[T.ev];
+    const T = G.fs.live, nm = FS.evName(G, T.ev);
     if (L.isLive(T)) return ui.screen === 'freestyle' ? `Finish the ${nm} ▶▶` : `Go to the ${nm} ▶`;
-    return T.next === 'done' ? 'Done → season review ▶' : `Done → ${FS.EV_NAME[T.next === 'worlds' ? FS.worldsKey(G) : T.next]} ▶`;
+    return T.next === 'done' ? 'Done → season review ▶' : `Done → ${FS.evName(G, T.next)} ▶`;
   }
   const s = G.fs.step;
-  return s === 'roster' ? 'Rosters set → Bill Farrell ▶' : s === 'open' ? 'Run the US Open ▶' : s === 'trials' ? 'Run the World Team Trials ▶' : s === 'worlds' ? `Run the ${FS.EV_NAME[FS.worldsKey(G)]} ▶` : null;
+  return s === 'roster' ? 'Rosters set → Bill Farrell ▶' : s === 'open' ? 'Run the US Open ▶' : s === 'trials' ? `Run the ${FS.evName(G, 'trials')} ▶` : s === 'worlds' ? `Run the ${FS.evName(G, 'worlds')} ▶` : null;
 }
 function freestyleScreen() {
-  if (!FS.fsOn(G)) return `<div class="card"><h2>Freestyle</h2><p>Freestyle mode is off in this career. With it on, a freestyle season follows each offseason: RTC rosters, the Bill Farrell, the US Open, the World Team Trials and the World Championships (Olympics every four years).</p>
+  if (!FS.fsOn(G)) return `<div class="card"><h2>Freestyle</h2><p>Freestyle mode is off in this career. With it on, a freestyle season follows each offseason: RTC rosters, the Bill Farrell, the US Open, the World Team Trials and the World Championships (Olympic Team Trials and the Olympics every four years).</p>
     ${G.phase === 'season' || (G.phase === 'offseason' && offStep(G) !== 'fs') ? '<button data-act="fson">Turn freestyle mode on</button> <span class="muted">(from the next freestyle season on; it cannot be turned off again)</span>' : ''}</div>`;
   const fs = G.fs, live = G.phase === 'offseason' && offStep(G) === 'fs' && fs.year === FS.fsYear(G);
-  const steps = FS.FS_STEPS.map(([k, n]) => [k, k === 'worlds' ? FS.EV_NAME[FS.worldsKey(G)] : n]), order = ['roster', 'farrell', 'open', 'trials', 'worlds', 'done'], cur = live ? order.indexOf(fs.step === 'roster' ? 'roster' : fs.step) : -1;
+  const steps = FS.FS_STEPS.map(([k, n]) => [k, k === 'worlds' || k === 'trials' ? FS.evName(G, k) : n]), order = ['roster', 'farrell', 'open', 'trials', 'worlds', 'done'], cur = live ? order.indexOf(fs.step === 'roster' ? 'roster' : fs.step) : -1;
   const bar = live ? `<div class="card"><div class="row"><b>Freestyle ${fs.year}</b> ${steps.map(([k, n], i) => `<span class="${i === cur ? '' : 'muted'}" style="${i === cur ? 'font-weight:700;color:var(--tc)' : ''}">${i < cur ? '✓' : i + 1}. ${n}</span>`).join(' <span class="muted">›</span> ')}</div>
-    <p class="muted" style="margin:6px 0 0">${FS.fsLiveOpen(G) ? (L.isLive(fs.live) ? `The ${FS.EV_NAME[fs.live.ev]} is under way: reveal it below, or use the top-right button to finish it.` : 'All bouts are in. Use the top-right button to close the event.') : fs.step === 'done' ? 'The freestyle season is over. Use the top-right button to start the next college season.' : 'Use the top-right button to run the next event.'}</p></div>` : '';
+    <p class="muted" style="margin:6px 0 0">${FS.fsLiveOpen(G) ? (L.isLive(fs.live) ? `The ${FS.evName(G, fs.live.ev)} is under way: reveal it below, or use the top-right button to finish it.` : 'All bouts are in. Use the top-right button to close the event.') : fs.step === 'done' ? 'The freestyle season is over. Use the top-right button to start the next college season.' : 'Use the top-right button to run the next event.'}</p></div>` : '';
   const tab = ['season', 'rank', 'history', 'records', 'hof'].includes(ui.fstab) ? ui.fstab : 'season';
-  const tabs = `<div class="card"><div class="chips">${[['season', `${fs.year || FS.fsYear(G)} season`], ['rank', 'Rankings'], ['history', 'World Teams & medals'], ['records', 'Records'], ['hof', 'Hall of Fame']].map(([k, n]) => `<a data-act="fstab" data-v="${k}" class="chip ${k === tab ? 'on' : ''}">${n}</a>`).join('')}</div></div>`;
+  const tabs = `<div class="card"><div class="chips">${[['season', `${fs.year || FS.fsYear(G)} season`], ['rank', 'Rankings'], ['history', 'US teams & medals'], ['records', 'Records'], ['hof', 'Hall of Fame']].map(([k, n]) => `<a data-act="fstab" data-v="${k}" class="chip ${k === tab ? 'on' : ''}">${n}</a>`).join('')}</div></div>`;
   let body = '';
   const open = live && FS.fsLiveOpen(G);
   if (tab === 'season' && (open || (ui.fsbr && fs.live))) body += fsTourney(fs.live);
@@ -1399,20 +1399,20 @@ function fsRosterPanel() {
 }
 function fsEntryPanel(ev) {
   const fs = G.fs, mine = (fs.rtc[G.userTeam] || []).slice().sort((x, y) => FS.kgOf(G, x) - FS.kgOf(G, y));
-  if (ev === 'worlds') { const t = fs.team || {}; return `<div class="card"><h3 style="margin-top:0">US team for the ${FS.EV_NAME[FS.worldsKey(G)]}</h3><table class="tbl">${FS_WEIGHTS.map(kg => `<tr><td>${kg} kg</td><td>${t[kg] ? fsName(t[kg]) : '—'}</td><td class="muted">${t[kg] ? FS.affil(G, t[kg]) : ''}</td></tr>`).join('')}</table></div>`; }
-  const why = id => (ev === 'trials' ? ((fs.q || {})[id] || (Object.values(fs.prev.team).includes(id) ? `${fs.year - 1} World Team` : 'needs an at-large bid')) : '');
-  return `<div class="card"><h3 style="margin-top:0">Your entries: ${FS.EV_NAME[ev]}</h3>${ev === 'trials' ? `<p class="muted">Qualifiers: top ${FS.FS_Q.trialsTop} at the Bill Farrell or the US Open, last year's World Team, last season's NCAA champions, then at-large bids by rating up to ${FS.FS_Q.trialsField}. Last year's World medalist at a weight waits in the best-of-3 final.</p>` : ''}
+  if (ev === 'worlds') { const t = fs.team || {}; return `<div class="card"><h3 style="margin-top:0">US team for the ${FS.evName(G, 'worlds')}</h3><table class="tbl">${FS_WEIGHTS.map(kg => `<tr><td>${kg} kg</td><td>${t[kg] ? fsName(t[kg]) : '—'}</td><td class="muted">${t[kg] ? FS.affil(G, t[kg]) : ''}</td></tr>`).join('')}</table></div>`; }
+  const why = id => (ev === 'trials' ? ((fs.q || {})[id] || (Object.values(fs.prev.team).includes(id) ? `${fs.year - 1} ${FS.teamName(G, fs.year - 1)}` : 'needs an at-large bid')) : '');
+  return `<div class="card"><h3 style="margin-top:0">Your entries: ${FS.evName(G, ev)}</h3>${ev === 'trials' ? `<p class="muted">Qualifiers: top ${FS.FS_Q.trialsTop} at the Bill Farrell or the US Open, last year's ${FS.teamName(G, G.fs.year - 1)}, last season's NCAA champions, then at-large bids by rating up to ${FS.FS_Q.trialsField}. Last year's World medalist at a weight waits in the best-of-3 final.</p>` : ''}
     ${mine.length ? `<table class="tbl"><tr><th>Enter</th><th>Wrestler</th><th>Weight</th><th>FS OVR</th>${ev === 'trials' ? '<th>Qualified</th>' : ''}</tr>${mine.map(id => `<tr><td><input type="checkbox" data-chg="fsent" data-ev="${ev}" data-id="${id}" ${!(fs.ent[ev] && fs.ent[ev][id] === false) && (ev === 'farrell' || FS.isUSA(G, id)) ? 'checked' : ''} ${ev === 'farrell' || FS.isUSA(G, id) ? '' : 'disabled'}></td><td>${fsName(id)}${fsNat(id)}${ev === 'farrell' || FS.isUSA(G, id) ? '' : ' <small class="muted">not eligible (US citizens only)</small>'}</td><td>${FS.kgOf(G, id)}</td><td>${FS.fsOvr(FS.ath(G, id)).toFixed(1)}</td>${ev === 'trials' ? `<td class="muted">${why(id)}</td>` : ''}</tr>`).join('')}</table>` : '<p class="muted">Your RTC is empty.</p>'}</div>`;
 }
 function fsResultsPanel() {
   const fs = G.fs, keys = ['farrell', 'open', 'trials', FS.worldsKey(G)].filter(k => fs.ev && fs.ev[k]);
   if (!keys.length) return '';
   const k = keys.includes(ui.fsev) ? ui.fsev : keys[keys.length - 1], R = fs.ev[k];
-  const tabs = keys.map(x => `<a data-act="fsev" data-v="${x}" class="chip ${x === k ? 'on' : ''}">${FS.EV_NAME[x]}</a>`).join('');
+  const tabs = keys.map(x => `<a data-act="fsev" data-v="${x}" class="chip ${x === k ? 'on' : ''}">${FS.evName(G, x)}</a>`).join('');
   const pl = p => `${p.place}. ${fsName(p.id, p.name)} <small class="muted">${p.aff}</small>`;
   const rows = FS_WEIGHTS.map(kg => { const r = R.kg[kg]; if (!r) return '';
     let extra = '';
-    if (k === 'trials') extra = r.final ? `<div><b>Final (best of 3):</b> ${fsName(r.final.a)} ${r.final.wins[0]}-${r.final.wins[1]} ${fsName(r.final.b)}${r.bye && r.final.a === r.bye ? ' <small class="muted">(medalist bye)</small>' : ''} → <b>${r.winnerName}</b></div>` : r.winner ? `<div>World Team: <b>${r.winnerName}</b></div>` : '';
+    if (k === 'trials') extra = r.final ? `<div><b>Final (best of 3):</b> ${fsName(r.final.a)} ${r.final.wins[0]}-${r.final.wins[1]} ${fsName(r.final.b)}${r.bye && r.final.a === r.bye ? ' <small class="muted">(medalist bye)</small>' : ''} → <b>${r.winnerName}</b></div>` : r.winner ? `<div>${FS.teamName(G)}: <b>${r.winnerName}</b></div>` : '';
     if (r.us) extra = `<div>USA: ${fsName(r.us.id)} — ${r.us.place && r.us.place <= 3 ? `<b>${['', 'GOLD', 'SILVER', 'BRONZE'][r.us.place]}</b>` : r.us.place === 5 ? '5th' : 'no medal'}</div>`;
     return `<tr><td><b>${kg}</b><br><small class="muted">${r.field} entered</small></td><td>${extra}${r.places.map(pl).join('<br>')}</td></tr>`; }).join('');
   const usa = k === 'worlds' || k === 'olympics';   // at the Worlds / Olympics you coach the whole US team
@@ -1439,7 +1439,7 @@ function fsLast(T, kg) { const o = L.orderOf(T, kg), last = {}; o.forEach((m, k)
 const fsMineAt = (T, id) => FS.isMineAt(G, T.ev, id);
 const fsRlb = (T, m, w) => { const rn = fsRname(T, m.l, w, !!m.c); return m.lb && !rn.startsWith(m.lb) ? `${rn} · ${m.lb}` : rn; };   // round + the bout's own label (no 'Quarterfinals · Quarterfinal')
 function fsTourney(T) {
-  const live = L.isLive(T), nm = FS.EV_NAME[T.ev], R = G.fs.ev[T.ev], usa = T.ev === 'worlds' || T.ev === 'olympics';
+  const live = L.isLive(T), nm = FS.evName(G, T.ev), R = G.fs.ev[T.ev], usa = T.ev === 'worlds' || T.ev === 'olympics';
   const view = ['feed', 'bracket', 'mine'].includes(ui.fstv) ? ui.fstv : 'feed';
   const kg = FS_WEIGHTS.includes(+ui.fstwt) ? +ui.fstwt : FS_WEIGHTS[0];
   const tabs = [['feed', live ? 'Results so far' : 'Results'], ['bracket', 'Brackets'], ['mine', usa ? 'Team USA' : 'My athletes']].map(([k, n]) => `<button class="${view === k ? '' : 'secondary'}" data-act="fstview" data-v="${k}">${n}</button>`).join(' ');
@@ -1468,7 +1468,7 @@ function fsTourney(T) {
   const placesOf = w => { const r = R.kg[w], { last, n, all } = fsLast(T, w); if (!r) return '';
     const shown = r.places.filter(p => last[p.id] == null || last[p.id] < n);
     let extra = '';
-    if (n >= all && r.winner) extra = `<div>World Team: <b>${fsName(r.winner, r.winnerName)}</b>${r.final ? ` <small class="muted">(final ${Math.max(...r.final.wins)}-${Math.min(...r.final.wins)})</small>` : ''}</div>`;
+    if (n >= all && r.winner) extra = `<div>${FS.teamName(G)}: <b>${fsName(r.winner, r.winnerName)}</b>${r.final ? ` <small class="muted">(final ${Math.max(...r.final.wins)}-${Math.min(...r.final.wins)})</small>` : ''}</div>`;
     if (n >= all && r.us) extra = `<div>USA: ${fsName(r.us.id)} — ${r.us.place && r.us.place <= 3 ? `<b>${['', 'GOLD', 'SILVER', 'BRONZE'][r.us.place]}</b>` : r.us.place === 5 ? '5th' : 'no medal'}</div>`;
     return extra + (shown.length ? shown.map(p => `${p.place}. ${fsName(p.id, p.name)} <small class="muted">${p.aff}</small>`).join('<br>') : '<span class="muted">No places decided yet.</span>'); };
   let body;
@@ -1531,13 +1531,13 @@ function fsRankPanel() {
   const scope = ui.fsrk === 'us' ? 'us' : 'world', T = Rk[scope];
   const chips = [['world', 'World rankings'], ['us', 'US rankings']].map(([k, n]) => `<a data-act="fsrk" data-v="${k}" class="chip ${k === scope ? 'on' : ''}">${n}</a>`).join('');
   const evN = { worlds: 'Worlds', olympics: 'Olympics', open: 'US Open', farrell: 'Farrell', trials: 'Trials', team: 'World Team' };
-  const res = b => (!b ? '<span class="muted">—</span>' : b.ev === 'team' ? `${b.y} World Team` : `${b.y} ${evN[b.ev] || b.ev} ${b.place === 9 ? 'entrant' : (b.ev === 'worlds' || b.ev === 'olympics') && b.place <= 3 ? ['', '🥇', '🥈', '🥉'][b.place] : b.place + (['st', 'nd', 'rd'][b.place - 1] || 'th')}${b.kg !== undefined ? '' : ''}`);
+  const res = b => (!b ? '<span class="muted">—</span>' : b.ev === 'team' ? `${b.y} ${FS.teamName(G, b.y)}` : `${b.y} ${evN[b.ev] || b.ev} ${b.place === 9 ? 'entrant' : (b.ev === 'worlds' || b.ev === 'olympics') && b.place <= 3 ? ['', '🥇', '🥈', '🥉'][b.place] : b.place + (['st', 'nd', 'rd'][b.place - 1] || 'th')}${b.kg !== undefined ? '' : ''}`);
   const who = r => { const fl = flagImg(r.nat, 12), tid = r.usa && FS.rtcOf(G, r.id); return `${scope === 'world' && fl ? fl + ' ' : tid ? schoolLogo(tid, G.teams[tid].name, 14) + ' ' : ''}${fsName(r.id, r.name)}`; };
   const mineR = r => FS.isMine(G, r.id);
   const card = kg => `<div class="card" style="margin:0"><h3 style="margin-top:0">${kg} kg</h3><table class="tbl dense"><tr><th>#</th><th>Wrestler</th><th>${scope === 'world' ? 'Country' : 'Club'}</th><th>FS OVR</th><th>Best recent</th></tr>
     ${T[kg].map((r, i) => `<tr class="${mineR(r) ? 'me' : ''}"><td>${i + 1}</td><td>${who(r)}</td><td class="muted">${scope === 'world' ? FS.countryName(r.nat) : r.aff}</td><td>${r.ovr.toFixed(1)}</td><td>${res(r.best)}</td></tr>`).join('')}</table></div>`;
   return `<div class="card"><h3 style="margin-top:0">Freestyle rankings <small class="muted">after ${Rk.year || '—'}</small></h3><div class="chips">${chips}</div>
-    <p class="hint" style="margin:8px 0 0">Results of the last two freestyle seasons (this one in full, last one at half value: Worlds/Olympics, US Open, Farrell, Trials, World Team spots) plus current rating. Only finished events count.</p></div>
+    <p class="hint" style="margin:8px 0 0">Results of the last two freestyle seasons (this one in full, last one at half value: Worlds/Olympics, US Open, Farrell, Trials, World / Olympic Team spots) plus current rating. Only finished events count.</p></div>
     <div class="cols2" style="gap:12px">${FS_WEIGHTS.map(card).join('')}</div>`;
 }
 function fsRecordsPanel() {
@@ -1907,8 +1907,8 @@ function fsRankText(id) {
 function fsResHtml(id) {
   const L0 = (G.fs.res || {})[id]; if (!L0 || !L0.length) return '';
   const ord = p => (p === 9 ? 'no medal' : `${p}${['st', 'nd', 'rd'][p - 1] || 'th'}`);
-  const nm = k => (k === 'team' ? 'World Team Trials' : FS.EV_NAME[k] || k);
-  const rows = L0.slice().reverse().map(([y, k, kg, p]) => `<tr><td>${y}</td><td>${nm(k)}</td><td>${kg} kg</td><td>${k === 'team' ? '<b>won the World Team spot</b>' : (k === 'worlds' || k === 'olympics') && p <= 3 ? `<b>${['', '🥇 Gold', '🥈 Silver', '🥉 Bronze'][p]}</b>` : ord(p)}</td></tr>`).join('');
+  const nm = (k, y) => (k === 'team' || k === 'trials' ? FS.evName(G, 'trials', y) : FS.EV_NAME[k] || k);
+  const rows = L0.slice().reverse().map(([y, k, kg, p]) => `<tr><td>${y}</td><td>${nm(k, y)}</td><td>${kg} kg</td><td>${k === 'team' ? `<b>won the ${FS.teamName(G, y)} spot</b>` : (k === 'worlds' || k === 'olympics') && p <= 3 ? `<b>${['', '🥇 Gold', '🥈 Silver', '🥉 Bronze'][p]}</b>` : ord(p)}</td></tr>`).join('');
   return `<h3 style="margin-top:14px">Freestyle results</h3><table class="tbl dense">${rows}</table>`;
 }
 // senior / international freestyle athlete (G.fsw, freestyle.js): ratings, freestyle record, honors, this season's events
@@ -1923,7 +1923,7 @@ function fsProfile(a, back) {
     ['Weight', `${FS.kgOf(G, id)} kg`], ['Ranking', fsRankText(id)], ['Age', FS.ageOf(G, id)], ['Style', ARCHETYPES[a.arch] ? ARCHETYPES[a.arch].label : '—'],
     ...(a.src === 'grad' && a.from && G.teams[a.from] ? [['College', tn(a.from, 16)]] : []),
     ['Freestyle record', st ? `${st.w}-${st.l} (${st.tf} tech falls, ${st.fa} falls)${sy ? ` · this year ${sy.w}-${sy.l}` : ''}` : '—'],
-    ...(hon ? [['World / Olympic medals', `${hon.gold} gold, ${hon.silver} silver, ${hon.bronze} bronze${hon.oly ? ` (${hon.oly} Olympic)` : ''}`], ...(nat === 'USA' ? [['US World Teams', hon.teams || 0], ['US Open titles', hon.opens || 0]] : [])] : []),
+    ...(hon ? [['World / Olympic medals', `${hon.gold} gold, ${hon.silver} silver, ${hon.bronze} bronze${hon.oly ? ` (${hon.oly} Olympic)` : ''}`], ...(nat === 'USA' ? [['US World / Olympic Teams', hon.teams || 0], ['US Open titles', hon.opens || 0]] : [])] : []),
     ...(years ? [['Medals', years]] : [])].map(([k, v]) => `<tr><td class="muted">${k}</td><td>${v}</td></tr>`).join('');
   return `<div class="card"><div class="row">${back}</div>
     <div style="display:flex;align-items:center;gap:14px;margin-top:10px">${nat !== 'USA' ? flagImg(nat, 42) : tid ? schoolLogo(tid, G.teams[tid].name, 56) : ''}

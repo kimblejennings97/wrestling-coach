@@ -22,6 +22,12 @@ export const countryName = c => (c === 'USA' ? 'USA' : CTRY[c] ? CTRY[c].name : 
 export const fsYear = G => G.season + 1;   // the summer after the 20xx-yy college season
 export const isOlympic = G => fsYear(G) % 4 === 0;
 export const worldsKey = G => (isOlympic(G) ? 'olympics' : 'worlds');
+// Year-aware names: in an Olympic year the Trials are the Olympic Team Trials and the spot is an Olympic Team spot. y = freestyle year
+// (default: the freestyle season on show, G.fs.year, which stays put while the next college season is played).
+const olyYear = y => y % 4 === 0;
+const shownYear = G => (G.fs && G.fs.year) || fsYear(G);
+export const teamName = (G, y = shownYear(G)) => (olyYear(y) ? 'Olympic Team' : 'World Team');
+export const evName = (G, k, y = shownYear(G)) => (k === 'trials' ? `${teamName(G, y)} Trials` : k === 'worlds' && olyYear(y) ? EV_NAME.olympics : EV_NAME[k] || k);
 export const fsOn = G => !!(G.fs && G.fs.on);
 
 // ---------- athletes ----------
@@ -321,7 +327,7 @@ function trialsWeight(G, rng, kg, store) {
   const bye = us.find(id => fs.prev.team[kg] === id && fs.prev.medal[kg] > 0 && (!isMine(G, id) || userEnters(G, 'trials', id)));
   for (const id of us) {
     if (id === bye || (isMine(G, id) && !userEnters(G, 'trials', id))) continue;
-    if (Object.values(fs.prev.team).includes(id)) why[id] = `${fs.year - 1} World Team`;
+    if (Object.values(fs.prev.team).includes(id)) why[id] = `${fs.year - 1} ${teamName(G, fs.year - 1)}`;
     else if (fs.q[id]) why[id] = fs.q[id];
   }
   const hist = (G.history || []).find(h => h.season === G.season);
