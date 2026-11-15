@@ -49,7 +49,7 @@ Works autonomously and reports briefly; concise answers with a recommendation an
 - `index.html` + `js/ui/app.js` (all screens), `css/style.css`, `js/ui/anim.js` (bout animation), `js/ui/match.js` + `lab.html` (Match Lab), `moves.html` (Move Viewer).
 - `js/engine/bout.js` (+ rng.js): bout sim and tunables.
 - `js/game/`: `core.js` (state G, new game, real rosters, lineups, duals, finishWeek, training, injuries, rankings, save/migrate), `tourney.js`, `live.js`, `selection.js`, `dualtourney.js`, `dualcoach.js`, `sched.js`, `recruit.js`, `offseason.js`, `prestige.js`, `stats.js`, `legacy.js`, `saves.js`, `playeredit.js`, `league.js` (custom leagues).
-- `js/data/`: gen, schools, practice, tournaments, realteams (generated), realtop, overrides, ncaa2026, states, logos, teamcolors, venues (bout viewer mat). `assets/logos/` school logos, `assets/logos/org/` conference + NCAA logos.
+- `js/data/`: gen, names (generated US names), schools, practice, tournaments, realteams (generated), realtop, overrides, ncaa2026, states, logos, teamcolors, venues (bout viewer mat). `assets/logos/` school logos, `assets/logos/org/` conference + NCAA logos.
 - Tools/tests kept: `animsheet.html`, `harness.html`, `fs_harness.html` (freestyle calibration), `rec_harness.html` (recruiting difficulty), `diag.html`, `sim_balance.html`, `longrun.html`, `tools/*.py`.
 
 ## Invariants and gotchas

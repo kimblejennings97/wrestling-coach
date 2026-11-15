@@ -11,6 +11,7 @@ import { REAL_NAMES_ENABLED } from '../data/realtop.js';
 import { matchInjuryChance } from './core.js';
 import { initLive } from './live.js';
 import { rtcName } from '../data/rtcnames.js';
+import { usName } from '../data/names.js';
 
 export const FS_STEPS = [['roster', 'RTC rosters'], ['farrell', 'Bill Farrell'], ['open', 'US Open'], ['trials', 'World Team Trials'], ['worlds', 'World Championships']];
 export const EV_NAME = { farrell: 'Bill Farrell International', open: 'US Open', trials: 'World Team Trials', worlds: 'World Championships', olympics: 'Olympic Games' };
@@ -33,7 +34,7 @@ export const rtcOf = (G, id) => { for (const tid in G.fs.rtc) if (G.fs.rtc[tid].
 export const natOf = (G, id) => { const a = ath(G, id); return (a && (a.ctry || a.nat || COLLEGE_NAT[a.name])) || 'USA'; };
 export const affil = (G, id) => { const a = ath(G, id); if (!a) return ''; const c = natOf(G, id); if (c !== 'USA') { const t = G.fs.rtc && rtcOf(G, id); return countryName(c) + (t ? ` · ${rtcName(G.teams[t].name)}` : ''); } const t = rtcOf(G, id); return t ? rtcName(G.teams[t].name) : 'Unattached'; };
 
-function genName(rng, pool) { const P = NAME_POOLS[pool] || NAME_POOLS.usa; return `${rng.pick(P[0])} ${rng.pick(P[1])}`; }
+function genName(rng, pool) { if (pool === 'usa' || !NAME_POOLS[pool]) return usName(rng); const P = NAME_POOLS[pool]; return `${rng.pick(P[0])} ${rng.pick(P[1])}`; }
 function makeAth(G, rng, { name, kg, q, arch, age, ctry = 'USA', src = 'gen', real = false }) {
   const w = generateWrestler(rng, { weight: LBS_OF_KG[kg] || 157, quality: q, archetype: ARCHETYPES[arch] ? arch : 'balanced', school: 'RTC', name });
   const a = { id: 'f' + G.fs.nextId++, name: w.name, kg, age, attrs: w.attrs, arch: w.archetype, ctry, src, ...(real ? { real: 1 } : {}) };

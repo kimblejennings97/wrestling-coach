@@ -153,7 +153,8 @@ export const COLLEGE_NAT = { 'Masanosuke Ono': 'JPN', 'Rin Sakamoto': 'JPN' };
 export const INTL_RECRUITS = { share: 0.03, from: { CAN: 4, JPN: 2, MEX: 1, PUR: 1, IND: 1, MGL: 1, GEO: 1, UKR: 1, KOR: 1, NGR: 1, AUS: 1, COL: 1 } };
 export const FARRELL_GUESTS = ['CAN', 'PUR', 'MEX', 'CUB', 'GEO', 'JPN', 'IND', 'UKR', 'VEN', 'COL'];
 
-// Generated names (first / last) per pool; combinations are random, not real people.
+// Generated names (first / last) per pool; combinations are random, not real people. 'usa' is no longer used: US names come from
+// js/data/names.js (freestyle.js genName); unknown pools fall back to it too.
 export const NAME_POOLS = {
   cau: [['Magomed', 'Abdulrashid', 'Zaurbek', 'Akhmed', 'Shamil', 'Gadzhi', 'Rasul', 'Abdulla', 'Murad', 'Khetag', 'Zelimkhan', 'Arslan', 'Ramazan', 'Islam', 'Said', 'Musa'],
     ['Magomedov', 'Gadzhiev', 'Abdulaev', 'Khasanov', 'Tsakoev', 'Alibekov', 'Kurbanov', 'Umarov', 'Dzhabrailov', 'Batyrov', 'Saidov', 'Omarov', 'Murtazaliev', 'Gamzatov', 'Bilalov', 'Kadiev']],

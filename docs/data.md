@@ -29,5 +29,10 @@
 - `py tools/fetch_orglogos.py` -> `assets/logos/org/` (NCAA from Wikimedia, Big Ten / Big 12 / ACC / MAC from ESPN) for the bout viewer's mat centre (`js/data/venues.js`). No EIWA logo source (text badge).
 - `tools/teamcolors.html` + `tools/make_teamcolors.py` -> `js/data/teamcolors.js` (dominant logo colour, lightened; overrides for Iowa, Minnesota).
 
+## Generated names (js/data/names.js)
+- Recruits, walk-ons, fully generated rosters and generated US RTC athletes get `randomName` (gen.js) -> `usName`: 429 first names (boys' names popular for 2004-09 births) x 1,065 US surnames (roughly Census rank order, plus some Midwest / wrestling-country names at the end), each picked rank-weighted (weight 1/sqrt(rank)) from one uniform draw, so the rng draw count is the same as the old `rng.pick` lists (36 x 50, replaced 2026-11-14).
+- Measured (newGame seeds 1, 7 real / 3, 11 generated): exact duplicate full-name pairs per 340-recruit class 0-4 (was ~28); fully generated league 16-30 pairs among ~2,300 names (was ~1,500). Everything except names identical for a seed. Over 100k draws: 79k distinct names; most common "Jacob Smith" 0.04%.
+- International recruits and foreign freestyle athletes still use the per-country `NAME_POOLS` (fsdata.js; its `usa` pool is unused). Generated names can occasionally match a real wrestler's name (no check).
+
 ## Recruit geography
 `data/states.js`: FloWrestling 2025 NCAA qualifiers by home state (PA 41, OH 27, NJ 26, CA 26, IL 24, ...).

@@ -1,5 +1,6 @@
 // Wrestler generation. Real rosters can be imported later (see CLAUDE.md); until then everyone is generated.
 import { ATTR_KEYS } from '../engine/bout.js';
+import { usName } from './names.js';
 
 export const WEIGHTS = [125, 133, 141, 149, 157, 165, 174, 184, 197, 285];
 
@@ -18,13 +19,8 @@ export const SCHOOLS = [
   'NC State', 'Arizona State', 'Missouri', 'Northwestern', 'Wisconsin', 'Oklahoma', 'Lehigh', 'Princeton', 'Pittsburgh', 'Stanford',
 ];
 
-const FIRST = ['Jake', 'Cael', 'Tyler', 'Brandon', 'Austin', 'Mason', 'Logan', 'Connor', 'Dylan', 'Cole', 'Hunter', 'Ethan', 'Gavin', 'Landon', 'Carter', 'Brody',
-  'Trey', 'Jaden', 'Colton', 'Wyatt', 'Isaiah', 'Marcus', 'Devin', 'Nolan', 'Garrett', 'Caleb', 'Tanner', 'Jordan', 'Riley', 'Zane', 'Owen', 'Kyle', 'Brock', 'Chase', 'Jesse', 'Luke'];
-const LAST = ['Anderson', 'Brooks', 'Carlson', 'Dawson', 'Ellis', 'Foster', 'Garza', 'Hayes', 'Ingram', 'Jensen', 'Keller', 'Lawson', 'Mitchell', 'Novak', 'Olsen', 'Patterson',
-  'Quinn', 'Reyes', 'Schmidt', 'Thompson', 'Underwood', 'Vance', 'Walker', 'Young', 'Zimmer', 'Bauer', 'Coleman', 'Dietz', 'Engel', 'Fischer', 'Grant', 'Hudson', 'Kowalski',
-  'Larsen', 'Moreno', 'Nash', 'Ortega', 'Pruitt', 'Rhodes', 'Sullivan', 'Tate', 'Vogel', 'Webb', 'Yates', 'Bishop', 'Crowley', 'Decker', 'Frazier', 'Gibbons', 'Holt'];
-
-export function randomName(rng) { return `${rng.pick(FIRST)} ${rng.pick(LAST)}`; }
+// Generated names: ~430 first x ~1,060 last names, rank-weighted (js/data/names.js). Two rng draws, like the old 36 x 50 lists.
+export function randomName(rng) { return usName(rng); }
 
 // quality ~ average attribute (10 = weak, 14 = solid starter, 17+ = All-American). Returns a wrestler object.
 export function generateWrestler(rng, { weight = 157, quality = 13, archetype = 'balanced', school = null, name = null, spread = 1.8 } = {}) {
