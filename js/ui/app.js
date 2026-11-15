@@ -1355,7 +1355,7 @@ function fsLabel() {
     return T.next === 'done' ? 'Done → season review ▶' : `Done → ${FS.evName(G, T.next)} ▶`;
   }
   const s = G.fs.step;
-  return s === 'roster' ? 'Rosters set → Bill Farrell ▶' : s === 'open' ? 'Run the US Open ▶' : s === 'trials' ? `Run the ${FS.evName(G, 'trials')} ▶` : s === 'worlds' ? `Run the ${FS.evName(G, 'worlds')} ▶` : null;
+  return s === 'roster' ? 'Rosters set → Bill Farrell ▶' : s === 'open' ? 'Go to the US Open ▶' : s === 'trials' ? `Go to the ${FS.evName(G, 'trials')} ▶` : s === 'worlds' ? `Go to the ${FS.evName(G, 'worlds')} ▶` : null;
 }
 function freestyleScreen() {
   if (!FS.fsOn(G)) return `<div class="card"><h2>Freestyle</h2><p>Freestyle mode is off in this career. With it on, a freestyle season follows each offseason: RTC rosters, the Bill Farrell, the US Open, the World Team Trials and the World Championships (Olympic Team Trials and the Olympics every four years).</p>
@@ -1363,7 +1363,7 @@ function freestyleScreen() {
   const fs = G.fs, live = G.phase === 'offseason' && offStep(G) === 'fs' && fs.year === FS.fsYear(G);
   const steps = FS.FS_STEPS.map(([k, n]) => [k, k === 'worlds' || k === 'trials' ? FS.evName(G, k) : n]), order = ['roster', 'farrell', 'open', 'trials', 'worlds', 'done'], cur = live ? order.indexOf(fs.step === 'roster' ? 'roster' : fs.step) : -1;
   const bar = live ? `<div class="card"><div class="row"><b>Freestyle ${fs.year}</b> ${steps.map(([k, n], i) => `<span class="${i === cur ? '' : 'muted'}" style="${i === cur ? 'font-weight:700;color:var(--tc)' : ''}">${i < cur ? '✓' : i + 1}. ${n}</span>`).join(' <span class="muted">›</span> ')}</div>
-    <p class="muted" style="margin:6px 0 0">${FS.fsLiveOpen(G) ? (L.isLive(fs.live) ? `The ${FS.evName(G, fs.live.ev)} is under way: reveal it below, or use the top-right button to finish it.` : 'All bouts are in. Use the top-right button to close the event.') : fs.step === 'done' ? 'The freestyle season is over. Use the top-right button to start the next college season.' : 'Use the top-right button to run the next event.'}</p></div>` : '';
+    <p class="muted" style="margin:6px 0 0">${FS.fsLiveOpen(G) ? (L.isLive(fs.live) ? `The ${FS.evName(G, fs.live.ev)} is under way: reveal it below, or use the top-right button to finish it.` : 'All bouts are in. Use the top-right button to close the event.') : fs.step === 'done' ? 'The freestyle season is over. Use the top-right button to start the next college season.' : 'Use the top-right button to go to the next event.'}</p></div>` : '';
   const tab = ['season', 'rank', 'history', 'records', 'hof'].includes(ui.fstab) ? ui.fstab : 'season';
   const tabs = `<div class="card"><div class="chips">${[['season', `${fs.year || FS.fsYear(G)} season`], ['rank', 'Rankings'], ['history', 'US teams & medals'], ['records', 'Records'], ['hof', 'Hall of Fame']].map(([k, n]) => `<a data-act="fstab" data-v="${k}" class="chip ${k === tab ? 'on' : ''}">${n}</a>`).join('')}</div></div>`;
   let body = '';
