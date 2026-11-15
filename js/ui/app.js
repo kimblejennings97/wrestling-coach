@@ -407,6 +407,7 @@ function chg(k, el) {
   if (k === 'dualsub') { const du = findDual(ui.dual.id), r = userSub(G, du, +el.dataset.wt, el.value || null); if (!r.ok) alert(r.msg); save(); return render(); }
   if (k === 'tfocus') { G.training.focus[+el.dataset.i] = el.value; save(); return render(); }
   if (k === 'tint') { G.training.intensity = el.value; save(); return render(); }
+  if (k === 'travg') { ui.trAvg = el.value; return render(); }
   if (k === 'wfocus') { G.wrestlers[el.dataset.w].focus = el.value || null; save(); return render(); }
   if (k === 'slot') {
     const wt = +el.dataset.wt, lu = me().lineup, wid = el.value || null;
@@ -904,11 +905,22 @@ function training() {
     <td><select data-chg="wfocus" data-w="${w.id}"><option value="">Team plan</option>${opts(w.focus)}</select></td>
     <td>${w.move ? `${w.move.dir === 'down' ? 'Cutting' : 'Gaining'} to ${w.move.to} (${w.move.weeks} wk) <a data-act="cancelmove" data-v="${w.id}">cancel</a>` : w.movedSeason === G.season ? '<span class="muted">moved this season</span>' : canMove(G, w) ? `<select data-chg="wmove" data-w="${w.id}"><option value="">Hold ${w.natural}</option>${WEIGHTS.indexOf(w.natural) > 0 ? `<option value="down">Cut to ${WEIGHTS[WEIGHTS.indexOf(w.natural) - 1]}</option>` : ''}${WEIGHTS.indexOf(w.natural) < 9 ? `<option value="up">Gain to ${WEIGHTS[WEIGHTS.indexOf(w.natural) + 1]}</option>` : ''}</select>` : '<span class="muted">—</span>'}</td></tr>`).join('');
   const rowsFixed = rows; // selected states are set per-wrestler via opts(w.focus)
+  // team rating averages (lineup starters, or the whole roster), like the profile's Ratings; ratings the plan trains are highlighted
+  const starters = WEIGHTS.map(wt => G.wrestlers[t.lineup[wt]]).filter(Boolean);
+  const pool = ui.trAvg === 'roster' || !starters.length ? ws : starters;
+  const avg = k => pool.reduce((s, w) => s + w.attrs[k], 0) / Math.max(1, pool.length);
+  const low = new Set([...ATTR_KEYS].sort((a, b) => avg(a) - avg(b)).slice(0, 3));   // the team's three weakest ratings
+  const bars = ATTR_KEYS.map(k => { const v = avg(k), sh = trained[k] || 0;
+    return `<div class="attr tr ${sh > 0 ? 'hl' : ''}" ${sh > 0 ? `title="${Math.round(sh * 100)}% of the plan's training time"` : low.has(k) ? 'title="One of the team\'s three weakest ratings"' : ''}><span>${ATTR_LABELS[k]}</span><div class="bar"><i class="${tier(Math.round(v))}" style="width:${v * 5}%"></i></div><b class="${low.has(k) ? 'neg' : ''}">${v.toFixed(1)}</b><em>${sh > 0 ? Math.round(sh * 100) + '%' : ''}</em></div>`; }).join('');
   return `<div class="card"><h2>Team training plan <small class="muted">applies every week until you change it</small></h2>
-    <div class="row">${[0, 1, 2].map(i => `<label>${names[i]} <select data-chg="tfocus" data-i="${i}">${opts(tr.focus[i])}</select></label>`).join('')}
-    <label>Intensity <select data-chg="tint">${Object.entries(INTENSITY).map(([k, v]) => `<option value="${k}" ${k === tr.intensity ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label></div>
-    <p>Training: <b>${attrNote}</b></p>
-    <p class="muted">Gain rate ×${I.gain} · fatigue load +${I.fat}/week before recovery · Coaching staff factor ×${coachFactor(t).toFixed(2)} · Team fatigue ${Math.round(avgFat)} · ${inj} injured</p>
+    <div class="trgrid"><div>
+      <div class="trplan">${[0, 1, 2].map(i => `<label for="tf${i}">${names[i]}</label><select id="tf${i}" data-chg="tfocus" data-i="${i}">${opts(tr.focus[i])}</select>`).join('')}
+        <label for="tfi">Intensity</label><select id="tfi" data-chg="tint">${Object.entries(INTENSITY).map(([k, v]) => `<option value="${k}" ${k === tr.intensity ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div>
+      <p>Training: <b>${attrNote}</b></p>
+      <p class="muted">Gain rate ×${I.gain} · fatigue load +${I.fat}/week before recovery · Coaching staff factor ×${coachFactor(t).toFixed(2)} · Team fatigue ${Math.round(avgFat)} · ${inj} injured</p></div>
+      <div><div class="trhead"><h3>Team ratings</h3><select data-chg="travg"><option value="lineup" ${pool === starters ? 'selected' : ''}>Lineup average (${starters.length})</option><option value="roster" ${pool !== starters ? 'selected' : ''}>Whole roster (${ws.length})</option></select>
+        <span class="muted" style="font-size:12px">highlighted = trained by the plan (share of training time) · <span class="neg">red</span> = the three weakest</span></div>
+        <div class="cols2">${bars}</div></div></div>
     <p class="hint"><b>Periodization:</b> hard weeks build skills faster but pile up fatigue (lower starting energy in matches) and injury risk. Switch to Light or add Recovery before big duals and, later, the conference and NCAA tournaments. Younger, high-potential, hard-working wrestlers improve fastest; attributes near a wrestler's potential grow slowly. Live wrestling and big-move drills carry the most injury risk; film study and flexibility the least.<br><b>Weight moves:</b> a cut or gain takes about 5 weeks (extra fatigue, small attribute shifts) and each wrestler can make only one move per season.</p></div>
     <div class="card" style="overflow-x:auto"><h2>Individual focus <small class="muted">override the plan for one wrestler</small></h2>
     <table class="tbl dense"><tr><th>Name</th><th>Wt</th><th>Record</th><th>Cl</th><th>OVR</th><th>Potential</th><th>Fatigue</th><th>Status</th><th>Focus</th><th>Weight move</th></tr>${rowsFixed}</table></div>`;

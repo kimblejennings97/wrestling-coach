@@ -7,6 +7,7 @@
 
 ## Conventions
 - **Links everywhere:** `wl(w)` wrestler (also archived ones), `tn(id, px)` logo + team name, `tnl(id)` team link without logo, `tl(name)` tournament, `linkify(text)` for inbox text (unique names only). Profiles use a back stack (`openProf`, `ui.stack`). Not linked: recruits, dropdown options, play-by-play, Match Lab.
+- Training (`training()`): the plan's dropdowns stack on the left (`.trplan`); on the right "Team ratings" = average of each attribute over the lineup starters or the whole roster (`ui.trAvg` select), profile-style bars; attributes the plan trains are highlighted with their share of training time, the three lowest averages are red (`.trgrid`, `.attr.tr`, `.attr.hl` in style.css; stacks below 820px). 2026-11-14.
 - **Ratings hidden** outside Roster, Profile, Recruiting, the portal and Training (your own team's OVR column, user request 2026-11-13): elsewhere show record + poll rank (`wstat`/`wtxt`/`wrank`), never `ovr()`.
 - Your team's colour `--tc` (`TEAM_COLORS`) highlights your rows, winners and bracket slots; dual results colour winners/losers.
 - Logos: `schoolLogo(id, name, px)` (chip or initials badge). `LOGOS_ENABLED` / `REAL_NAMES_ENABLED` must go off before any public release.
