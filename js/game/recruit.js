@@ -6,7 +6,7 @@ import { INTL_RECRUITS, COUNTRIES, NAME_POOLS } from '../data/fsdata.js';
 import { ATTR_KEYS } from '../engine/bout.js';
 import { generateWrestler, WEIGHTS, ARCHETYPES, randomName } from '../data/gen.js';
 import { STATE_NQ, STATE_REGION, stateBoost } from '../data/states.js';
-import { overall, autoLineup } from './core.js';
+import { overall, autoLineup, MAX_CLS, CLASS_NAMES } from './core.js';
 import { retire } from './legacy.js';
 
 export const AID_CAP = 9.9;
@@ -37,7 +37,7 @@ const hash = s => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.c
 export const teamAidUsed = (G, tid) => {
   const t = G.teams[tid];
   let used = 0;
-  for (const id of t.roster) { const w = G.wrestlers[id]; if (w.cls < 4 || G.phase === 'offseason') used += w.aid || 0; } // seniors' aid frees up at graduation
+  for (const id of t.roster) { const w = G.wrestlers[id]; if (w.cls < MAX_CLS || G.phase === 'offseason') used += w.aid || 0; } // 5th-years' aid frees up at graduation
   for (const rid of t.incoming || []) used += G.recruits[rid]?.offers[tid] ?? 0;
   for (const p of G.portal || []) if (p.signed === tid) used += p.aidGiven || 0;
   return used;
@@ -57,7 +57,7 @@ export const ROSTER_MAX = 30; // NCAA roster limit: enforced at the end of the y
 export function weightSlots(G, tid, wt) {
   const t = G.teams[tid]; let inc = 0, cur = 0, ret = 0;
   for (const rid of t.incoming || []) if (G.recruits[rid]?.weight === wt) inc++;
-  for (const id of t.roster) { const w = G.wrestlers[id]; if (w.cls < 4) ret++; if (w.natural === wt && w.cls < 4) cur++; }
+  for (const id of t.roster) { const w = G.wrestlers[id]; if (w.cls < MAX_CLS) ret++; if (w.natural === wt && w.cls < MAX_CLS) cur++; }
   const total = (t.incoming || []).length;
   return { inc, cur, total, proj: ret + total, room: inc < MAX_INCOMING_PER_WT && cur + inc < MAX_AT_WT && total < MAX_CLASS && ret + total < ROSTER_MAX };
 }
@@ -158,7 +158,7 @@ export function generateRecruitClass(G, rng) {
 // How good a shot at the lineup would this recruit have next year? 1 = open spot, 0 = buried.
 export function nextBest(G, t, wt) {
   let best = 0;
-  for (const id of t.roster) { const w = G.wrestlers[id]; if (w.natural === wt && w.cls < 4) best = Math.max(best, overall(w)); }
+  for (const id of t.roster) { const w = G.wrestlers[id]; if (w.natural === wt && w.cls < MAX_CLS) best = Math.max(best, overall(w)); }
   for (const rid of t.incoming || []) { const r = G.recruits[rid]; if (r && r.weight === wt) best = Math.max(best, overall(r)); }
   return best;
 }
@@ -449,7 +449,7 @@ export function resolvePortal(G) {
     w.team = best.tid; w.aid = best.a;
     G.teams[best.tid].roster.push(w.id);
     p.fate = 'signed';
-    if (best.tid === G.userTeam) G.inbox.unshift({ week: G.week, title: `Transfer signs: ${w.name} (${w.natural})`, body: `${w.name} (${['', 'Fr', 'So', 'Jr', 'Sr'][w.cls]}, OVR ${Math.round(overall(w) * 10) / 10}) joins from ${G.teams[p.from].name}.` });
+    if (best.tid === G.userTeam) G.inbox.unshift({ week: G.week, title: `Transfer signs: ${w.name} (${w.natural})`, body: `${w.name} (${CLASS_NAMES[w.cls]}, OVR ${Math.round(overall(w) * 10) / 10}) joins from ${G.teams[p.from].name}.` });
   }
   // Nobody offered a scholarship: some latch on as walk-ons (no aid) where they could make the room, the rest leave college wrestling.
   const rng2 = makeRng(G.seed + 9292), fates = [];

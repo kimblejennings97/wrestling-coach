@@ -5,7 +5,7 @@ import { generateWrestler, WEIGHTS } from '../data/gen.js';
 import { PRACTICE, FOCUS_SHARES } from '../data/practice.js';
 import { seasonCalendar } from '../data/tournaments.js';
 import { syncDualField } from './dualtourney.js';
-import { overall, overallLegacy, sanitizeLineup, autoLineup, aiPlan, coachFactor, initDev, makeSchedule, useCalendar, rankings, realign } from './core.js';
+import { MAX_CLS, overall, overallLegacy, sanitizeLineup, autoLineup, aiPlan, coachFactor, initDev, makeSchedule, useCalendar, rankings, realign } from './core.js';
 import { applyPrestige } from './prestige.js';
 import { graduate, startFsSeason, finishFsSeason, runFsEvent, fsOn, fsYear, fsLiveOpen, closeFsEvent } from './freestyle.js';
 import { buildNext } from './sched.js';
@@ -19,7 +19,7 @@ const nextWeight = wt => WEIGHTS[WEIGHTS.indexOf(wt) + 1] ?? null;
 // Share = class (young grow most) x program prestige x work ethic x luck. Luck = a persistent hidden trait (w.dev) + this year's roll,
 // plus rare busts (potential drops) and breakouts (potential rises, an attribute may pass it). So some wrestlers never reach their
 // potential and some exceed it; top programs push more of the gap and bust less.
-export const DEV = { base: { 1: 0.29, 2: 0.24, 3: 0.17 }, bust: 0.07, breakout: 0.07 };
+export const DEV = { base: { 1: 0.29, 2: 0.24, 3: 0.17, 4: 0.12 }, bust: 0.07, breakout: 0.07 };   // by class before the step up (4 = Sr -> 5th Yr)
 function growWrestler(G, w, tid, rng, plan) {
   const t = G.teams[tid], pr = t.prestige / 100;
   const base = DEV.base[w.cls] ?? 0.12;
@@ -54,7 +54,7 @@ export const OFF_STEPS = [['leaving', 'Wrestlers leaving'], ['cut', 'Cut players
 export const offSteps = G => (G.fs && G.fs.on ? OFF_STEPS.concat([['fs', 'Freestyle season']]) : OFF_STEPS);   // freestyle mode adds a sixth step
 export const offStep = G => (G.phase === 'offseason' ? (G.off && G.off.step) || 'recruit' : null);   // old saves (no G.off) land on recruiting
 
-// Step 1 setup: seniors graduate, signed recruits join as freshmen, the portal fills with random transfers, AI programs cut to the roster limit.
+// Step 1 setup: 5th-year wrestlers graduate, signed recruits join as freshmen, the portal fills with random transfers, AI programs cut to the roster limit.
 // Step 1 (Wrestlers leaving) only shows who left (G.off.leaving); step 2 is the cut. Ratings do NOT change until progression, so cuts use last season's numbers.
 // The finished recruiting class is kept in G.lastClass (signings + class rankings) until the new season starts.
 export function beginOffseason(G) {
@@ -69,7 +69,7 @@ export function beginOffseason(G) {
     const t = G.teams[tid], keep = [];
     for (const id of t.roster) {
       const w = G.wrestlers[id];
-      if (w.cls >= 4) {
+      if (w.cls >= MAX_CLS) {   // 5th-year wrestlers have used their eligibility (5-for-5)
         const b = brief(w); leaving.notable.push(b); if (tid === G.userTeam) leaving.grads.push(b);
         graduate(G, w);   // freestyle mode: an AA-level senior goes on to senior freestyle (same id, kept in G.fsw)
         retire(G, w);   // career record books, Halls of Fame, archive (keeps his profile reachable)
@@ -101,7 +101,7 @@ export function beginOffseason(G) {
   G.off = { step: 'leaving', grads: gradNames, leaving, freshmen: stats.freshmen, aiCuts, prog: null, cutStart: G.teams[G.userTeam].roster.length };   // cutStart: sets the user's cut allowance (recruit.js cutAllowance)
   buildNext(G);   // next season's schedule, editable in step 4
   const mustCut = cutsNeeded(G);
-  G.inbox.unshift({ week: G.week, title: 'Offseason', body: `${stats.grads} senior${stats.grads === 1 ? '' : 's'} graduated; ${stats.freshmen} freshmen joined. ${gradNames.length ? 'Graduated: ' + gradNames.join(', ') + '. ' : ''}Next step: cut players. ${mustCut ? `your roster is ${G.teams[G.userTeam].roster.length} and the limit is ${ROSTER_MAX}, so you must cut ${mustCut}.` : 'your roster is within the limit.'} You may cut up to ${Math.max(CUT_FREE, G.teams[G.userTeam].roster.length - ROSTER_MAX)} in all, to make room for transfers. Cut wrestlers enter the transfer portal (${G.portal.length} in it now${aiCuts ? `, ${aiCuts} of them AI roster cuts` : ''}).` });
+  G.inbox.unshift({ week: G.week, title: 'Offseason', body: `${stats.grads} wrestler${stats.grads === 1 ? '' : 's'} graduated; ${stats.freshmen} freshmen joined. ${gradNames.length ? 'Graduated: ' + gradNames.join(', ') + '. ' : ''}Next step: cut players. ${mustCut ? `your roster is ${G.teams[G.userTeam].roster.length} and the limit is ${ROSTER_MAX}, so you must cut ${mustCut}.` : 'your roster is within the limit.'} You may cut up to ${Math.max(CUT_FREE, G.teams[G.userTeam].roster.length - ROSTER_MAX)} in all, to make room for transfers. Cut wrestlers enter the transfer portal (${G.portal.length} in it now${aiCuts ? `, ${aiCuts} of them AI roster cuts` : ''}).` });
   return stats;
 }
 

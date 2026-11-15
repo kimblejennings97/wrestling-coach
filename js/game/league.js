@@ -10,7 +10,8 @@ import { WEIGHTS } from '../data/gen.js';
 const KEY = 'wc.league';
 export const MIN_TEAMS = 16, MAX_TEAMS = 200;   // the National Duals bracket needs 16 programs
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-const CLS = { fr: 1, so: 2, jr: 3, sr: 4 };
+const CLS = { fr: 1, so: 2, jr: 3, sr: 4, '5th': 5, gr: 5, grad: 5 };
+const CLS_LBL = ['', 'Fr', 'So', 'Jr', 'Sr', '5th Yr'];
 
 export function loadLeague() { try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
 export function saveLeague(pack) { try { localStorage.setItem(KEY, JSON.stringify(pack)); return true; } catch (e) { return false; } }
@@ -19,12 +20,12 @@ export function clearLeague() { try { localStorage.removeItem(KEY); } catch (e) 
 // ---------- templates (the default league in the upload format) ----------
 const ruleOut = r => ({ name: r.name, tier: r.tier, location: r.loc, conferences: r.confs.slice(), month: r.m + 1, week: r.nth === -1 ? 'last' : r.nth, day: DAYS[r.dow][0].toUpperCase() + DAYS[r.dow].slice(1), days: r.days });
 const rosterOut = raw => raw.split('\n').map(line => { const [name, wt, cls, ovr, st, hm] = line.split('|');
-  return { name, weight: +wt, class: ['', 'Fr', 'So', 'Jr', 'Sr'][+cls] || 'Fr', rating: +ovr, starter: st === '1', ...(hm ? { hometown: hm } : {}) }; });
+  return { name, weight: +wt, class: CLS_LBL[+cls] || 'Fr', rating: +ovr, starter: st === '1', ...(hm ? { hometown: hm } : {}) }; });
 export function templateLeague(withRosters = true) {
   return {
     name: 'My league',
     about: 'Wrestling Coach league file. Edit and upload it from the main menu (Custom league). Teams need name + conference; everything else is optional. '
-      + 'rating = in-game overall (about 9 = walk-on, 12.6 = average D1 starter, 15 = All-American, 18+ = title contender). class = Fr/So/Jr/Sr. '
+      + 'rating = in-game overall (about 9 = walk-on, 12.6 = average D1 starter, 15 = All-American, 18+ = title contender). class = Fr/So/Jr/Sr/5th Yr. '
       + 'Teams without a roster get real rosters (if the school name matches and real names are on) or generated ones. Weights with fewer than 2 wrestlers get generated walk-ons. '
       + 'Conferences named "Independent..." (or with only 1 team) hold no conference tournament: their wrestlers can only earn at-large NCAA bids. '
       + 'Tournaments: month 11-2 (Nov-Feb), week 1-5 or "last" = which occurrence of that weekday in the month, days = length. Omit "tournaments" to keep the default events.',
@@ -55,7 +56,7 @@ function parseCsv(text) {
 
 // ---------- validation ----------
 const num = (v, lo, hi) => { const n = typeof v === 'number' ? v : parseFloat(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : null; };
-const clsOf = v => { if (typeof v === 'number') return v >= 1 && v <= 4 ? Math.round(v) : null; const m = String(v || '').toLowerCase().match(/(fr|so|jr|sr)/); return m ? CLS[m[1]] : (num(v, 1, 4) != null ? Math.round(num(v, 1, 4)) : null); };
+const clsOf = v => { if (typeof v === 'number') return v >= 1 && v <= 5 ? Math.round(v) : null; const m = String(v || '').toLowerCase().match(/(5th|grad|\bgr\b|fr|so|jr|sr)/); return m ? CLS[m[1]] : (num(v, 1, 5) != null ? Math.round(num(v, 1, 5)) : null); };
 const truthy = v => v === true || /^(y|yes|true|1|s|starter)$/i.test(String(v ?? '').trim());
 function cleanRoster(list, team, errs, warns) {
   const out = [];
@@ -67,7 +68,7 @@ function cleanRoster(list, team, errs, warns) {
     if (!WEIGHTS.includes(wt)) return errs.push(`${where} (${name}): weight must be one of ${WEIGHTS.join(', ')}`);
     const cls = clsOf(w.class); if (cls == null && w.class != null && w.class !== '') warns.push(`${where} (${name}): class "${w.class}" not recognised, using Fr`);
     const rating = w.rating == null || w.rating === '' ? null : num(w.rating, 1, 20); if (w.rating != null && w.rating !== '' && rating == null) warns.push(`${where} (${name}): rating "${w.rating}" is not a number, using the team default`);
-    out.push({ name: name.replace(/\|/g, '/'), weight: wt, class: ['', 'Fr', 'So', 'Jr', 'Sr'][cls || 1], rating, starter: truthy(w.starter), ...(w.hometown ? { hometown: String(w.hometown).replace(/[|\n]/g, ' ').trim() } : {}) });
+    out.push({ name: name.replace(/\|/g, '/'), weight: wt, class: CLS_LBL[cls || 1], rating, starter: truthy(w.starter), ...(w.hometown ? { hometown: String(w.hometown).replace(/[|\n]/g, ' ').trim() } : {}) });
   });
   if (out.length > 40) warns.push(`${team}: ${out.length} wrestlers (big rosters get trimmed by the offseason roster limit)`);
   return out;

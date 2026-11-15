@@ -168,7 +168,7 @@ const RAW = {
 16|JR|Jimmy Mullen|Virginia Tech`,
 };
 
-const CLS = { FR: 1, SO: 2, JR: 3, SR: 4 };
+const CLS = { FR: 1, SO: 2, JR: 3, SR: 4, GR: 5 };
 export const REAL_TOP = [];
 for (const [wt, txt] of Object.entries(RAW)) {
   for (const line of txt.split('\n')) {

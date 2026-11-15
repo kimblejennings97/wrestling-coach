@@ -35,7 +35,7 @@ import { initSaves, loadLast, loadSlot, saveGame, saveAs, copySlot, renameSlot, 
 const $app = document.getElementById('app');
 await initSaves();
 let G = await loadLast();
-const ui = { rec: { tab: 'targets', msg: '', wt: 0, status: 'open', limit: 40, sel: null }, screen: 'home', sel: null, conf: null, dual: null, view: null, timer: null, vtimer: null, pick: null, pickConf: CONFERENCES[0], coach: 'Coach' };
+const ui = { rec: { tab: 'targets', msg: '', wt: 0, status: 'open', state: '', stars: '', limit: 40, sel: null }, screen: 'home', sel: null, conf: null, dual: null, view: null, timer: null, vtimer: null, pick: null, pickConf: CONFERENCES[0], coach: 'Coach' };
 
 const ABBR = { str: 'STR', cardio: 'CAR', speed: 'SPD', flex: 'FLX', tdo: 'TDO', tdd: 'TDD', hand: 'HND', topc: 'TPC', topt: 'TPT', botEsc: 'BTC', botRes: 'BTR', big: 'BIG', comp: 'CMP', iq: 'IQ' };
 const tier = v => (v >= 18 ? 't4' : v >= 15 ? 't3' : v >= 11 ? 't2' : 't1');
@@ -387,6 +387,8 @@ function chg(k, el) {
   if (k === 'wmove') { if (el.value) startWeightMove(G, el.dataset.w, el.value); save(); return render(); }
   if (k === 'recwt') { ui.rec.wt = +el.value; ui.rec.limit = 40; return render(); }
   if (k === 'recstatus') { ui.rec.status = el.value; ui.rec.limit = 40; return render(); }
+  if (k === 'recstate') { ui.rec.state = el.value; ui.rec.limit = 40; return render(); }
+  if (k === 'recstars') { ui.rec.stars = el.value; ui.rec.limit = 40; return render(); }
   if (k === 'sched') { const r = S.setWeek(G, +el.dataset.wk, el.value); if (!r.ok) alert(r.msg); save(); return render(); }
   if (k === 'twt') { ui.twt = +el.value; return render(); }
   if (k === 'tteam') { ui.tteam = el.value; return render(); }
@@ -1243,10 +1245,20 @@ function actBtn(r, type, label, extra = '') {
   const block = R.actionBlock(G, r, type), a = R.ACTIONS[type];
   return `<button data-act="recact" data-v="${r.id}" data-t="${type}" ${block ? 'disabled' : ''} title="${(block || a.note).replace(/"/g, '&quot;')}">${label} (${a.hours}h)</button>`;
 }
+// State filter options: US states (alphabetical) then countries of international recruits, each with how many recruits are from there.
+function stateOpts(all, cur) {
+  const n = {}, intl = new Set(); for (const r of all) { n[r.state] = (n[r.state] || 0) + 1; if (r.region === 'International') intl.add(r.state); }
+  const keys = Object.keys(n).sort((a, b) => (intl.has(a) - intl.has(b)) || a.localeCompare(b));
+  return keys.map(k => `<option value="${escA(k)}" ${cur === k ? 'selected' : ''}>${escA(k)} (${n[k]})</option>`).join('');
+}
 function boardTab() {
   const rc = ui.rec;
-  let list = Object.values(G.recruits);
+  const all = Object.values(G.recruits);
+  if (rc.state && !all.some(r => r.state === rc.state)) rc.state = '';   // a new class may have nobody from the chosen state
+  let list = all;
   if (rc.wt) list = list.filter(r => r.weight === rc.wt);
+  if (rc.state) list = list.filter(r => r.state === rc.state);
+  if (rc.stars) { const n = parseInt(rc.stars, 10), up = rc.stars.endsWith('+'); list = list.filter(r => (up ? r.stars >= n : r.stars === n)); }
   if (rc.status === 'open') list = list.filter(r => r.status === 'open');
   else if (rc.status === 'mine') list = list.filter(r => r.interest[G.userTeam] || r.offers[G.userTeam] != null);
   list.sort((a, b) => a.rank - b.rank);
@@ -1262,6 +1274,8 @@ function boardTab() {
   }).join('');
   const filt = `<div class="row"><label>Weight <select data-chg="recwt"><option value="0">All</option>${WEIGHTS.map(w => `<option ${rc.wt === w ? 'selected' : ''}>${w}</option>`).join('')}</select></label>
     <label>Show <select data-chg="recstatus"><option value="open" ${rc.status === 'open' ? 'selected' : ''}>Uncommitted</option><option value="mine" ${rc.status === 'mine' ? 'selected' : ''}>My targets</option><option value="all" ${rc.status === 'all' ? 'selected' : ''}>Everyone</option></select></label>
+    <label>State <select data-chg="recstate"><option value="">All</option>${stateOpts(all, rc.state)}</select></label>
+    <label>Stars <select data-chg="recstars">${[['', 'All'], ['5', '5★'], ['4+', '4★ and up'], ['4', '4★'], ['3+', '3★ and up'], ['3', '3★'], ['2', '2★'], ['1', '1★']].map(([v, l]) => `<option value="${v}" ${rc.stars === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <span class="muted">${list.length} recruits</span></div>`;
   const sel = rc.sel && G.recruits[rc.sel];
   return `<div class="card" style="overflow-x:auto">${filt}<table class="tbl dense"><tr><th>Rank</th><th>Name</th><th>Wt</th><th>St</th><th>★</th><th>OVR</th><th>Pot</th><th>Scout</th><th>Int.</th><th>Offer</th><th>Rival interest</th><th>Status</th><th>Board</th></tr>${rows}</table>
@@ -1279,7 +1293,7 @@ function recruitDetail(r) {
   const rivals = Object.entries(r.interest).filter(([t]) => t !== G.userTeam).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([t, v]) => `${tn(t, 16)} ${v}${r.offers[t] != null ? ' (offer)' : ''}`).join(' · ') || 'none yet';
   const pt = Math.round(R.ptScore(G, me(), overall(r), r.weight) * 100);
   const ws = R.weightSlots(G, G.userTeam, r.weight);
-  const roomNote = `<p class="${ws.proj > R.ROSTER_MAX ? 'neg' : 'muted'}">Your ${r.weight} room: ${ws.inc} recruit${ws.inc === 1 ? '' : 's'} committed, ${ws.cur} returning non-seniors · class ${ws.total} · projected roster ${ws.proj} (limit ${R.ROSTER_MAX} — no cap on recruiting, but you must cut down in the offseason${ws.proj > R.ROSTER_MAX ? '; cuts go to the transfer portal' : ''})</p>`;
+  const roomNote = `<p class="${ws.proj > R.ROSTER_MAX ? 'neg' : 'muted'}">Your ${r.weight} room: ${ws.inc} recruit${ws.inc === 1 ? '' : 's'} committed, ${ws.cur} returning (not in their 5th year) · class ${ws.total} · projected roster ${ws.proj} (limit ${R.ROSTER_MAX} — no cap on recruiting, but you must cut down in the offseason${ws.proj > R.ROSTER_MAX ? '; cuts go to the transfer portal' : ''})</p>`;
   return `<div class="card"><h2>${r.name} <small class="muted">#${r.rank} nationally · ${starStr(r.stars)} · ${r.weight} lbs · ${r.state} (${r.region}) · ${r.scout >= 1 ? ARCHETYPES[r.arch].label : 'style unknown'}</small></h2>
     <p>Estimated OVR <b>${r.scout >= 3 ? overall(r).toFixed(1) : R.estOvr(r).toFixed(1) + ' ±' + [2.6, 1.3, 0.5][r.scout]}</b> · Potential <b>${r.scout >= 1 ? R.potWord(R.estPot(r)) : '?'}</b> · Scouting level ${r.scout}/3 · Your interest <b>${me_}</b> · Playing time at ${me().name}: <b>${pt}%</b></p>
     <p>Cares about: ${cares}</p><p class="muted">Rival interest: ${rivals}</p>${open ? roomNote : ''}${attrs}
@@ -1555,7 +1569,7 @@ function offseasonScreen() {
   else body = `<div class="card"><p>This step happens on the <a data-act="nav" data-v="${step === 'recruit' ? 'recruit' : 'schedule'}">${step === 'recruit' ? 'Recruiting' : 'Schedule'}</a> page.</p></div>`;
   return offBar() + (!FS.fsOn(G) && step !== 'schedule' ? `<div class="card muted">Freestyle mode is off in this career. <a data-act="fson">Turn it on</a> to add a freestyle season after the offseason.</div>` : '') + body;
 }
-// Step 1: who is gone (your graduating seniors and transfers out) and the best seniors leaving the sport. Nothing to decide here.
+// Step 1: who is gone (your graduating 5th-years and transfers out) and the best graduates leaving the sport. Nothing to decide here.
 function leavingPanel() {
   const lv = (G.off && G.off.leaving) || { grads: [], transfers: [], notable: [] }, ut = me();
   const rec = x => `${x.w}-${x.l}${x.ch ? ` · <b style="color:var(--gold)">${x.ch}× champ</b>` : ''}${x.aa ? ` · ${x.aa}× AA` : ''}`;
@@ -1568,7 +1582,7 @@ function leavingPanel() {
     <table class="tbl dense"><tr><th>Name</th><th>Wt</th><th>OVR</th><th>Career</th><th></th></tr>${mine || '<tr><td colspan="5" class="muted">Nobody is leaving this year.</td></tr>'}</table>
     <p class="muted">${fresh} signed freshm${fresh === 1 ? 'a' : 'e'}n join the roster.${lost.length ? ` <span class="neg">No one left at ${lost.join(', ')}</span>: look at the transfer portal in the Recruiting step.` : ''}</p>
     <p class="hint">Transfers can still be won back in the portal (Recruiting step). Next: cut your roster to the limit.</p></div>
-    <div class="card" style="overflow-x:auto"><h2>Top seniors leaving the sport</h2><table class="tbl dense"><tr><th>#</th><th>Name</th><th>Team</th><th>Wt</th><th>Career</th></tr>${nota || '<tr><td colspan="5" class="muted">None.</td></tr>'}</table></div></div>`;
+    <div class="card" style="overflow-x:auto"><h2>Top graduates leaving the sport</h2><table class="tbl dense"><tr><th>#</th><th>Name</th><th>Team</th><th>Wt</th><th>Career</th></tr>${nota || '<tr><td colspan="5" class="muted">None.</td></tr>'}</table></div></div>`;
 }
 function progressPanel() {
   const off = G.off || {}, log = off.prog || [], kept = log.filter(x => !x.released).sort((a, b) => (b.o1 - b.o0) - (a.o1 - a.o0)), rel = log.filter(x => x.released);
@@ -1854,7 +1868,7 @@ function hofView(s, views, pend) {
   return `<div class="card"><h2>Hall of Fame</h2>${pend}<p>${views}</p>
     <p class="muted">Wrestlers are inducted when their college careers end. <b>National Hall of Fame:</b> two or more NCAA titles, a title plus three or more All-American finishes, or four All-American finishes with a finals appearance. <b>School Halls of Fame:</b> an NCAA title, three or more All-American finishes, or two with 80+ wins at 85%+ (every national inductee is in his school's Hall too). Counted from when this game began.</p>
     <h3>National Hall of Fame <small class="muted">${nat.length} member${nat.length === 1 ? '' : 's'}</small></h3>
-    ${nat.length ? `<div style="overflow-x:auto"><table class="tbl">${hofHead()}${nat.map(m => hofRow(m)).join('')}</table></div>` : '<p class="muted">No inductees yet. The first class is inducted when the first season\'s seniors graduate.</p>'}
+    ${nat.length ? `<div style="overflow-x:auto"><table class="tbl">${hofHead()}${nat.map(m => hofRow(m)).join('')}</table></div>` : '<p class="muted">No inductees yet. The first class is inducted when the first season\'s 5th-year wrestlers graduate.</p>'}
     <h3 style="margin-top:14px">School Hall of Fame <select data-chg="hofteam">${opts}</select></h3>
     ${sch.length ? `<div style="overflow-x:auto"><table class="tbl">${hofHead(false)}${sch.map(m => hofRow(m, false)).join('')}</table></div>` : `<p class="muted">${G.teams[tid].name} has no inductees yet.</p>`}
     <h3 style="margin-top:14px">Multi-time NCAA champions</h3>

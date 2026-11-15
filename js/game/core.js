@@ -19,7 +19,9 @@ import { generateRecruitClass, processRecruitingWeek, runWeeklyAuto } from './re
 // Calendar is per-season (G.cal): week 1 = first Saturday of November; tournaments follow weekday rules (see data/tournaments.js).
 let CAL = seasonCalendar(2026);
 export const useCalendar = G => { CAL = G.cal; };
-export const CLASS_NAMES = ['', 'Fr', 'So', 'Jr', 'Sr'];
+// NCAA 5-for-5 eligibility (from 2026-27): five seasons of competition in five years, no redshirts. cls 1-5; 5 = '5th Yr', the last year.
+export const CLASS_NAMES = ['', 'Fr', 'So', 'Jr', 'Sr', '5th Yr'];
+export const MAX_CLS = 5;
 const SAVE_KEY = 'wrestlingCoach.save.v1';
 
 // ---------- ratings ----------
@@ -53,7 +55,7 @@ export function newGame(userTeam, coach = 'Coach', seed = (Math.random() * 42949
       for (let i = 0; i < n; i++) {
         const q = i === 0 ? q0 + rng.gauss() * 1.3 : q0 - 2 - i * 0.8 + rng.gauss() * 1.2;
         const w = generateWrestler(rng, { weight: wt, quality: q, archetype: rng.pick(archKeys), school: s.name });
-        w.id = 'w' + G.nextId++; w.team = s.id; w.natural = wt; w.cls = rng.weighted([1, 2, 3, 4], c => (i === 0 ? [0.15, 0.25, 0.3, 0.3] : [0.35, 0.3, 0.22, 0.13])[c - 1]);
+        w.id = 'w' + G.nextId++; w.team = s.id; w.natural = wt; w.cls = rng.weighted([1, 2, 3, 4, 5], c => (i === 0 ? [0.12, 0.2, 0.24, 0.24, 0.2] : [0.3, 0.27, 0.2, 0.13, 0.1])[c - 1]);
         delete w.plan; initDev(w, rng); G.wrestlers[w.id] = w; t.roster.push(w.id);
       }
     }
@@ -139,7 +141,7 @@ function applyRealTop(G, rng, src = name => REAL_TEAMS[name]) {
 
 // Development fields: hidden potential (ceiling for any attribute), work ethic, injury proneness; fatigue 0-100; injury; per-attr progress.
 export function initDev(w, rng) {
-  const base = overallLegacy(w), young = [0, 3, 2, 1, 0.5][w.cls] ?? 1;
+  const base = overallLegacy(w), young = [0, 3, 2, 1, 0.5, 0.3][w.cls] ?? 1;
   w.pot = Math.max(Math.round(base + 0.5), Math.min(20, Math.round(base + 0.8 + young + rng.gauss() * 1.6)));
   w.ethic = Math.max(3, Math.min(20, Math.round(11 + rng.gauss() * 3.5)));
   w.prone = Math.max(1, Math.min(20, Math.round(10 + rng.gauss() * 4)));
@@ -597,7 +599,7 @@ function trainWrestler(G, w, t, plan, rng, isUser) {
   if (w.focus) slots[w.focus] = (slots[w.focus] || 0) + 0.7;
   let fatLoad = 0, injLoad = 0, recov = 0;
   for (const [k, sh] of Object.entries(slots)) { const p = PRACTICE[k]; fatLoad += sh * p.fat; injLoad += sh * p.inj; if (p.recover) recov += sh; }
-  const ethicF = 0.6 + w.ethic / 20 * 0.8, classF = [0, 1.2, 1.0, 0.85, 0.7][w.cls] ?? 1;
+  const ethicF = 0.6 + w.ethic / 20 * 0.8, classF = [0, 1.2, 1.0, 0.85, 0.7, 0.6][w.cls] ?? 1;
   if (!w.injury) {
     for (const [k, sh] of Object.entries(slots)) {
       for (const [at, aw] of Object.entries(PRACTICE[k].attrs)) {
