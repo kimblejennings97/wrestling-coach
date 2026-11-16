@@ -1,7 +1,7 @@
-"""Build the folder you upload to Netlify (or any static host): `py tools/build_deploy.py` -> dist/
+"""Build the folder that gets published to Cloudflare (or any static host): `py tools/build_deploy.py` -> dist/
 Only what the game needs: index.html, css/, js/ (minus the balance harness), assets/ (logos). Everything else in the project (WrestlerNames/, tools/,
 test and diagnostic pages, CLAUDE.md) stays out, which turns a ~155 MB project folder into ~1 MB.
-Options: --with-lab also ships lab.html (Match Lab). Then drag the `dist` folder onto https://app.netlify.com/drop (or run `netlify deploy --dir dist --prod`)."""
+Options: --with-lab also ships lab.html (Match Lab). Then publish it with `npx wrangler deploy` (deploy.bat does both; wrangler.jsonc uploads only dist/)."""
 import os, shutil, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,10 +23,10 @@ shutil.copytree(os.path.join(ROOT, 'js'), os.path.join(DIST, 'js'), ignore=shuti
 shutil.copytree(os.path.join(ROOT, 'assets'), os.path.join(DIST, 'assets'), dirs_exist_ok=True)
 
 # Browsers must re-check the game's HTML/JS/CSS on every load (a stale copy of one module next to new copies of the others blanks the page);
-# the logo images can be cached for a day. Netlify reads this file when you drag-and-drop the folder.
+# the logo images can be cached for a day. Cloudflare reads this file from dist/ when it serves the site.
 with open(os.path.join(DIST, '_headers'), 'w', newline='\n') as h:
     h.write('/*\n  Cache-Control: no-cache\n\n/assets/*\n  Cache-Control: public, max-age=86400\n')
 
 n = sum(len(fs) for _, _, fs in os.walk(DIST))
 size = sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(DIST) for f in fs)
-print(f'dist/ ready: {n} files, {size / 1e6:.2f} MB. Drag the dist folder onto https://app.netlify.com/drop')
+print(f'dist/ ready: {n} files, {size / 1e6:.2f} MB. Publish with: npx wrangler deploy  (or double-click deploy.bat)')

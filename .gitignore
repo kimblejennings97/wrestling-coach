@@ -12,3 +12,6 @@ _*.html
 # OS / editor
 Thumbs.db
 .DS_Store
+
+# Cloudflare (wrangler) local state
+.wrangler/

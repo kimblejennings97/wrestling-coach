@@ -44,7 +44,7 @@ Works autonomously and reports briefly; concise answers with a recommendation an
 ## Repo, git, deploy
 - Local git repo, branch `main`, remote `https://github.com/kimblejennings97/wrestling-coach.git` (should be PRIVATE). **Claude may commit but cannot push** (the user pushes from a VS Code terminal). End commit messages with the Co-Authored-By line from the session's system reminder. autocrlf=true (LF->CRLF warnings are normal).
 - `.gitignore`: `dist/`, `WrestlerNames/`, `tools/cache/`, `_*.html`.
-- Deploy: `deploy.bat` / `py tools/build_deploy.py [--with-lab]` -> `dist/` (index.html, moves.html, css, js minus harness, logos, `_headers` no-cache) -> drag onto app.netlify.com/drop. `netlify.toml` does the same for git deploys. Test/diag pages are not deployed. Don't leave a server running inside `dist/`.
+- Deploy: `deploy.bat` / `py tools/build_deploy.py [--with-lab]` -> `dist/` (index.html, moves.html, css, js minus harness, logos, `_headers` no-cache) -> `npx wrangler deploy` publishes dist/ to Cloudflare (Workers static assets, config `wrangler.jsonc`; live at https://wrestling-coach.wrestling-coach.workers.dev; moved off Netlify 2026-11-16). `wrangler.jsonc` must only ever point at `./dist`: WrestlerNames/ and tools/cache/ are scraped third-party pages that must never be uploaded. `_headers` (no-cache) is honored by Cloudflare. Test/diag pages are not deployed. Don't leave a server running inside `dist/`.
 - Rollback copies: `C:\ClaudeProjects\wrestling-coach-backups\` (stable-2026-11-08, anim-2026-11-10).
 
 ## Layout

@@ -1,0 +1,14 @@
+// Cloudflare hosting for the game (static files only, no server code).
+// Deploy with deploy.bat (builds dist/ then runs `npx wrangler deploy`).
+// ONLY dist/ is uploaded: never point "directory" at the project root (WrestlerNames/ and tools/cache/
+// hold scraped third-party pages that must not be published).
+{
+  "name": "wrestling-coach",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page"
+  },
+  "workers_dev": true,
+  "preview_urls": false
+}
